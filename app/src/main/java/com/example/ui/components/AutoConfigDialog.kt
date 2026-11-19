@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -36,8 +38,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,10 +55,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.webview.AutoConfig
 
-/**
- * Hộp thoại 🤖 Tự động tách riêng cho từng tab — mỗi tab có cấu hình riêng, lưu riêng
- * trong PreferencesManager và thực thi độc lập trên chính WebView của tab đó.
- */
 @Composable
 fun AutoConfigDialog(
     tabIndex: Int,
@@ -76,7 +72,6 @@ fun AutoConfigDialog(
     var draft by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig) }
     val currentSectRaw = characterSects.getOrElse(tabIndex) { "" }
 
-    // Ô số giữ dạng chuỗi để người dùng xoá trắng được khi đang gõ; đổi sang số lúc Lưu.
     var k2kText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.k2k.toString()) }
     var lbMuaText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.lbMua.toString()) }
     var knbMuaText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.knbMua.toString()) }
@@ -169,7 +164,6 @@ fun AutoConfigDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Công tắc tổng riêng cho tab đang chọn.
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -238,7 +232,7 @@ fun AutoConfigDialog(
                         draft = draft.copy(thap = it)
                     }
                     AutoCheckRow(
-                        label = "Leo Tháp: chạy vòng tròn quanh mục tiêu né sát thương",
+                        label = "Chỉ Leo Tháp",
                         checked = draft.thapNeDon,
                         testTag = "auto_check_thapNeDon"
                     ) {
@@ -390,25 +384,19 @@ fun AutoConfigDialog(
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
-                                text = "Lưu ý tiền tệ & Tự động riêng từng Tab",
+                                text = "Lưu ý tiền tệ & Chế độ Chỉ Leo Tháp",
                                 color = Color(0xFFFCA5A5),
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Kim Nguyên Bảo mua bằng vạn lượng: tự mở Kỳ Trân Các → Bảng Kim Nguyên Bảo → Mua, " +
-                                    "điền số lượng (tối đa 1.000 KNB / ngày) rồi ấn Đổi. \"Giữ lại ít nhất\" là SÀN ngân lượng bảo toàn.",
+                                text = "Khi chọn đồng thời \"Ưu tiên Leo Tháp...\" và \"Chỉ Leo Tháp\", nhân vật khi đã vào Thông Thiên Tháp sẽ khóa cứng Chế độ: Leo Tháp. Dù bị Rớt Tháp hay mất kết nối tải lại game, hệ thống vẫn tự động vào lại Tháp.",
                                 color = Color(0xFFCBD5E1),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                             Text(
-                                text = "Chuẩn giờ Việt Nam (GMT+7): Khi bật Mua Thẻ Giao Dịch, lúc 00:00:00 sẽ ưu tiên mua ẩn trước " +
-                                    "(Kỳ Trân Các → Bảng KNB khóa → Giao dịch → Thẻ Giao Dịch → Mua → 1 → Mua); nếu chưa xong thì chưa mua KNB bằng tiền vạn. " +
-                                    "Sau đó thực hiện Điểm danh / Đổi nguyên liệu / Mua KNB, rồi Tự chạy phó bản ➔ Dã Tẩu tối đa và khôi phục chế độ ban đầu. " +
-                                    "Trong Leo Tháp, hệ thống lấy tọa độ trung tâm map làm điểm tập trung (giới hạn bán kính quanh trung tâm, không chạy xa mục tiêu), " +
-                                    "đọc chiêu chính 9x đã chọn để đi vòng Đánh gần / Đánh xa theo nhịp và tự giữ Auto game luôn BẬT để nhân vật liên tục tung chiêu. " +
-                                    "Vật phẩm tiêu hao quét vùng buff mỗi 15 phút và tự dùng ẩn 1 bình mỗi loại còn thiếu.",
+                                text = "Quỹ đạo chạy vòng tròn chỉ hoạt động trong Thông Thiên Tháp (bước 30° quanh mục tiêu: bán kính 90 cho chiêu Đánh gần, 400 cho chiêu Đánh xa; vượt tầng lập tức chạy về tâm map).",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -419,7 +407,6 @@ fun AutoConfigDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Hàng 1: Lưu Tab x | Lưu tất cả
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -460,7 +447,6 @@ fun AutoConfigDialog(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Hàng 2: Đặt lại bộ đếm | Hủy
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -615,7 +601,7 @@ private fun MainSkill9xSelector(
                     }
                 )
                 availableSkills.forEach { skill ->
-                    val styleText = if (skill.combatStyle == AutoConfig.ORBIT_MELEE) "Đánh gần" else "Đánh xa"
+                    val styleText = if (skill.combatStyle == AutoConfig.ORBIT_MELEE) "Đánh gần (90)" else "Đánh xa (400)"
                     val label = if (detectedSect != null) {
                         "${skill.displayName} · $styleText"
                     } else {
@@ -641,9 +627,9 @@ private fun MainSkill9xSelector(
         }
 
         val resolvedText = when (resolvedStyle) {
-            AutoConfig.ORBIT_MELEE -> "Cách di chuyển cho chiêu đã chọn: Đánh gần (vòng hẹp, theo nhịp)"
-            AutoConfig.ORBIT_RANGED -> "Cách di chuyển cho chiêu đã chọn: Đánh xa (vòng rộng, theo nhịp)"
-            else -> "Chưa chọn chiêu chính — hãy chọn chiêu 9x để xác định cách di chuyển"
+            AutoConfig.ORBIT_MELEE -> "Cách di chuyển: Đánh gần (giữ khoảng cách 90, bước 30°)"
+            AutoConfig.ORBIT_RANGED -> "Cách di chuyển: Đánh xa (giữ khoảng cách 400, bước 30°)"
+            else -> "Chưa chọn chiêu chính — hãy chọn chiêu 9x để xác định khoảng cách"
         }
         Text(
             text = resolvedText,
@@ -666,8 +652,8 @@ private fun OrbitStyleSelector(
     val normalized = AutoConfig.normalizeOrbitStyle(selectedStyle)
     val options = listOf(
         Triple(AutoConfig.ORBIT_AUTO, "Theo chiêu", "auto_orbit_style_auto"),
-        Triple(AutoConfig.ORBIT_MELEE, "Đánh gần", "auto_orbit_style_melee"),
-        Triple(AutoConfig.ORBIT_RANGED, "Đánh xa", "auto_orbit_style_ranged")
+        Triple(AutoConfig.ORBIT_MELEE, "Đánh gần (90)", "auto_orbit_style_melee"),
+        Triple(AutoConfig.ORBIT_RANGED, "Đánh xa (400)", "auto_orbit_style_ranged")
     )
     Column(
         modifier = Modifier
@@ -713,7 +699,7 @@ private fun OrbitStyleSelector(
             }
         }
         Text(
-            text = "Chọn chiêu chính 9x ở trên để app xác định cách di chuyển chậm theo nhịp",
+            text = "Chọn chiêu chính 9x ở trên để giữ khoảng cách 90 / 400 quanh mục tiêu trong Tháp",
             color = Color(0xFF64748B),
             fontSize = 8.5.sp,
             modifier = Modifier.padding(top = 3.dp)

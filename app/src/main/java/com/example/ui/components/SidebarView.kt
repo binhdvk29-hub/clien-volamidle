@@ -63,6 +63,8 @@ fun SidebarView(
     onSyncBlackScreen: (Boolean) -> Unit = {},
     isHideMapSynced: Boolean = false,
     onSyncHideMap: (Boolean) -> Unit = {},
+    isHideGameSynced: Boolean = false,
+    onSyncHideGame: (Boolean) -> Unit = {},
     onSyncSellExcess: () -> Unit = {}
 ) {
     Surface(
@@ -78,7 +80,6 @@ fun SidebarView(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            // Header with Collapse Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -108,7 +109,6 @@ fun SidebarView(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // MODULE 2: MASTER CONTROLS [▶ ĐĂNG NHẬP TẤT CẢ] & [⏹ DỪNG TẤT CẢ]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -172,8 +172,6 @@ fun SidebarView(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // MODULE 6: SECTION 1 (4 CHARACTER SLOTS)
-            // STRICT SIZE CONSTRAINT: Fixed height 74dp - 80dp, maxLines = 1, singleLine = true, cleaned string
             Text(
                 text = "DANH SÁCH NHÂN VẬT ($tabCount TAB)",
                 color = Color(0xFF94A3B8),
@@ -206,8 +204,6 @@ fun SidebarView(
             HorizontalDivider(color = Color(0xFF1E293B), thickness = 1.dp)
             Spacer(modifier = Modifier.height(8.dp))
 
-            // MODULE 6: SECTION 3 & 4 (INVENTORY & QUEST STATS OF SELECTED TAB)
-            // 5 stats: 🧧 Đại hồng bao, 🧧 Hồng bao, 🗼 Kỷ lục tầng tháp, 👹 Boss Hoàng Kim đã hạ, 📜 Nhiệm vụ Dã Tẩu
             val activeStats = characterStatsList.getOrElse(selectedTabIndex) { CharacterStats(tabIndex = selectedTabIndex) }
             Text(
                 text = "THÔNG SỐ TAB ${selectedTabIndex + 1}: ${activeStats.characterName}",
@@ -246,11 +242,6 @@ fun SidebarView(
             HorizontalDivider(color = Color(0xFF1E293B), thickness = 1.dp)
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Đồng bộ chế độ Auto và 🤖 Tự động đã chuyển sang ControlSheet (bảng điều khiển
-            // nhanh) — người dùng không phải mở drawer mới bấm được. Drawer chỉ còn control
-            // theo nhân vật/tab.
-
-            // Ô chức năng "Màn hình đen" có ô trắng tích chọn phía trước (chỉ hiển thị Màn hình đen, không hiển thị đường dẫn)
             SyncedToggleCheckboxRow(
                 label = "Màn hình đen",
                 checked = isBlackScreenSynced,
@@ -261,7 +252,6 @@ fun SidebarView(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Xoá hiển thị bản đồ — đồng bộ cho tất cả các tab
             SyncedToggleCheckboxRow(
                 label = "🗺️ Xoá hiển thị bản đồ",
                 checked = isHideMapSynced,
@@ -272,7 +262,16 @@ fun SidebarView(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Chức năng "Bán đồ thừa" dưới Màn hình đen — đồng bộ tất cả các tab
+            SyncedToggleCheckboxRow(
+                label = "👁️ Ẩn game",
+                checked = isHideGameSynced,
+                tabCount = tabCount,
+                testTag = "sync_hide_game_checkbox",
+                onToggle = { onSyncHideGame(!isHideGameSynced) }
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -312,7 +311,6 @@ fun SidebarView(
     }
 }
 
-// MODULE 6: Character Card with STRICT 74dp - 80dp height and 3 lines
 @Composable
 fun CharacterCard(
     tabIndex: Int,
@@ -325,7 +323,7 @@ fun CharacterCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp) // Strictly 74-80dp constraint
+            .height(76.dp)
             .clickable { onSelect() }
             .testTag("char_card_tab_$tabIndex"),
         shape = RoundedCornerShape(5.dp),
@@ -343,7 +341,6 @@ fun CharacterCard(
                 .padding(horizontal = 7.dp, vertical = 5.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Line 1: 🟢 [Tên] + Trạng thái Online / Đã dừng
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -395,7 +392,6 @@ fun CharacterCard(
                 )
             }
 
-            // Line 2: Phái: [Tên Môn Phái] | Cấp [Số Cấp] - [% EXP]
             Text(
                 text = "Phái: ${stats.sect} | Cấp ${stats.level} - ${stats.expPercent}",
                 color = Color(0xFFCBD5E1),
@@ -404,7 +400,6 @@ fun CharacterCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            // Line 3: Button [🔑 TK: {user} (Đổi)]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

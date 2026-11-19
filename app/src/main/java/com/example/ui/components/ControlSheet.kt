@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -60,7 +59,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -73,32 +71,7 @@ import com.example.R
 import com.example.model.NetworkDataInfo
 import com.example.model.TabLimits
 import com.example.model.ViewLayoutMode
-import com.example.update.ByteSize
-import com.example.update.UpdateUiState
 import java.util.Locale
-
-// =============================================================================
-// BẢNG ĐIỀU KHIỂN NHANH (bottom sheet) — overlay, KHÔNG đẩy WebView xuống.
-//
-// Toàn bộ control từng nằm trong header 44dp + mini-header 28dp của từng tab đều chuyển
-// vào đây, để chrome luôn hiện chỉ còn dải 32dp ở đáy. Sheet là overlay nên mở/đóng
-// không đổi kích thước WebView ⇒ game không reflow HUD và không đóng `<select>` đang mở.
-//
-// Thứ tự hàng (đúng §3 của docs/DESIGN-LAYOUT.md):
-//   1. per-tab   ▶ Mở / ↻ / ⏹   (tab đích = controlSheetTabIndex)
-//   2. view-mode 4 Dọc / 2x2 / 1 Tab
-//   3. SỐ TAB    − n +  (+ cảnh báo khi > 4, hai xác nhận)
-//   4. toggles   FPS 30↔60 / 🌙 Treo máy
-//   5. network   MB + ↓speed / reset
-//   6. sync-auto 📜 Nhiệm Vụ / ⚔️ Phó Bản / 🔥 Luyện Công  (chuyển từ drawer sang)
-//   7. app-wide  🤖 Tự động  (mở AutoConfigDialog — chuyển từ drawer sang)
-//   8. sidebar   ☰ Bảng điều khiển
-//   9. version   📦 Phiên bản + action cập nhật (cấp app)
-//
-// Hàng 6–7 trước đây nằm trong SidebarView: người dùng phải mở drawer mới bấm được.
-// Chúng là control cấp app (không phải per-tab) nên thuộc sheet này. Sheet vẫn cuộn
-// trong trần 0.46 màn hình — thêm hàng KHÔNG được nới trần đó.
-// =============================================================================
 
 private val SheetBg = Color(0xFF0F172A)
 private val SheetBorder = Color(0xFF1E293B)
@@ -138,41 +111,23 @@ fun ControlSheet(
     onSetTabCount: (Int) -> Unit,
     onMarkTabCountWarned: () -> Unit,
     appVersionName: String,
-    updateState: UpdateUiState,
-    onCheckUpdate: () -> Unit,
-    onStartDownload: () -> Unit,
-    onInstallUpdate: () -> Unit,
-    onOpenReleases: () -> Unit,
     onDismiss: () -> Unit,
     onInteract: () -> Unit,
     hasDndPolicyAccess: Boolean = false,
     onOpenSleepWakeSetup: () -> Unit = {},
     isHideMap: Boolean = false,
     onToggleHideMap: () -> Unit = {},
+    isHideGame: Boolean = false,
+    onToggleHideGame: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    // Cao tối đa 0.46 màn hình dùng được; phần dư cuộn bên trong.
     val configuration = LocalConfiguration.current
     val maxSheetHeight = (configuration.screenHeightDp.dp * 0.46f)
 
-    // Sync-auto là 3 lệnh rời (không phải một trạng thái lưu xuống đĩa), nhưng người dùng
-    // cần thấy mình vừa bấm cái nào — giữ lựa chọn cuối trong bộ nhớ phiên của sheet.
     var lastSyncMode by remember { mutableStateOf<String?>(null) }
-
-    // Xác nhận cài: modal DUY NHẤT của tính năng update, và chỉ xuất hiện sau một cú chạm.
-    var installConfirm by remember { mutableStateOf<UpdateUiState.ReadyToInstall?>(null) }
-    LaunchedEffect(updateState) {
-        if (updateState !is UpdateUiState.ReadyToInstall) installConfirm = null
-    }
-
-    // Hai xác nhận của stepper số tab. Chỉ dựng dialog khi thật sự cần:
-    //  - tăng vượt 4 lần đầu (cờ pref_tab_warn_shown),
-    //  - giảm mà có tab trong [n, old) đang IN_GAME/LOGGING_IN.
     var pendingGrow by remember { mutableStateOf<Int?>(null) }
     var pendingShrink by remember { mutableStateOf<Int?>(null) }
 
-    // Kéo grabber xuống > 40dp để đóng. Chỉ gắn ở vùng grabber/header: gắn lên cả panel sẽ
-    // tranh gesture với verticalScroll và với các nút bên trong.
     val dismissThresholdPx = with(LocalDensity.current) { 40.dp.toPx() }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
@@ -190,7 +145,6 @@ fun ControlSheet(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Scrim: chỉ tồn tại trong cây view khi sheet mở, nên khi đóng không ăn chạm của game.
         AnimatedVisibility(
             visible = isOpen,
             enter = fadeIn(animationSpec = tween(150)),
@@ -238,7 +192,6 @@ fun ControlSheet(
                         .padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // ---- Grabber + header (36dp để nút ✕ đạt target tối thiểu) ----
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -333,7 +286,7 @@ fun ControlSheet(
                         }
                     }
 
-                    // ---- Hàng 1: điều khiển per-tab (44dp) ----
+                    // Hàng 1: điều khiển per-tab (44dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -379,7 +332,7 @@ fun ControlSheet(
                         )
                     }
 
-                    // ---- Hàng 2: chế độ xem (40dp, segment 3 nút) ----
+                    // Hàng 2: chế độ xem (40dp)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -421,7 +374,7 @@ fun ControlSheet(
                         )
                     }
 
-                    // ---- Hàng 3: SỐ TAB 1..8 (40dp) ----
+                    // Hàng 3: SỐ TAB 1..8
                     TabCountStepper(
                         tabCount = tabCount,
                         maxTabCount = maxTabCount,
@@ -450,7 +403,7 @@ fun ControlSheet(
                         }
                     )
 
-                    // ---- Hàng 4: FPS + Treo máy (40dp) ----
+                    // Hàng 4: FPS + Treo máy
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -516,7 +469,7 @@ fun ControlSheet(
                         }
                     }
 
-                    // ---- Hàng 4b: Tối ưu hiển thị (Xoá bản đồ) (36dp) ----
+                    // Hàng 4b: Tối ưu hiển thị (Xoá bản đồ + Ẩn game)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -538,7 +491,28 @@ fun ControlSheet(
                         )
                     }
 
-                    // ---- Hàng 5: lưu lượng mạng + reset (36dp) ----
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .testTag("sheet_hide_game_row"),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SegmentButton(
+                            label = if (isHideGame) "👁️ Ẩn game: ĐANG BẬT" else "👁️ Ẩn game",
+                            selected = isHideGame,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .testTag("sheet_hide_game_toggle"),
+                            onClick = {
+                                onInteract()
+                                onToggleHideGame()
+                            }
+                        )
+                    }
+
+                    // Hàng 5: lưu lượng mạng + reset
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -600,8 +574,7 @@ fun ControlSheet(
                         }
                     }
 
-                    // ---- Hàng 6: đồng bộ chế độ Auto cho mọi tab (chuyển từ drawer) ----
-                    // Ba lệnh rời, không có trạng thái lưu: chọn cái vừa bấm để có phản hồi thị giác.
+                    // Hàng 6: đồng bộ chế độ Auto cho mọi tab
                     Text(
                         text = "ĐỒNG BỘ AUTO CẢ $tabCount TAB",
                         color = TextMuted,
@@ -655,7 +628,7 @@ fun ControlSheet(
                         )
                     }
 
-                    // ---- Hàng 7: 🤖 Tự động (mở AutoConfigDialog riêng theo Tab) ----
+                    // Hàng 7: 🤖 Tự động
                     SheetButton(
                         label = if (isAutoPilotOn) {
                             "🤖 Tự động (Tab ${tabIndex + 1}) · 🟢 ĐANG BẬT"
@@ -676,7 +649,7 @@ fun ControlSheet(
                         }
                     )
 
-                    // ---- Hàng 8: mở bảng điều khiển (drawer) ----
+                    // Hàng 8: mở bảng điều khiển (drawer)
                     SheetButton(
                         label = "☰ Bảng điều khiển",
                         fill = ChipIdleFill,
@@ -693,70 +666,32 @@ fun ControlSheet(
                         }
                     )
 
-                    // ---- Hàng 9: phiên bản + cập nhật (cấp app, không phải per-tab) ----
-                    UpdateRow(
-                        appVersionName = appVersionName,
-                        state = updateState,
-                        onCheck = {
-                            onInteract()
-                            onCheckUpdate()
-                        },
-                        onDownload = {
-                            onInteract()
-                            onStartDownload()
-                        },
-                        onInstall = {
-                            val ready = updateState as? UpdateUiState.ReadyToInstall
-                            if (ready != null) installConfirm = ready
-                        },
-                        onOpenReleases = {
-                            onInteract()
-                            onOpenReleases()
-                        }
-                    )
-
+                    // Hàng 9: phiên bản tĩnh (đã bỏ tự động cập nhật)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF0F172A))
+                            .border(1.dp, ChipIdleBorder, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp)
+                            .testTag("sheet_version_row"),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = "📦 Phiên bản $appVersionName",
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
     }
 
-    // Hộp thoại xác nhận cài: nói rõ app sẽ đóng và các tab sẽ tải lại. Chỉ có ở đây,
-    // không có confirm nào khác trong luồng update (§6.3 "modal duy nhất là xác nhận cài").
-    installConfirm?.let { ready ->
-        AlertDialog(
-            onDismissRequest = { installConfirm = null },
-            title = {
-                Text(text = stringResource(R.string.update_confirm_title, ready.versionName))
-            },
-            text = {
-                Text(
-                    text = stringResource(
-                        R.string.update_confirm_body,
-                        ByteSize.format(ready.sizeBytes)
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        installConfirm = null
-                        onInteract()
-                        onInstallUpdate()
-                    },
-                    modifier = Modifier.testTag("update_confirm_ok")
-                ) {
-                    Text(text = stringResource(R.string.update_confirm_ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { installConfirm = null }) {
-                    Text(text = stringResource(R.string.update_confirm_cancel))
-                }
-            }
-        )
-    }
-
-    // Xác nhận lần đầu vượt 4 tab (§6.3). Cờ pref_tab_warn_shown do ViewModel giữ.
     pendingGrow?.let { next ->
         AlertDialog(
             onDismissRequest = { pendingGrow = null },
@@ -791,7 +726,6 @@ fun ControlSheet(
         )
     }
 
-    // Xác nhận giảm khi có tab trong [n, old) đang chạy: giảm sẽ DỪNG chúng.
     pendingShrink?.let { next ->
         AlertDialog(
             onDismissRequest = { pendingShrink = null },
@@ -825,12 +759,6 @@ fun ControlSheet(
         )
     }
 }
-
-// =============================================================================
-// STEPPER SỐ TAB (docs/DESIGN-TAB-COUNT.md §6)
-// "−" disable ở 1, "+" disable ở trần thực tế (8, hoặc 4 khi máy RAM thấp).
-// Target cao 40dp như các hàng khác; hai nút rộng 44dp để đủ vùng chạm.
-// =============================================================================
 
 @Composable
 private fun TabCountStepper(
@@ -887,7 +815,6 @@ private fun TabCountStepper(
             )
         }
 
-        // Cảnh báo inline: chỉ khi thực sự trên 4 tab.
         if (tabCount > TabLimits.RECOMMENDED_MAX) {
             Text(
                 text = stringResource(R.string.tab_count_warn_inline),
@@ -898,7 +825,6 @@ private fun TabCountStepper(
             )
         }
 
-        // Bị chặn ở trần low-RAM: nói rõ vì sao "+" không bấm được.
         if (isLowRam && tabCount >= maxTabCount) {
             Text(
                 text = stringResource(R.string.tab_count_low_ram_block),
@@ -942,10 +868,6 @@ private fun StepButton(
     }
 }
 
-/**
- * Nút trong sheet. Dựng bằng Box + clickable thay vì material `Button`:
- * `Button` ép minimumInteractiveComponentSize 48dp nên không giữ được hàng 36/40/44dp.
- */
 @Composable
 private fun SheetButton(
     label: String,
@@ -1031,250 +953,5 @@ private fun SegmentButton(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-// =============================================================================
-// Hàng cập nhật (§6.1): cao 40dp, trái là phiên bản đang chạy, phải là MỘT target
-// 40dp mang nhãn/action theo state. Dựng bằng Box + clickable (không dùng material
-// `Button` — nó ép minimumInteractiveComponentSize 48dp và làm hàng cao lên).
-//
-// Không state nào tự chuyển sang state kế: `Available` chỉ hiện "Tải về", `ReadyToInstall`
-// chỉ hiện "Cài đặt". Việc đi tiếp luôn cần một cú chạm mới.
-// =============================================================================
-
-private data class UpdateRowSpec(
-    val label: String,
-    val onClick: (() -> Unit)?,
-    val fill: Color,
-    val border: Color,
-    val content: Color,
-    val contentDescription: String?,
-    val detail: String?
-)
-
-@Composable
-private fun UpdateRow(
-    appVersionName: String,
-    state: UpdateUiState,
-    onCheck: () -> Unit,
-    onDownload: () -> Unit,
-    onInstall: () -> Unit,
-    onOpenReleases: () -> Unit
-) {
-    val spec = when (state) {
-        UpdateUiState.Idle -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = ChipSelectedFill,
-            border = ChipSelectedBorder,
-            content = Color.White,
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = null
-        )
-
-        UpdateUiState.Checking -> UpdateRowSpec(
-            label = stringResource(R.string.update_state_checking),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = ChipIdleText,
-            contentDescription = null,
-            detail = null
-        )
-
-        is UpdateUiState.UpToDate -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = stringResource(R.string.update_state_uptodate)
-        )
-
-        is UpdateUiState.Available -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_download),
-            onClick = onDownload,
-            fill = ChipSelectedFill,
-            border = ChipSelectedBorder,
-            content = Color.White,
-            contentDescription = stringResource(R.string.cd_update_download),
-            detail = stringResource(
-                R.string.update_state_available,
-                state.versionName,
-                ByteSize.format(state.sizeBytes)
-            )
-        )
-
-        is UpdateUiState.Downloading -> {
-            val percent = if (state.total > 0L) {
-                ((state.bytes * 100L) / state.total).toInt().coerceIn(0, 100)
-            } else {
-                0
-            }
-            UpdateRowSpec(
-                label = stringResource(R.string.update_state_downloading, percent),
-                onClick = null,
-                fill = ChipIdleFill,
-                border = ChipIdleBorder,
-                content = TextStrong,
-                contentDescription = null,
-                detail = null
-            )
-        }
-
-        UpdateUiState.Verifying -> UpdateRowSpec(
-            label = stringResource(R.string.update_state_verifying),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = null,
-            detail = null
-        )
-
-        is UpdateUiState.ReadyToInstall -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_install),
-            onClick = onInstall,
-            fill = Color(0xFF15803D),
-            border = Color(0xFF22C55E),
-            content = Color.White,
-            contentDescription = stringResource(R.string.cd_update_install),
-            detail = null
-        )
-
-        UpdateUiState.NeedsPermission -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_open_settings),
-            onClick = onInstall,
-            fill = Color(0xFF78350F),
-            border = Color(0xFFD97706),
-            content = Color(0xFFFFF7ED),
-            contentDescription = stringResource(R.string.update_btn_open_settings),
-            detail = stringResource(R.string.update_state_needs_permission)
-        )
-
-        UpdateUiState.Installing -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_install),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = ChipIdleText,
-            contentDescription = null,
-            detail = stringResource(R.string.update_state_installing)
-        )
-
-        UpdateUiState.NoNetwork -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = stringResource(R.string.update_state_nonetwork)
-        )
-
-        is UpdateUiState.RateLimited -> UpdateRowSpec(
-            label = stringResource(R.string.update_state_ratelimited),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = ChipIdleText,
-            contentDescription = null,
-            detail = stringResource(R.string.update_state_ratelimited)
-        )
-
-        is UpdateUiState.Unparsable -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_open_releases),
-            onClick = onOpenReleases,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = stringResource(R.string.update_btn_open_releases),
-            detail = stringResource(R.string.update_state_unparsable)
-        )
-
-        is UpdateUiState.Failed -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = Color(0xFF7F1D1D),
-            border = Color(0xFFDC2626),
-            content = Color(0xFFFEE2E2),
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = state.reason
-        )
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .testTag("sheet_update_row"),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF0F172A))
-                    .border(1.dp, ChipIdleBorder, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    text = stringResource(R.string.update_version_row, appVersionName),
-                    color = TextStrong,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            val actionShape = RoundedCornerShape(6.dp)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .clip(actionShape)
-                    .background(spec.fill)
-                    .border(1.dp, spec.border, actionShape)
-                    .clickable(
-                        enabled = spec.onClick != null,
-                        role = Role.Button,
-                        onClick = { spec.onClick?.invoke() }
-                    )
-                    .semantics {
-                        spec.contentDescription?.let { contentDescription = it }
-                    }
-                    .padding(horizontal = 6.dp)
-                    .testTag("sheet_update_action"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = spec.label,
-                    color = spec.content,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        spec.detail?.let { detail ->
-            Text(
-                text = detail,
-                color = TextMuted,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("sheet_update_detail")
-            )
-        }
     }
 }

@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.model.CharacterStats
 import com.example.model.TabLifecycleState
@@ -29,10 +28,6 @@ import com.example.model.TabLimits
 import com.example.model.ViewLayoutMode
 import com.example.webview.GameTabManager
 
-/**
- * Ô hiển thị của một tab. `onSelectTab` là lambda TƯƠI: composition gán lại mỗi lượt
- * `update`, nên ô không giữ tham chiếu tới callback của lần composition đầu.
- */
 class TabCardViewHolder(
     val root: LinearLayout,
     val idleOverlay: LinearLayout,
@@ -55,26 +50,8 @@ fun GameWebViewContainer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-
-    // THUỐC ĐẶC TRỊ SỐ 2: Cấp Window Token thực tế (Activity) cho WebView
-    // để Android OS cho phép tạo cửa sổ Popup <select> thay vì bị crash/đóng lập tức.
     tabManager.updateActivityContext(context)
 
-    // =========================================================================
-    // CACHE HOLDER CHỈ-TĂNG, TẠO LAZY, KHÔNG BAO GIỜ BỎ (docs/DESIGN-TAB-COUNT.md §5)
-    //
-    // Vì sao không tạo lại holder khi đổi N: createTabCardViewHolder gọi getOrCreateWebView
-    // và registerSlot. Tạo lại sẽ detach/attach lại WebView ĐANG SỐNG và ghi đè attacher
-    // (đẻ ra hai contentContainer trong cây) ⇒ tab mất DOM, phải đăng nhập lại.
-    //
-    // Vì sao chỉ-tăng là an toàn: holder của index i đăng ký đúng một attacher cho i,
-    // attacher sống bằng holder, nên khi renderer chết và getOrCreateWebView tạo lại thì
-    // vẫn có slot để gắn. Bỏ holder = phá phục hồi renderer của index đó.
-    // Holder rỗi chỉ là một LinearLayout không có WebView con.
-    //
-    // Vì sao lazy: tạo trước 8 holder là tạo 8 renderer ngay lần composition đầu,
-    // ~2.4 GB cho người dùng chọn 1 tab.
-    // =========================================================================
     val holders = remember { HashMap<Int, TabCardViewHolder>() }
 
     fun holderFor(index: Int): TabCardViewHolder = holders.getOrPut(index) {
@@ -105,8 +82,6 @@ fun GameWebViewContainer(
                 } else {
                     -1
                 }
-                // Trong chế độ SINGLE_TAB giữ nguyên cả safeCount holder luôn gắn vào cây View
-                // để Chromium không bao giờ chạy onDetachedFromWindow() làm đóng băng JS / ngắt WebSocket.
                 val currentLayoutKey = if (layoutMode == ViewLayoutMode.SINGLE_TAB) {
                     "SINGLE_TAB:$safeCount"
                 } else {
@@ -144,6 +119,7 @@ fun GameWebViewContainer(
 
                                 for (i in 0 until safeCount) {
                                     val holder = holderFor(i)
+                                    holder.root.alpha = 1f
                                     holder.root.translationZ = 0f
                                     holder.root.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                                     holder.root.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
@@ -161,6 +137,7 @@ fun GameWebViewContainer(
                             } else {
                                 for (i in 0 until safeCount) {
                                     val holder = holderFor(i)
+                                    holder.root.alpha = 1f
                                     holder.root.translationZ = 0f
                                     holder.root.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                                     holder.root.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
@@ -175,6 +152,7 @@ fun GameWebViewContainer(
                         ViewLayoutMode.TWO_BY_TWO -> {
                             for (i in 0 until safeCount) {
                                 val holder = holderFor(i)
+                                holder.root.alpha = 1f
                                 holder.root.translationZ = 0f
                                 holder.root.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
                                 holder.root.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
@@ -186,8 +164,6 @@ fun GameWebViewContainer(
                         }
 
                         ViewLayoutMode.SINGLE_TAB -> {
-                            // Xếp tất cả tab vào FrameLayout chồng lên nhau: tab ẩn vẫn gắn với Window
-                            // và có kích thước đầy đủ nên không bị Chromium đóng băng / rớt kết nối.
                             rootLayout.orientation = LinearLayout.VERTICAL
                             rootLayout.weightSum = 1f
                             val stack = FrameLayout(rootLayout.context).apply {
@@ -219,6 +195,8 @@ fun GameWebViewContainer(
                         val holder = holderFor(i)
                         val isSelected = (i == keySelected)
                         holder.root.visibility = View.VISIBLE
+                        // Tối ưu GPU điện thoại: giảm overdraw cho tab nền nhưng vẫn giữ kết nối WebSocket sống
+                        holder.root.alpha = if (isSelected) 1f else 0.01f
                         holder.root.isClickable = isSelected
                         holder.root.descendantFocusability = if (isSelected) {
                             ViewGroup.FOCUS_AFTER_DESCENDANTS
@@ -271,9 +249,6 @@ fun GameWebViewContainer(
                 .weight(1f)
         )
 
-        // Dải trạng thái 32dp: sibling của AndroidView, KHÔNG phải overlay.
-        // Là view Compose riêng nằm dưới WebView trong Column nên không bao giờ đè lên
-        // vùng chạm của game; WebView giữ đúng bề rộng và nhận trọn phần còn lại.
         GameStatusStrip(
             tabManager = tabManager,
             tabCount = tabCount,
@@ -287,16 +262,6 @@ fun GameWebViewContainer(
     }
 }
 
-/**
- * Builder tổng quát cho rows ≥ 2 (và cho 2x2).
- *
- * Bất biến: `weightSum` luôn = `cols`, KHÔNG BAO GIỜ = số con thực tế. Hàng cuối thiếu thì
- * để trống bên phải, không kéo giãn — nếu kéo giãn, ô đó có bề rộng CSS khác anh em, rơi
- * vào nhánh media-query khác và auto-login CSS lệch.
- *
- * Gap giữ RAW PIXEL (leftMargin/topMargin = 3), không đổi sang 3.dp: đổi sẽ làm N=4 từ
- * 89.25dp xuống 87dp ở density 3.
- */
 private fun buildGrid(
     root: LinearLayout,
     count: Int,
@@ -352,7 +317,6 @@ private fun createTabCardViewHolder(
 
     val density = context.resources.displayMetrics.density
 
-    // Khung chứa WebView + Idle Overlay
     val contentContainer = FrameLayout(context).apply {
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -362,9 +326,6 @@ private fun createTabCardViewHolder(
         setBackgroundColor(AndroidColor.parseColor("#090D14"))
     }
 
-    // Gắn WebView độc lập của Tab trực tiếp vào khung chứa.
-    // (Đã bỏ lớp wrapper chặn onMeasure: View.measure() vốn đã bỏ qua khi spec không đổi,
-    //  còn wrapper thì có thể đóng băng một kích thước sai sau khi đổi layout.)
     val webView = tabManager.getOrCreateWebView(tabIndex)
     (webView.parent as? ViewGroup)?.removeView(webView)
     webView.layoutParams = FrameLayout.LayoutParams(
@@ -373,9 +334,6 @@ private fun createTabCardViewHolder(
     )
     contentContainer.addView(webView)
 
-    // Ô hiển thị này chỉ được tạo 1 lần (cache chỉ-tăng), nên khi GameTabManager phải tạo lại
-    // WebView (bị thu hồi RAM / đổi Cụm) UI phải tự gắn WebView mới vào đúng ô.
-    // Chèn ở index 0 để không đè lên idleOverlay đang nằm phía trên.
     var attachedWebView: WebView = webView
     tabManager.registerSlot(tabIndex) { newWebView ->
         if (newWebView !== attachedWebView) {
@@ -393,7 +351,6 @@ private fun createTabCardViewHolder(
         )
     }
 
-    // GIAI ĐOẠN 1: Màn hình chờ (Idle Overlay) có nút [▶ Mở Tab X]
     val idleOverlay = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
@@ -415,7 +372,6 @@ private fun createTabCardViewHolder(
     }
     idleOverlay.addView(idleTitle)
 
-    // Holder chưa tồn tại lúc dựng nút: giữ tham chiếu nullable rồi gán trước khi return.
     var holderRef: TabCardViewHolder? = null
 
     val idleOpenBtn = Button(context).apply {

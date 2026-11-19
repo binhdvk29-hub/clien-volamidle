@@ -153,6 +153,9 @@ class GameTabManager(
     private var isHideMapSynced: Boolean = prefs.getHideMap()
 
     @Volatile
+    private var isHideGameSynced: Boolean = prefs.getHideGame()
+
+    @Volatile
     private var visibleTabsInLayout: Set<Int> = (0 until TabLimits.SLOT_COUNT).toSet()
 
     private val recoveryHistory =
@@ -461,6 +464,10 @@ class GameTabManager(
                 view?.evaluateJavascript(GameScriptInjector.buildAdjustViewportScript(), null)
                 view?.evaluateJavascript(
                     GameScriptInjector.buildRenderOptimizationScript(isHideMapSynced),
+                    null
+                )
+                view?.evaluateJavascript(
+                    buildHideGameScript(isHideGameSynced),
                     null
                 )
                 if (url != null && url != "about:blank") {
@@ -1022,6 +1029,48 @@ class GameTabManager(
         applyRenderOptimizationToAllTabs(
             statusMessage = if (enabled) "🗺️ Đã xoá hiển thị bản đồ" else "🗺️ Đã bật lại bản đồ"
         )
+    }
+
+    fun syncHideGame(enabled: Boolean) {
+        isHideGameSynced = enabled
+        prefs.setHideGame(enabled)
+        val statusMsg = if (enabled) "👁️ Đã bật Ẩn game (giảm tải GPU)" else "👁️ Đã tắt Ẩn game"
+        mainHandler.post {
+            val script = buildHideGameScript(enabled)
+            for (i in 0 until tabCount) {
+                val wv = webViews[i] ?: continue
+                try {
+                    if (wv.url != null && wv.url != "about:blank") {
+                        wv.evaluateJavascript(script, null)
+                    }
+                    if (isTabActive[i]) {
+                        updateStatus(i, statusMsg)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun buildHideGameScript(enabled: Boolean): String {
+        val flag = if (enabled) "true" else "false"
+        return """
+            (function(hide) {
+                try {
+                    var id = '__vlm_hide_game_css';
+                    var el = document.getElementById(id);
+                    if (hide) {
+                        if (!el) {
+                            el = document.createElement('style');
+                            el.id = id;
+                            el.textContent = 'canvas { opacity: 0.001 !important; pointer-events: none !important; }';
+                            (document.head || document.documentElement).appendChild(el);
+                        }
+                    } else if (el) {
+                        el.remove();
+                    }
+                } catch (e) {}
+            })($flag);
+        """.trimIndent()
     }
 
     private fun applyRenderOptimizationToAllTabs(statusMessage: String) {

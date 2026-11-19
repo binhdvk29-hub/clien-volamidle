@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-10"
+        const val SCRIPT_VER = "vlmauto-11"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -744,6 +744,9 @@ class GameAutoPilot(
     if (!A.cfg.on || !A.cfg.thapNeDon) {
       try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eRel) {}
     }
+    if (!A.cfg.on || !A.cfg.thap || !A.cfg.thapNeDon) {
+      try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl) {}
+    }
     if (!A.cfg.on) {
       A.started = 0;
       A.immediate = false;
@@ -974,6 +977,10 @@ class GameAutoPilot(
         }
         try { ov.classList.add('hidden'); } catch (e3) {}
       }
+      var strayPops = document.querySelectorAll('#mswMenu, #u20pop, .u20-pop, .u20-more, .more-menu, [data-more-pop]');
+      for (var sp = 0; sp < strayPops.length; sp++) {
+        try { strayPops[sp].classList.add('hidden'); } catch (e4) {}
+      }
     } catch (e) {}
   }
 
@@ -1030,6 +1037,28 @@ class GameAutoPilot(
       var k = prevKey();
       if (m) localStorage.setItem(k, m);
       else { localStorage.removeItem(k); localStorage.removeItem('vlm_auto_prev'); }
+    } catch (e) {}
+  };
+
+  var towerLockKey = function () {
+    var who = dayWho();
+    return 'vlm_auto_tower_lock' + (who ? '_' + who : '');
+  };
+  var towerLockGet = function () {
+    try {
+      return localStorage.getItem(towerLockKey()) === '1' || localStorage.getItem('vlm_auto_tower_lock') === '1';
+    } catch (e) { return false; }
+  };
+  var towerLockSet = function (on) {
+    try {
+      var k = towerLockKey();
+      if (on) {
+        localStorage.setItem(k, '1');
+        localStorage.setItem('vlm_auto_tower_lock', '1');
+      } else {
+        localStorage.removeItem(k);
+        localStorage.removeItem('vlm_auto_tower_lock');
+      }
     } catch (e) {}
   };
 
@@ -2719,11 +2748,18 @@ class GameAutoPilot(
       }
     }
 
-    var pbCon = A.cfg.pb && !pbXong();
-    var dtCon = A.cfg.dt && lv >= 20 && !t.du && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
-    var stCon = A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
+    var onlyTowerCfg = !!(A.cfg.thap && A.cfg.thapNeDon);
+    var inTowerRightNow = !!(I.tower || (A.st && A.st.noi === 'thap') || isInTowerNow());
+    if (onlyTowerCfg && inTowerRightNow) {
+      towerLockSet(true);
+    }
+    var towerLocked = onlyTowerCfg && towerLockGet();
+
+    var pbCon = !towerLocked && A.cfg.pb && !pbXong();
+    var dtCon = !towerLocked && A.cfg.dt && lv >= 20 && !t.du && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
+    var stCon = !towerLocked && A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
     var thapCon = A.cfg.thap;
-    var want = pbCon ? 'dg' : ((dtCon || stCon) ? 'quest' : (thapCon ? 'tower' : null));
+    var want = towerLocked ? 'tower' : (pbCon ? 'dg' : ((dtCon || stCon) ? 'quest' : (thapCon ? 'tower' : null)));
     var prev = prevGet();
 
     async function switchMode(targetMode) {
@@ -2739,12 +2775,50 @@ class GameAutoPilot(
             await sleep(120);
           }
           item.click();
-          await sleep(300);
+          await sleep(220);
+          if (menu && !menu.classList.contains('hidden')) {
+            try { menu.classList.add('hidden'); } catch (eM) {}
+          }
+          await sleep(120);
           var Icheck = await info();
           if (Icheck && Icheck.mode === targetMode) return true;
         } catch (eDom) {}
       }
       return false;
+    }
+
+    // Chế độ Chỉ Leo Tháp: khi đã vào Thông Thiên Tháp thì khóa cứng Chế độ Leo Tháp,
+    // tự động vào lại Tháp sau khi Rớt Tháp (chết) hoặc mất kết nối / tải lại game.
+    if (towerLocked) {
+      if (I.dead) return;
+      if (Date.now() - A.userAt <= 3000) return;
+      if (mode !== 'tower') {
+        if (!ready('mode_tower_lock', 7000)) return;
+        if (await switchMode('tower')) {
+          A.pbOut = 0;
+          note('🗼 Chỉ Leo Tháp: khôi phục Chế độ Leo Tháp');
+        }
+        return;
+      }
+      if (!inTowerRightNow && ready('tower_reenter', 8000)) {
+        // Đã ở chế độ Leo Tháp nhưng bị Rớt Tháp hoặc vừa kết nối lại ở ngoài tháp -> kích hoạt vào lại Tháp
+        var reOk = await api('cheDo', { m: 'tower' });
+        if (!reOk || !reOk.ok) {
+          await switchMode('tower');
+        }
+        var enterBtns = document.querySelectorAll('button, [role="button"]');
+        for (var eb = 0; eb < enterBtns.length; eb++) {
+          var bEl = enterBtns[eb];
+          if (!isVis(bEl) || bEl.disabled) continue;
+          var bt = noAccent(bEl.textContent || '');
+          if (bt === 'vao thap' || bt === 'leo thap' || bt === 'vao lai thap' || bt === 'thieu chien thap') {
+            try { bEl.click(); } catch (eBt) {}
+            break;
+          }
+        }
+        note('🗼 Chỉ Leo Tháp: phát hiện Rớt Tháp / kết nối lại → tự vào lại Tháp');
+      }
+      return;
     }
 
     if (want && mode !== want) {
@@ -2754,6 +2828,7 @@ class GameAutoPilot(
       if (await switchMode(want)) {
         if (!prev) prevSet(savedPrev);
         A.pbOut = 0;
+        if (want === 'tower' && onlyTowerCfg) towerLockSet(true);
         note(want === 'dg'
           ? 'chuyển Tự chạy Phó Bản (còn lượt)'
           : (want === 'quest' ? ('chuyển Dã Tẩu tối đa (' + (dtCon ? 'còn Dã Tẩu' : 'có Lệnh Bài Sát Thủ') + ')') : 'chuyển Leo Tháp'));
@@ -2848,6 +2923,9 @@ class GameAutoPilot(
     phaseStart: 0,
     towerEnteredAt: 0,
     wasInTower: false,
+    lastFloorNum: -1,
+    returningToCenter: false,
+    hadTargetInFloor: false,
     estX: 0,
     estY: 0,
     lastMoveVx: 0,
@@ -3222,6 +3300,9 @@ class GameAutoPilot(
     O.active = false;
     O.wasInTower = false;
     O.towerEnteredAt = 0;
+    O.lastFloorNum = -1;
+    O.returningToCenter = false;
+    O.hadTargetInFloor = false;
     O.lastAt = 0;
     O.phaseStart = 0;
     O.lastBeatIdx = -1;
@@ -3350,29 +3431,55 @@ class GameAutoPilot(
     return null;
   }
 
+  var ORBIT_STEP_RAD = Math.PI / 6; // Bước 30 độ cố định mỗi nhịp
+
   function computeOrbitParams(style) {
-    // Nhịp ngắn né quanh trung tâm map + khoảng dừng dài với Auto BẬT để nhân vật tung chiêu tấn công mục tiêu
+    // Bán kính thế giới: 90 cho Đánh gần (MELEE), 400 cho Đánh xa (RANGED)
     if (style === 'melee') {
       return {
-        omega: 1.15,
-        cycleMs: 900,
-        moveMs: 210,
-        rTarget: 0.085,
-        rMax: 0.13,
+        stepRad: ORBIT_STEP_RAD,
+        worldRadius: 90,
+        cycleMs: 750,
+        moveMs: 220,
+        rTarget: 0.09,
+        rMax: 0.42,
         estSpeed: 0.42
       };
     }
     return {
-      omega: 0.85,
-      cycleMs: 900,
-      moveMs: 250,
-      rTarget: 0.16,
-      rMax: 0.23,
-      estSpeed: 0.44
+      stepRad: ORBIT_STEP_RAD,
+      worldRadius: 400,
+      cycleMs: 750,
+      moveMs: 260,
+      rTarget: 0.36,
+      rMax: 0.44,
+      estSpeed: 0.46
     };
   }
 
-  function readStateCoords() {
+  function readCurrentTowerFloor() {
+    try {
+      if (A.st && Date.now() - A.stT < 15000) {
+        var sf = Number(A.st.thapFloor || A.st.floor || A.st.tang || -1);
+        if (isFinite(sf) && sf > 0) return sf;
+      }
+      if (A.info) {
+        var inf = Number(A.info.thapFloor || A.info.floor || A.info.tang || -1);
+        if (isFinite(inf) && inf > 0) return inf;
+      }
+      var stg = document.getElementById('stageLbl');
+      if (stg) {
+        var m = /(\d+)/.exec(stg.textContent || '');
+        if (m) {
+          var nf = Number(m[1]);
+          if (isFinite(nf) && nf > 0) return nf;
+        }
+      }
+    } catch (eFl) {}
+    return -1;
+  }
+
+  function readStateCoords(worldRadius) {
     var srcs = [];
     if (A.st && Date.now() - A.stT < 15000) srcs.push(A.st);
     if (A.info) srcs.push(A.info);
@@ -3384,11 +3491,18 @@ class GameAutoPilot(
       var mw = typeof s.mapW === 'number' ? s.mapW : (typeof s.w === 'number' ? s.w : null);
       var mh = typeof s.mapH === 'number' ? s.mapH : (typeof s.h === 'number' ? s.h : null);
       if (px !== null && py !== null && mw && mh && mw > 0 && mh > 0) {
+        var tx = typeof s.targetX === 'number' ? s.targetX : (typeof s.bossX === 'number' ? s.bossX : null);
+        var ty = typeof s.targetY === 'number' ? s.targetY : (typeof s.bossY === 'number' ? s.bossY : null);
+        var alive = s.targetAlive !== false && (s.targetHp == null || Number(s.targetHp) > 0);
+        var hasTarget = (tx !== null && ty !== null && alive);
+        var normR = Math.min(0.42, Math.max(0.06, worldRadius / Math.max(mw, mh)));
         return {
           px: (px / mw) - 0.5,
           py: (py / mh) - 0.5,
-          cx: 0,
-          cy: 0,
+          cx: hasTarget ? ((tx / mw) - 0.5) : 0,
+          cy: hasTarget ? ((ty / mh) - 0.5) : 0,
+          hasTarget: hasTarget,
+          rNorm: normR,
           source: 'state'
         };
       }
@@ -3396,26 +3510,21 @@ class GameAutoPilot(
     return null;
   }
 
-  function resolveArenaPosition(now) {
-    var stPos = readStateCoords();
+  function resolveArenaPosition(now, params) {
+    var stPos = readStateCoords(params.worldRadius);
     if (stPos) return stPos;
 
     if (O.obsMiniPlayer && now - O.obsMiniPlayer.at < 1500) {
-      var mcx = 0, mcy = 0;
-      if (O.obsMiniTarget && now - O.obsMiniTarget.at < 1500) {
-        // Giữ điểm tập trung neo vào trung tâm map, chỉ dịch nhẹ theo boss nếu boss ở gần trung tâm
-        var mtx = O.obsMiniTarget.nx - 0.5;
-        var mty = O.obsMiniTarget.ny - 0.5;
-        if (Math.hypot(mtx, mty) <= 0.22) {
-          mcx = mtx * 0.5;
-          mcy = mty * 0.5;
-        }
-      }
+      var hasMiniTarget = !!(O.obsMiniTarget && now - O.obsMiniTarget.at < 1500);
+      var mcx = hasMiniTarget ? (O.obsMiniTarget.nx - 0.5) : 0;
+      var mcy = hasMiniTarget ? (O.obsMiniTarget.ny - 0.5) : 0;
       return {
         px: O.obsMiniPlayer.nx - 0.5,
         py: O.obsMiniPlayer.ny - 0.5,
         cx: mcx,
         cy: mcy,
+        hasTarget: hasMiniTarget,
+        rNorm: params.rTarget,
         source: 'minimap'
       };
     }
@@ -3426,22 +3535,22 @@ class GameAutoPilot(
         py: O.obsPlayer.ny - O.obsTarget.ny,
         cx: 0,
         cy: 0,
+        hasTarget: true,
+        rNorm: params.rTarget,
         source: 'canvas_target'
       };
     }
 
     if (O.obsPlayer && now - O.obsPlayer.at < 1200) {
-      var offX = O.obsPlayer.nx - 0.5;
-      var offY = O.obsPlayer.ny - 0.5;
-      if (Math.hypot(offX, offY) > 0.03) {
-        return {
-          px: offX,
-          py: offY,
-          cx: 0,
-          cy: 0,
-          source: 'canvas_center'
-        };
-      }
+      return {
+        px: O.obsPlayer.nx - 0.5,
+        py: O.obsPlayer.ny - 0.5,
+        cx: 0,
+        cy: 0,
+        hasTarget: false,
+        rNorm: params.rTarget,
+        source: 'canvas_center'
+      };
     }
 
     return {
@@ -3449,26 +3558,16 @@ class GameAutoPilot(
       py: O.estY,
       cx: 0,
       cy: 0,
+      hasTarget: false,
+      rNorm: params.rTarget,
       source: 'center_anchor'
     };
   }
 
   function computeCenterAnchoredVector(pos, params, theta) {
-    var dxCenter = pos.px - pos.cx;
-    var dyCenter = pos.py - pos.cy;
-    var distCenter = Math.hypot(dxCenter, dyCenter);
-
-    if (distCenter > params.rMax && distCenter > 0.0001) {
-      // Kéo thẳng về tọa độ trung tâm map để không đi quá xa mục tiêu
-      return {
-        vx: -dxCenter / distCenter,
-        vy: -dyCenter / distCenter,
-        clamped: true
-      };
-    }
-
-    var goalX = pos.cx + params.rTarget * Math.cos(theta);
-    var goalY = pos.cy + params.rTarget * Math.sin(theta);
+    var rUse = pos.rNorm || params.rTarget;
+    var goalX = Math.max(-0.44, Math.min(0.44, pos.cx + rUse * Math.cos(theta)));
+    var goalY = Math.max(-0.44, Math.min(0.44, pos.cy + rUse * Math.sin(theta)));
     var errX = goalX - pos.px;
     var errY = goalY - pos.py;
     var errLen = Math.hypot(errX, errY);
@@ -3654,16 +3753,46 @@ class GameAutoPilot(
 
     O.lastBeatIdx = beatIdx;
 
-    // Cập nhật góc quỹ đạo tiến dần theo từng nhịp vòng quanh trung tâm map
-    O.theta = (O.theta + params.omega * (params.cycleMs / 1000)) % (Math.PI * 2);
+    var curFloor = readCurrentTowerFloor();
+    if (curFloor > 0) {
+      if (O.lastFloorNum > 0 && curFloor > O.lastFloorNum) {
+        // Vừa vượt tầng tháp -> lập tức di chuyển nhanh về tâm map
+        O.returningToCenter = true;
+        O.hadTargetInFloor = false;
+        O.theta = 0;
+      }
+      O.lastFloorNum = curFloor;
+    }
 
-    var pos = resolveArenaPosition(now);
+    var pos = resolveArenaPosition(now, params);
+    if (pos.hasTarget) {
+      O.hadTargetInFloor = true;
+    } else if (O.hadTargetInFloor && pos.source !== 'center_anchor') {
+      O.returningToCenter = true;
+      O.hadTargetInFloor = false;
+    }
+
     if (pos.source !== 'center_anchor') {
       O.estX = pos.px - pos.cx;
       O.estY = pos.py - pos.cy;
     }
 
-    var steer = computeCenterAnchoredVector(pos, params, O.theta);
+    var steer;
+    if (O.returningToCenter) {
+      var toCx = -pos.px;
+      var toCy = -pos.py;
+      var distToCenter = Math.hypot(toCx, toCy);
+      if (distToCenter <= 0.035) {
+        O.returningToCenter = false;
+        pauseOrbitMovement();
+        return;
+      }
+      steer = { vx: toCx / distToCenter, vy: toCy / distToCenter, clamped: false };
+    } else {
+      // Tiến đều 30 độ (PI/6) quanh mục tiêu đã chọn với bán kính 90 (Đánh gần) / 400 (Đánh xa)
+      O.theta = (O.theta + params.stepRad) % (Math.PI * 2);
+      steer = computeCenterAnchoredVector(pos, params, O.theta);
+    }
     O.lastMoveVx = steer.vx;
     O.lastMoveVy = steer.vy;
     O.moveStartedAt = now;

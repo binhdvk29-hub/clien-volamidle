@@ -25,16 +25,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_TAB_COUNT = "pref_tab_count"
         private const val KEY_TAB_WARN_SHOWN = "pref_tab_warn_shown"
         private const val KEY_HIDE_MAP = "pref_hide_map"
-
-        private const val KEY_UPDATE_LAST_ATTEMPT = "update_last_check_attempt"
-        private const val KEY_UPDATE_LAST_MANUAL = "update_last_manual_check"
-        private const val KEY_UPDATE_ETAG = "update_etag"
-        private const val KEY_UPDATE_BLOCKED_UNTIL = "update_blocked_until"
-        private const val KEY_UPDATE_CACHED_RELEASE = "update_cached_release"
-        private const val KEY_UPDATE_BANNER_SHOWN_FOR = "update_banner_shown_for"
-        private const val KEY_UPDATE_DIALOG_SHOWN_FOR = "update_dialog_shown_for"
-        private const val KEY_UPDATE_INSTALL_RESULT = "update_install_result"
-        private const val KEY_UPDATE_PENDING_ACTION = "pending_action"
+        private const val KEY_HIDE_GAME = "pref_hide_game"
 
         private const val KEY_DND_OVERRIDE_ACTIVE = "sleep_dnd_override_active"
         private const val KEY_DND_PREV_FILTER = "sleep_dnd_prev_filter"
@@ -108,6 +99,12 @@ class PreferencesManager(context: Context) {
 
     fun setHideMap(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_HIDE_MAP, enabled).apply()
+    }
+
+    fun getHideGame(): Boolean = prefs.getBoolean(KEY_HIDE_GAME, false)
+
+    fun setHideGame(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_HIDE_GAME, enabled).apply()
     }
 
     fun getAccount(tabIndex: Int, cluster: String = getCluster()): AccountConfig {
@@ -239,64 +236,6 @@ class PreferencesManager(context: Context) {
 
     fun setTabWarnShown(shown: Boolean) {
         prefs.edit().putBoolean(KEY_TAB_WARN_SHOWN, shown).apply()
-    }
-
-    fun getUpdateLastAttempt(): Long = prefs.getLong(KEY_UPDATE_LAST_ATTEMPT, 0L)
-
-    fun setUpdateLastAttempt(value: Long) {
-        prefs.edit().putLong(KEY_UPDATE_LAST_ATTEMPT, value).apply()
-    }
-
-    fun getUpdateLastManualCheck(): Long = prefs.getLong(KEY_UPDATE_LAST_MANUAL, 0L)
-
-    fun setUpdateLastManualCheck(value: Long) {
-        prefs.edit().putLong(KEY_UPDATE_LAST_MANUAL, value).apply()
-    }
-
-    fun getUpdateEtag(): String? = prefs.getString(KEY_UPDATE_ETAG, null)
-
-    fun setUpdateEtag(value: String?) {
-        prefs.edit().putString(KEY_UPDATE_ETAG, value).apply()
-    }
-
-    fun getUpdateBlockedUntil(): Long = prefs.getLong(KEY_UPDATE_BLOCKED_UNTIL, 0L)
-
-    fun setUpdateBlockedUntil(value: Long) {
-        prefs.edit().putLong(KEY_UPDATE_BLOCKED_UNTIL, value).apply()
-    }
-
-    fun getCachedReleaseJson(): String? = prefs.getString(KEY_UPDATE_CACHED_RELEASE, null)
-
-    fun setCachedReleaseJson(value: String?) {
-        prefs.edit().putString(KEY_UPDATE_CACHED_RELEASE, value).apply()
-    }
-
-    fun getUpdateBannerShownFor(): Int = prefs.getInt(KEY_UPDATE_BANNER_SHOWN_FOR, 0)
-
-    fun setUpdateBannerShownFor(value: Int) {
-        prefs.edit().putInt(KEY_UPDATE_BANNER_SHOWN_FOR, value).apply()
-    }
-
-    fun getUpdateDialogShownFor(): Int = prefs.getInt(KEY_UPDATE_DIALOG_SHOWN_FOR, 0)
-
-    fun setUpdateDialogShownFor(value: Int) {
-        prefs.edit().putInt(KEY_UPDATE_DIALOG_SHOWN_FOR, value).apply()
-    }
-
-    fun getInstallResult(): String? = prefs.getString(KEY_UPDATE_INSTALL_RESULT, null)
-
-    fun setInstallResult(record: String) {
-        prefs.edit().putString(KEY_UPDATE_INSTALL_RESULT, record).commit()
-    }
-
-    fun clearInstallResult() {
-        prefs.edit().remove(KEY_UPDATE_INSTALL_RESULT).commit()
-    }
-
-    fun getPendingAction(): String? = prefs.getString(KEY_UPDATE_PENDING_ACTION, null)
-
-    fun setPendingAction(action: String?) {
-        prefs.edit().putString(KEY_UPDATE_PENDING_ACTION, action).commit()
     }
 
     fun resetTrafficCounters(currentRx: Long, currentTx: Long) {
