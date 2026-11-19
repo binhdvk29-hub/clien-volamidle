@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-21"
+        const val SCRIPT_VER = "vlmauto-23"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3145,6 +3145,9 @@ class GameAutoPilot(
     lastTargetCx: 0,
     lastTargetCy: 0,
     lastTargetAt: 0,
+    lastHpRatio: -1,
+    hpDropCooldownUntil: 0,
+    lastRetClickAt: 0,
     estX: 0,
     estY: 0,
     lastMoveVx: 0,
@@ -3566,6 +3569,9 @@ class GameAutoPilot(
     O.lastTargetCx = 0;
     O.lastTargetCy = 0;
     O.lastTargetAt = 0;
+    O.lastHpRatio = -1;
+    O.hpDropCooldownUntil = 0;
+    O.lastRetClickAt = 0;
     O.lastAt = 0;
     O.phaseStart = 0;
     O.lastBeatIdx = -1;
@@ -3700,30 +3706,68 @@ class GameAutoPilot(
   var ORBIT_STEP_RAD = Math.PI / 9; // Bước 20 độ (20° = PI / 9) cố định mỗi nhịp
 
   function computeOrbitParams(style) {
-    // Tách nhịp di chuyển chậm hơn 1 nhịp (~1.35s - 1.4s/chu kỳ):
-    // Nhịp di chuyển ngắn (220-260ms) -> Nhịp nghỉ giữ Auto tự đánh lâu hơn (~1130-1140ms)
-    // Bán kính thế giới: 90 cho Đánh gần (MELEE), 400 cho Đánh xa (RANGED)
+    // Học theo nhịp thực tế: 1 nhịp di chuyển click chuột trái + 3 nhịp đứng đánh Auto ingame
+    // - Đánh gần (MELEE): bám sát mục tiêu (bán kính 90), xoay đều 20° quanh mục tiêu, bước click ngắn 0.13
+    // - Đánh xa (RANGED): giữ khoảng cách rộng (bán kính 400), xoay cung rộng 30° quanh mục tiêu, bước click 0.22
     if (style === 'melee') {
       return {
-        stepRad: ORBIT_STEP_RAD,
+        stepRad: ORBIT_STEP_RAD, // 20°
         worldRadius: 90,
-        cycleMs: 1350,
+        cycleMs: 1980,
         moveMs: 220,
-        rTarget: 0.085,
-        rMax: 0.42,
+        rTarget: 0.08,
+        rMax: 0.40,
+        clickStep: 0.13,
         estSpeed: 0.44,
         isMelee: true
       };
     }
     return {
-      stepRad: ORBIT_STEP_RAD,
+      stepRad: Math.PI / 6, // 30° cung rộng cho đánh xa
       worldRadius: 400,
-      cycleMs: 1400,
+      cycleMs: 2150,
       moveMs: 260,
       rTarget: 0.34,
-      rMax: 0.44,
-      estSpeed: 0.48
+      rMax: 0.42,
+      clickStep: 0.22,
+      estSpeed: 0.48,
+      isMelee: false
     };
+  }
+
+  // Quét tỷ lệ máu (HP) hiện tại của nhân vật (0..1) từ state hoặc thanh máu trên HUD
+  function readCharacterHpRatio() {
+    try {
+      if (A.st && Date.now() - A.stT < 15000) {
+        if (typeof A.st.hp === 'number' && typeof A.st.maxHp === 'number' && A.st.maxHp > 0) {
+          return Math.max(0, Math.min(1, A.st.hp / A.st.maxHp));
+        }
+        if (typeof A.st.hpPct === 'number' && isFinite(A.st.hpPct)) {
+          return Math.max(0, Math.min(1, A.st.hpPct > 1 ? A.st.hpPct / 100 : A.st.hpPct));
+        }
+      }
+      if (A.info) {
+        if (typeof A.info.hp === 'number' && typeof A.info.maxHp === 'number' && A.info.maxHp > 0) {
+          return Math.max(0, Math.min(1, A.info.hp / A.info.maxHp));
+        }
+      }
+      var hpEls = document.querySelectorAll('#hpBar, #hpText, #hpVal, .hp-bar, .hp-fill, [data-hp]');
+      for (var i = 0; i < hpEls.length; i++) {
+        var el = hpEls[i];
+        if (!el || !isVis(el)) continue;
+        var m = /(\d+)\s*\/\s*(\d+)/.exec(el.textContent || '');
+        if (m) {
+          var cur = Number(m[1]), mx = Number(m[2]);
+          if (mx > 0 && cur >= 0 && cur <= mx) return cur / mx;
+        }
+        var wStr = el.style && el.style.width;
+        if (wStr && wStr.indexOf('%') > 0) {
+          var wp = parseFloat(wStr);
+          if (isFinite(wp) && wp >= 0 && wp <= 100) return wp / 100;
+        }
+      }
+    } catch (eHp) {}
+    return -1;
   }
 
   function readCurrentTowerFloor() {
@@ -3793,9 +3837,9 @@ class GameAutoPilot(
     if (stPos) return stPos;
 
     // Ưu tiên thứ 2: Tọa độ chấm trên Minimap (trung tâm minimap (0.5, 0.5) chính là trung tâm map thật)
-    var hasMiniPlayer = !!(O.obsMiniPlayer && now - O.obsMiniPlayer.at < 2000);
+    var hasMiniPlayer = !!(O.obsMiniPlayer && now - O.obsMiniPlayer.at < 4000);
     if (hasMiniPlayer) {
-      var hasMiniTarget = !!(O.obsMiniTarget && now - O.obsMiniTarget.at < 2000);
+      var hasMiniTarget = !!(O.obsMiniTarget && now - O.obsMiniTarget.at < 4000);
       var mPx = O.obsMiniPlayer.nx - 0.5;
       var mPy = O.obsMiniPlayer.ny - 0.5;
       var mcx = hasMiniTarget ? (O.obsMiniTarget.nx - 0.5) : 0;
@@ -4130,15 +4174,44 @@ class GameAutoPilot(
       O.lastTargetAt = 0;
     }
 
-    // Chỉ phát hiện sát góc/cạnh bản đồ dựa trên tọa độ MAP THẬT (state hoặc minimap), không dùng tọa độ camera
-    var nearEdge = pos.hasMapPos && (Math.abs(pos.mapPx) >= 0.34 || Math.abs(pos.mapPy) >= 0.34 || Math.hypot(pos.mapPx, pos.mapPy) >= 0.38);
-    if (nearEdge && !O.returningToCenter) {
+    // 1b. Liên tục quét thanh máu: nếu mất >= 15% HP lập tức di chuyển né đòn ngay
+    var hpRatio = readCharacterHpRatio();
+    if (hpRatio >= 0) {
+      if (O.lastHpRatio > 0 && (O.lastHpRatio - hpRatio) >= 0.15 && now >= (O.hpDropCooldownUntil || 0)) {
+        O.hpDropCooldownUntil = now + 900;
+        O.lastHpRatio = hpRatio;
+        O.theta = (O.theta + params.stepRad * 2) % (Math.PI * 2);
+        var dodgeVec = (pos.hasMapPos && Math.hypot(pos.mapPx, pos.mapPy) >= 0.30)
+          ? { vx: -pos.mapPx / Math.hypot(pos.mapPx, pos.mapPy), vy: -pos.mapPy / Math.hypot(pos.mapPx, pos.mapPy) }
+          : computeOrbitSteeringVector(pos, params, O.theta);
+        clickCanvasMove(stage, dodgeVec.vx, dodgeVec.vy, params.isMelee ? 0.18 : 0.24);
+        // Reset chu kỳ để sau khi né đòn sẽ tiếp tục 3 nhịp đánh
+        O.phaseStart = now;
+        O.lastBeatIdx = 0;
+        O.lastAt = now;
+        ensureGameAutoOn(true);
+        return;
+      }
+      if (O.lastHpRatio < 0 || hpRatio > O.lastHpRatio) {
+        O.lastHpRatio = hpRatio;
+      }
+    }
+
+    // 1c. Phát hiện bị dồn vào góc vuông hoặc 4 cạnh tường chéo của bản đồ tháp hình thoi (isometric)
+    var manhattanDist = pos.hasMapPos ? (Math.abs(pos.mapPx) + Math.abs(pos.mapPy)) : 0;
+    var inCornerOrWall = pos.hasMapPos && (
+      manhattanDist >= 0.38 ||
+      Math.abs(pos.mapPx) >= 0.30 ||
+      Math.abs(pos.mapPy) >= 0.30 ||
+      Math.hypot(pos.mapPx, pos.mapPy) >= 0.34
+    );
+    if (inCornerOrWall && !O.returningToCenter) {
       O.returningToCenter = true;
       O.returnStartedAt = now;
       O.stuckBeats = 0;
     }
 
-    // 2. Nếu đang ở trạng thái chạy về trung tâm map -> chỉ chạy khi có tọa độ map thật (mapPx, mapPy), tránh chạy mù ra góc
+    // 2. Nếu đang ở trạng thái chạy về trung tâm map (thoát góc vuông / sát tường / vừa lên tầng)
     if (O.returningToCenter) {
       if (!pos.hasMapPos) {
         O.returningToCenter = false;
@@ -4151,9 +4224,11 @@ class GameAutoPilot(
       var toCy = -pos.mapPy;
       var distToCenter = Math.hypot(toCx, toCy);
       var returnElapsed = now - (O.returnStartedAt || now);
-      if (distToCenter <= 0.06 || returnElapsed > 2200) {
+      if (distToCenter <= 0.10 || returnElapsed > 3500) {
         O.returningToCenter = false;
         O.returnStartedAt = 0;
+        O.phaseStart = now;
+        O.lastBeatIdx = -1;
         pauseOrbitMovement();
         ensureGameAutoOn(true);
         return;
@@ -4164,10 +4239,10 @@ class GameAutoPilot(
       O.lastMoveVy = rvy;
       O.moveStartedAt = now;
       O.lastAt = now;
-      // Giả lập chuột trái click về hướng trung tâm map (mỗi 280ms 1 click để không spam)
-      if (!O.lastRetClickAt || (now - O.lastRetClickAt) >= 280) {
+      // Click bước dài (0.32) thẳng về tâm bản đồ mỗi 220ms để thoát góc vuông / tường chéo dứt khoát
+      if (!O.lastRetClickAt || (now - O.lastRetClickAt) >= 220) {
         O.lastRetClickAt = now;
-        clickCanvasMove(stage, rvx, rvy, 0.22);
+        clickCanvasMove(stage, rvx, rvy, 0.32);
       }
       O.moving = false;
       O.active = true;
@@ -4246,7 +4321,7 @@ class GameAutoPilot(
 
     // Giả lập chuột trái click lên nền canvas theo hướng quỹ đạo 20° (KHÔNG dùng phím mũi tên để tránh tắt Auto)
     syncOrbitKeys({ up: false, down: false, left: false, right: false }, stage.canvas);
-    clickCanvasMove(stage, steer.vx, steer.vy, style === 'melee' ? 0.13 : 0.18);
+    clickCanvasMove(stage, steer.vx, steer.vy, params.clickStep || (style === 'melee' ? 0.13 : 0.21));
 
     O.moving = true;
     if (O.moveEndTimer) clearTimeout(O.moveEndTimer);
