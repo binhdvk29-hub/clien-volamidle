@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-14"
+        const val SCRIPT_VER = "vlmauto-16"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3238,7 +3238,10 @@ class GameAutoPilot(
         if (!b || b.id === 'vlmAuto' || b.id === 'mswBtn' || !isVis(b) || b.disabled) continue;
         if (md && md.contains(b)) continue;
         if (b.closest && b.closest('#modeSw, #mswMenu, #tabs, #t-inv, #t-char, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var raw = (b.textContent || '') + ' ' + (b.getAttribute('title') || '') + ' ' + (b.getAttribute('aria-label') || '');
+        var imgEl = b.querySelector ? b.querySelector('img') : null;
+        var raw = (b.textContent || '') + ' ' + (b.getAttribute('title') || '') + ' ' +
+          (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('data-tip') || '') + ' ' +
+          (b.getAttribute('data-tooltip') || '') + ' ' + (imgEl ? ((imgEl.getAttribute('alt') || '') + ' ' + (imgEl.getAttribute('title') || '')) : '');
         var t = noAccent(raw);
         if (!t || t.length > 28) continue;
         if (t.indexOf('che do') >= 0 || t.indexOf('da tau') >= 0 || t.indexOf('sat thu') >= 0 ||
@@ -3551,29 +3554,29 @@ class GameAutoPilot(
     return null;
   }
 
-  var ORBIT_STEP_RAD = Math.PI / 6; // Bước 30 độ cố định mỗi nhịp
+  var ORBIT_STEP_RAD = Math.PI / 9; // Bước 20 độ (20° = PI / 9) cố định mỗi nhịp
 
   function computeOrbitParams(style) {
-    // Nhịp di chuyển trước (moveMs), tung skill sau (phần còn lại của cycleMs)
+    // Chu kỳ 2 nhịp rõ ràng: Nhịp 1 Di chuyển vòng tròn 20° (moveMs) -> Nhịp 2 Dừng tung chiêu Auto ingame (cycleMs - moveMs)
     // Bán kính thế giới: 90 cho Đánh gần (MELEE), 400 cho Đánh xa (RANGED)
     if (style === 'melee') {
       return {
         stepRad: ORBIT_STEP_RAD,
         worldRadius: 90,
-        cycleMs: 680,
-        moveMs: 240,
-        rTarget: 0.09,
-        rMax: 0.44,
+        cycleMs: 660,
+        moveMs: 230,
+        rTarget: 0.10,
+        rMax: 0.42,
         estSpeed: 0.44
       };
     }
     return {
       stepRad: ORBIT_STEP_RAD,
       worldRadius: 400,
-      cycleMs: 680,
-      moveMs: 280,
-      rTarget: 0.36,
-      rMax: 0.45,
+      cycleMs: 700,
+      moveMs: 270,
+      rTarget: 0.34,
+      rMax: 0.44,
       estSpeed: 0.48
     };
   }
@@ -3612,16 +3615,25 @@ class GameAutoPilot(
       var mw = typeof s.mapW === 'number' ? s.mapW : (typeof s.w === 'number' ? s.w : null);
       var mh = typeof s.mapH === 'number' ? s.mapH : (typeof s.h === 'number' ? s.h : null);
       if (px !== null && py !== null && mw && mh && mw > 0 && mh > 0) {
+        // Định vị rõ trung tâm hình học của bản đồ (mapCx, mapCy), mặc định là (mapW/2, mapH/2)
+        var mapCx = typeof s.mapCx === 'number' ? s.mapCx : (typeof s.cx === 'number' ? s.cx : (mw * 0.5));
+        var mapCy = typeof s.mapCy === 'number' ? s.mapCy : (typeof s.cy === 'number' ? s.cy : (mh * 0.5));
+        var mapPx = (px - mapCx) / mw;
+        var mapPy = (py - mapCy) / mh;
+
         var tx = typeof s.targetX === 'number' ? s.targetX : (typeof s.bossX === 'number' ? s.bossX : null);
         var ty = typeof s.targetY === 'number' ? s.targetY : (typeof s.bossY === 'number' ? s.bossY : null);
         var alive = s.targetAlive !== false && (s.targetHp == null || Number(s.targetHp) > 0);
         var hasTarget = (tx !== null && ty !== null && alive);
-        var normR = Math.min(0.42, Math.max(0.06, worldRadius / Math.max(mw, mh)));
+        var normR = Math.min(0.40, Math.max(0.06, worldRadius / Math.max(mw, mh)));
         return {
-          px: (px / mw) - 0.5,
-          py: (py / mh) - 0.5,
-          cx: hasTarget ? ((tx / mw) - 0.5) : 0,
-          cy: hasTarget ? ((ty / mh) - 0.5) : 0,
+          px: mapPx,
+          py: mapPy,
+          mapPx: mapPx,
+          mapPy: mapPy,
+          hasMapPos: true,
+          cx: hasTarget ? ((tx - mapCx) / mw) : 0,
+          cy: hasTarget ? ((ty - mapCy) / mh) : 0,
           hasTarget: hasTarget,
           rNorm: normR,
           source: 'state'
@@ -3635,13 +3647,20 @@ class GameAutoPilot(
     var stPos = readStateCoords(params.worldRadius);
     if (stPos) return stPos;
 
-    if (O.obsMiniPlayer && now - O.obsMiniPlayer.at < 1500) {
-      var hasMiniTarget = !!(O.obsMiniTarget && now - O.obsMiniTarget.at < 1500);
+    // Ưu tiên thứ 2: Tọa độ chấm trên Minimap (trung tâm minimap (0.5, 0.5) chính là trung tâm map thật)
+    var hasMiniPlayer = !!(O.obsMiniPlayer && now - O.obsMiniPlayer.at < 2000);
+    if (hasMiniPlayer) {
+      var hasMiniTarget = !!(O.obsMiniTarget && now - O.obsMiniTarget.at < 2000);
+      var mPx = O.obsMiniPlayer.nx - 0.5;
+      var mPy = O.obsMiniPlayer.ny - 0.5;
       var mcx = hasMiniTarget ? (O.obsMiniTarget.nx - 0.5) : 0;
       var mcy = hasMiniTarget ? (O.obsMiniTarget.ny - 0.5) : 0;
       return {
-        px: O.obsMiniPlayer.nx - 0.5,
-        py: O.obsMiniPlayer.ny - 0.5,
+        px: mPx,
+        py: mPy,
+        mapPx: mPx,
+        mapPy: mPy,
+        hasMapPos: true,
         cx: mcx,
         cy: mcy,
         hasTarget: hasMiniTarget,
@@ -3650,10 +3669,14 @@ class GameAutoPilot(
       };
     }
 
+    // Canvas chính chỉ dùng cho vị trí tương đối với mục tiêu (KHÔNG dùng để suy ra trung tâm map vì camera đi theo nhân vật)
     if (O.obsPlayer && O.obsTarget && now - O.obsPlayer.at < 1200 && now - O.obsTarget.at < 1200) {
       return {
         px: O.obsPlayer.nx - O.obsTarget.nx,
         py: O.obsPlayer.ny - O.obsTarget.ny,
+        mapPx: 0,
+        mapPy: 0,
+        hasMapPos: false,
         cx: 0,
         cy: 0,
         hasTarget: true,
@@ -3662,21 +3685,12 @@ class GameAutoPilot(
       };
     }
 
-    if (O.obsPlayer && now - O.obsPlayer.at < 1200) {
-      return {
-        px: O.obsPlayer.nx - 0.5,
-        py: O.obsPlayer.ny - 0.5,
-        cx: 0,
-        cy: 0,
-        hasTarget: false,
-        rNorm: params.rTarget,
-        source: 'canvas_center'
-      };
-    }
-
     return {
       px: O.estX,
       py: O.estY,
+      mapPx: 0,
+      mapPy: 0,
+      hasMapPos: false,
       cx: 0,
       cy: 0,
       hasTarget: false,
@@ -3849,17 +3863,7 @@ class GameAutoPilot(
     }
 
     var resolved = resolveOrbitStyle();
-    var style = resolved.style;
-    if (!style) {
-      if (O.active || O.moving) releaseOrbitKeys();
-      O.style = '';
-      O.skillName = '';
-      if (now - O.lastNeedSkillNoteAt > 30000) {
-        O.lastNeedSkillNoteAt = now;
-        note('ℹ️ Leo Tháp: hãy chọn chiêu chính 9x trong 🤖 Tự động để xác định cách di chuyển');
-      }
-      return;
-    }
+    var style = resolved.style || 'ranged';
 
     // Ghi nhận trạng thái nút Auto ngay khi vào tầng, KHÔNG trì hoãn: có mục tiêu là di chuyển vòng tròn ngay (di chuyển trước, tung skill sau)
     if (now - O.towerEnteredAt < 250) {
@@ -3912,7 +3916,7 @@ class GameAutoPilot(
       pos.cy = O.lastTargetCy;
     }
 
-    // Phát hiện vừa lên tầng hoặc vừa tiêu diệt hết quái của tầng -> chạy ngay về trung tâm map
+    // Phát hiện vừa lên tầng hoặc state xác nhận vừa tiêu diệt hết quái của tầng -> chạy ngay về trung tâm map
     if (floorChanged) {
       O.returningToCenter = true;
       O.returnStartedAt = now;
@@ -3920,28 +3924,35 @@ class GameAutoPilot(
       O.lastTargetAt = 0;
       O.stuckBeats = 0;
       O.theta = 0;
-    } else if (!pos.hasTarget && O.hadTargetInFloor) {
+    } else if (!pos.hasTarget && O.hadTargetInFloor && pos.source === 'state') {
       O.returningToCenter = true;
       O.returnStartedAt = now;
       O.hadTargetInFloor = false;
       O.lastTargetAt = 0;
     }
 
-    // Phát hiện nhân vật bị dạt ra góc hoặc sát cạnh bản đồ -> lập tức chạy thẳng về trung tâm map
-    var nearEdge = (Math.abs(pos.px) >= 0.36 || Math.abs(pos.py) >= 0.36 || Math.hypot(pos.px, pos.py) >= 0.40);
+    // Chỉ phát hiện sát góc/cạnh bản đồ dựa trên tọa độ MAP THẬT (state hoặc minimap), không dùng tọa độ camera
+    var nearEdge = pos.hasMapPos && (Math.abs(pos.mapPx) >= 0.34 || Math.abs(pos.mapPy) >= 0.34 || Math.hypot(pos.mapPx, pos.mapPy) >= 0.38);
     if (nearEdge && !O.returningToCenter) {
       O.returningToCenter = true;
       O.returnStartedAt = now;
       O.stuckBeats = 0;
     }
 
-    // 2. Nếu đang ở trạng thái chạy về trung tâm map -> di chuyển LIÊN TỤC cho tới khi về gần tâm (không dừng nhịp)
+    // 2. Nếu đang ở trạng thái chạy về trung tâm map -> chỉ chạy khi có tọa độ map thật (mapPx, mapPy), tránh chạy mù ra góc
     if (O.returningToCenter) {
-      var toCx = -pos.px;
-      var toCy = -pos.py;
+      if (!pos.hasMapPos) {
+        O.returningToCenter = false;
+        O.returnStartedAt = 0;
+        pauseOrbitMovement();
+        ensureGameAutoOn(true);
+        return;
+      }
+      var toCx = -pos.mapPx;
+      var toCy = -pos.mapPy;
       var distToCenter = Math.hypot(toCx, toCy);
       var returnElapsed = now - (O.returnStartedAt || now);
-      if (distToCenter <= 0.08 || returnElapsed > 2600) {
+      if (distToCenter <= 0.06 || returnElapsed > 2200) {
         O.returningToCenter = false;
         O.returnStartedAt = 0;
         pauseOrbitMovement();
@@ -3960,10 +3971,10 @@ class GameAutoPilot(
         pulseJoystickOrbit(rvx, rvy, joyRet);
       } else {
         syncOrbitKeys({
-          up: rvy < -0.25,
-          down: rvy > 0.25,
-          left: rvx < -0.25,
-          right: rvx > 0.25
+          up: rvy < -0.382,
+          down: rvy > 0.382,
+          left: rvx < -0.382,
+          right: rvx > 0.382
         }, stage.canvas);
       }
       O.moving = true;
@@ -3980,8 +3991,8 @@ class GameAutoPilot(
       if (O.moving) {
         finishOrbitMovePulse();
       } else {
-        // Trong nhịp dừng đánh: giữ nguyên tọa độ ước lượng (không kéo lệch về 0) và luôn giữ Auto game BẬT
-        ensureGameAutoOn(false);
+        // Nhịp tấn công (Auto ingame): nhả hết phím di chuyển và đảm bảo Auto tự đánh luôn BẬT
+        ensureGameAutoOn(true);
       }
       O.lastAt = now;
       O.active = true;
@@ -4005,12 +4016,12 @@ class GameAutoPilot(
 
     O.lastBeatIdx = beatIdx;
 
-    // Kiểm tra kẹt góc (vị trí gần như không đổi sau 2 nhịp di chuyển) -> chạy ngay về trung tâm map
-    if (pos.source !== 'center_anchor') {
-      var movedDist = Math.hypot(pos.px - O.prevPx, pos.py - O.prevPy);
-      O.prevPx = pos.px;
-      O.prevPy = pos.py;
-      if (movedDist < 0.008 && Math.hypot(pos.px, pos.py) > 0.22) {
+    // Kiểm tra kẹt góc trên tọa độ MAP THẬT (vị trí không đổi sau 2 nhịp di chuyển) -> chạy ngay về trung tâm map
+    if (pos.hasMapPos) {
+      var movedDist = Math.hypot(pos.mapPx - O.prevPx, pos.mapPy - O.prevPy);
+      O.prevPx = pos.mapPx;
+      O.prevPy = pos.mapPy;
+      if (movedDist < 0.008 && Math.hypot(pos.mapPx, pos.mapPy) > 0.20) {
         O.stuckBeats++;
         if (O.stuckBeats >= 2) {
           O.returningToCenter = true;
@@ -4023,14 +4034,7 @@ class GameAutoPilot(
       }
     }
 
-    // Không có mục tiêu thực tế thì đứng yên chờ Auto khóa mục tiêu, tuyệt đối không chạy linh tinh
-    if (!pos.hasTarget && pos.source !== 'center_anchor') {
-      pauseOrbitMovement();
-      ensureGameAutoOn(false);
-      return;
-    }
-
-    // Tiến đều 30 độ (PI/6) quanh mục tiêu đã chọn, giữ chặt bán kính 90 (Đánh gần) / 400 (Đánh xa)
+    // Luôn thực hiện nhịp di chuyển vòng tròn 20 độ (PI/9) quanh mục tiêu (hoặc quanh tâm sàn đấu nếu game không lộ tọa độ quái)
     O.theta = (O.theta + params.stepRad) % (Math.PI * 2);
     var steer = computeOrbitSteeringVector(pos, params, O.theta);
     O.lastMoveVx = steer.vx;

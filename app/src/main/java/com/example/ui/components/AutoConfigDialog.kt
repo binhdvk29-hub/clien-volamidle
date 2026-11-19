@@ -396,7 +396,7 @@ fun AutoConfigDialog(
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                             Text(
-                                text = "Quỹ đạo chạy vòng tròn chỉ hoạt động trong Thông Thiên Tháp (bước 30° quanh mục tiêu: bán kính 90 cho chiêu Đánh gần, 400 cho chiêu Đánh xa; vượt tầng lập tức chạy về tâm map).",
+                                text = "Quỹ đạo chạy vòng tròn chỉ hoạt động trong Thông Thiên Tháp (bước 20° quanh mục tiêu: bán kính 90 cho chiêu Đánh gần, 400 cho chiêu Đánh xa; vượt tầng lập tức chạy về tâm map).",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -627,8 +627,8 @@ private fun MainSkill9xSelector(
         }
 
         val resolvedText = when (resolvedStyle) {
-            AutoConfig.ORBIT_MELEE -> "Cách di chuyển: Đánh gần (giữ khoảng cách 90, bước 30°)"
-            AutoConfig.ORBIT_RANGED -> "Cách di chuyển: Đánh xa (giữ khoảng cách 400, bước 30°)"
+            AutoConfig.ORBIT_MELEE -> "Cách di chuyển: Đánh gần (giữ khoảng cách 90, bước 20°)"
+            AutoConfig.ORBIT_RANGED -> "Cách di chuyển: Đánh xa (giữ khoảng cách 400, bước 20°)"
             else -> "Chưa chọn chiêu chính — hãy chọn chiêu 9x để xác định khoảng cách"
         }
         Text(
