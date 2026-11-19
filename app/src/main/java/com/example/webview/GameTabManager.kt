@@ -156,6 +156,9 @@ class GameTabManager(
     private var isHideGameSynced: Boolean = prefs.getHideGame()
 
     @Volatile
+    private var isPcModeActive: Boolean = false
+
+    @Volatile
     private var visibleTabsInLayout: Set<Int> = (0 until TabLimits.SLOT_COUNT).toSet()
 
     private val recoveryHistory =
@@ -468,6 +471,10 @@ class GameTabManager(
                 )
                 view?.evaluateJavascript(
                     buildHideGameScript(isHideGameSynced),
+                    null
+                )
+                view?.evaluateJavascript(
+                    buildPcModeScript(isPcModeActive),
                     null
                 )
                 if (url != null && url != "about:blank") {
@@ -1049,6 +1056,51 @@ class GameTabManager(
                 } catch (_: Exception) {}
             }
         }
+    }
+
+    fun applyPcMode(activeInLandscape: Boolean) {
+        if (isPcModeActive == activeInLandscape) return
+        isPcModeActive = activeInLandscape
+        mainHandler.post {
+            val script = buildPcModeScript(activeInLandscape)
+            val statusMsg = if (activeInLandscape) "🖥️ Chế độ PC: Toàn màn hình (70%)" else "🖥️ Đã tắt Chế độ PC"
+            for (i in 0 until tabCount) {
+                val wv = webViews[i] ?: continue
+                try {
+                    if (wv.url != null && wv.url != "about:blank") {
+                        wv.evaluateJavascript(script, null)
+                    }
+                    if (isTabActive[i]) {
+                        updateStatus(i, statusMsg)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun buildPcModeScript(enabled: Boolean): String {
+        val flag = if (enabled) "true" else "false"
+        return """
+            (function(pcOn) {
+                try {
+                    var id = '__vlm_pc_mode_css';
+                    var el = document.getElementById(id);
+                    if (pcOn) {
+                        if (!el) {
+                            el = document.createElement('style');
+                            el.id = id;
+                            el.textContent = 'html { zoom: 0.70 !important; }';
+                            (document.head || document.documentElement).appendChild(el);
+                        }
+                    } else if (el) {
+                        el.remove();
+                    }
+                    setTimeout(function() {
+                        try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+                    }, 80);
+                } catch (e) {}
+            })($flag);
+        """.trimIndent()
     }
 
     private fun buildHideGameScript(enabled: Boolean): String {

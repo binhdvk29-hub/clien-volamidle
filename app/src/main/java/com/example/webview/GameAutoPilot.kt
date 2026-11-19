@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-17"
+        const val SCRIPT_VER = "vlmauto-19"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1170,7 +1170,8 @@ class GameAutoPilot(
     }
   }
 
-  var BUFF_SCAN_MS = 15 * 60000;
+  var BUFF_SCAN_MAX_MS = 15 * 60000;
+  var BUFF_RENEW_LEAD_MS = 15000; // Căn trước 15 giây khi vật phẩm tiêu hao sắp hết
 
   function classifyBuffKind(rawMeta, allowShortApiTokens) {
     var n = noAccent(rawMeta || '');
@@ -1204,6 +1205,47 @@ class GameAutoPilot(
     return /^(0+(:0+)+|0+\s*[smhdpg]|het|expired|n\/a)$/.test(t);
   }
 
+  // Phân tích thời gian còn lại của buff trên HUD (hỗ trợ cả màn hình ngang/dọc: 4m, 7h, 18h, 1h30m, 04:32, 45s, 12p, 1g20p)
+  function parseBuffDurationMs(txt) {
+    var t = noAccent(txt || '');
+    if (!t || isBuffTimerExpired(t)) return 0;
+
+    // Dạng HH:MM:SS hoặc MM:SS
+    var col = /(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(t);
+    if (col) {
+      if (col[3] !== undefined) {
+        return ((Number(col[1]) * 3600) + (Number(col[2]) * 60) + Number(col[3])) * 1000;
+      }
+      return ((Number(col[1]) * 60) + Number(col[2])) * 1000;
+    }
+
+    // Dạng đơn vị: d/ngay, h/g/gio, m/p/phut, s/giay (ví dụ: 4m, 7h, 18h, 1h30m, 45s)
+    var totalMs = 0;
+    var matched = false;
+    var re = /(\d+)\s*(ngay|d|gio|h|g|phut|m|p|giay|s)/g;
+    var m;
+    while ((m = re.exec(t)) !== null) {
+      var val = Number(m[1]);
+      var unit = m[2];
+      if (!isFinite(val)) continue;
+      matched = true;
+      if (unit === 'd' || unit === 'ngay') totalMs += val * 86400000;
+      else if (unit === 'h' || unit === 'g' || unit === 'gio') totalMs += val * 3600000;
+      else if (unit === 'm' || unit === 'p' || unit === 'phut') totalMs += val * 60000;
+      else if (unit === 's' || unit === 'giay') totalMs += val * 1000;
+    }
+    if (matched) return totalMs;
+    return -1; // Đang bật nhưng không ghi rõ thời gian
+  }
+
+  function apiValToMs(v, isMsField) {
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) return 0;
+    if (isMsField) return n;
+    // Nếu lớn hơn 7 ngày tính theo giây (> 604800) thì coi là milliseconds
+    return n > 604800 ? n : (n * 1000);
+  }
+
   function extractNodeMeta(el) {
     if (!el) return '';
     var parts = [];
@@ -1235,14 +1277,31 @@ class GameAutoPilot(
     return parts.join(' ');
   }
 
+  // Trả về cả trạng thái bật/tắt lẫn thời gian còn lại (ms) của từng vật phẩm tiêu hao
   function scanHudBuffs(I) {
-    var found = { ttl: false, tt2: false, qht: false };
+    var found = { ttl: false, tt2: false, qht: false, rem: { ttl: 0, tt2: 0, qht: 0 } };
+    var recordBuff = function (kind, ms) {
+      if (!kind) return;
+      if (ms > 0) {
+        found[kind] = true;
+        if (ms > found.rem[kind]) found.rem[kind] = ms;
+      } else if (ms < 0) {
+        found[kind] = true;
+        if (found.rem[kind] === 0) found.rem[kind] = 5 * 60000;
+      }
+    };
+
     try {
       var checkApiBuffSource = function (src) {
         if (!src || typeof src !== 'object') return;
-        if ((src.tt | 0) > 0 || (src.ttl | 0) > 0) found.ttl = true;
-        if ((src.tt2 | 0) > 0 || (src.ttsp | 0) > 0) found.tt2 = true;
-        if (((src.qht | 0) || (src.queHoaTuu | 0) || (src.tuu | 0) || (src.qhtMs | 0)) > 0) found.qht = true;
+        if (src.tt > 0) recordBuff('ttl', apiValToMs(src.tt, false));
+        if (src.ttl > 0) recordBuff('ttl', apiValToMs(src.ttl, false));
+        if (src.tt2 > 0) recordBuff('tt2', apiValToMs(src.tt2, false));
+        if (src.ttsp > 0) recordBuff('tt2', apiValToMs(src.ttsp, false));
+        if (src.qhtMs > 0) recordBuff('qht', apiValToMs(src.qhtMs, true));
+        if (src.qht > 0) recordBuff('qht', apiValToMs(src.qht, false));
+        if (src.queHoaTuu > 0) recordBuff('qht', apiValToMs(src.queHoaTuu, false));
+        if (src.tuu > 0) recordBuff('qht', apiValToMs(src.tuu, false));
         if (src.buffs && typeof src.buffs === 'object') {
           var entries = Array.isArray(src.buffs) ? src.buffs : Object.keys(src.buffs);
           for (var ei = 0; ei < entries.length; ei++) {
@@ -1250,11 +1309,12 @@ class GameAutoPilot(
             var label = typeof entry === 'string'
               ? entry
               : ((entry && (entry.name || entry.ten || entry.k || entry.key || entry.id || entry.type)) || '');
+            var isMs = !!(entry && typeof entry === 'object' && entry.ms !== undefined);
             var rem = (entry && typeof entry === 'object')
-              ? (entry.v !== undefined ? entry.v : (entry.rem !== undefined ? entry.rem : (entry.ms !== undefined ? entry.ms : (entry.left !== undefined ? entry.left : (entry.sec !== undefined ? entry.sec : 1)))))
+              ? (entry.ms !== undefined ? entry.ms : (entry.v !== undefined ? entry.v : (entry.rem !== undefined ? entry.rem : (entry.left !== undefined ? entry.left : (entry.sec !== undefined ? entry.sec : 1)))))
               : 1;
             var ek = classifyBuffKind(label, true);
-            if (ek && Number(rem) > 0) found[ek] = true;
+            if (ek && Number(rem) > 0) recordBuff(ek, apiValToMs(rem, isMs));
           }
         }
       };
@@ -1262,9 +1322,9 @@ class GameAutoPilot(
       checkApiBuffSource(I);
       if (A.st && Date.now() - A.stT < 90000) checkApiBuffSource(A.st);
 
-      // Quét vùng hiển thị buff phía trên bên trái màn hình (trên Chế Độ / Tổ đội)
+      // Quét vùng hiển thị buff phía trên bên trái màn hình (tối ưu cho cả màn hình ngang & dọc, ngay trên Tổ đội)
       var anchorBottom = 220;
-      var anchorRight = Math.max(460, Math.floor((window.innerWidth || 800) * 0.65));
+      var anchorRight = Math.max(480, Math.floor((window.innerWidth || 800) * 0.55));
       try {
         var anchorCands = [document.getElementById('mswBtn'), document.getElementById('modeSw')];
         var smallBtns = document.querySelectorAll('button, div, span, a');
@@ -1305,10 +1365,9 @@ class GameAutoPilot(
       );
       for (var bi = 0; bi < buffDom.length; bi++) pushCand(buffDom[bi]);
 
-      // Bổ sung quét giới hạn các slot icon + chữ xanh ở vùng góc trên trái khi chưa có container chuẩn
       if (seen.length === 0) {
         var topNodes = document.querySelectorAll('div, span, a, img');
-        var scanCap = Math.min(topNodes.length, 450);
+        var scanCap = Math.min(topNodes.length, 480);
         for (var ti = 0; ti < scanCap; ti++) {
           var tn = topNodes[ti];
           if (seen.indexOf(tn) >= 0) continue;
@@ -1330,7 +1389,11 @@ class GameAutoPilot(
         if (isBuffTimerExpired(bTxt)) continue;
         var allowShort = !!(bEl.getAttribute && (bEl.getAttribute('data-buff') || bEl.getAttribute('data-k') || bEl.getAttribute('data-key')));
         var kind = classifyBuffKind(extractNodeMeta(bEl), allowShort);
-        if (kind) found[kind] = true;
+        if (kind) {
+          var parsedMs = parseBuffDurationMs(bTxt);
+          if (parsedMs === 0) continue;
+          recordBuff(kind, parsedMs);
+        }
       }
     } catch (eScan) {}
     return found;
@@ -1940,23 +2003,56 @@ class GameAutoPilot(
     return !!(r && r.done);
   }
 
+  function computeNextBuffCheckDelayMs(hud) {
+    var minRem = BUFF_SCAN_MAX_MS;
+    var checks = [
+      { on: !!A.cfg.ttl, rem: (hud.rem && hud.rem.ttl) || 0 },
+      { on: !!A.cfg.tt2, rem: (hud.rem && hud.rem.tt2) || 0 },
+      { on: !!A.cfg.qht, rem: (hud.rem && hud.rem.qht) || 0 }
+    ];
+    for (var i = 0; i < checks.length; i++) {
+      if (!checks[i].on) continue;
+      if (checks[i].rem <= BUFF_RENEW_LEAD_MS) return 20000;
+      var waitForExpiry = checks[i].rem - 10000;
+      if (waitForExpiry < minRem) minRem = waitForExpiry;
+    }
+    return Math.max(20000, Math.min(BUFF_SCAN_MAX_MS, minRem));
+  }
+
   async function suDungVatPhamTieuHao(I) {
     if (!A.cfg.ttl && !A.cfg.tt2 && !A.cfg.qht) return;
     if ((A.cool.buff_scan_15m || 0) > Date.now()) return;
     var hud = scanHudBuffs(I);
-    var needAny = (A.cfg.ttl && !hud.ttl) || (A.cfg.tt2 && !hud.tt2) || (A.cfg.qht && !hud.qht);
-    if (!needAny) {
-      A.cool.buff_scan_15m = Date.now() + BUFF_SCAN_MS;
+    var ttlExpiring = A.cfg.ttl && (!hud.ttl || ((hud.rem && hud.rem.ttl) || 0) <= BUFF_RENEW_LEAD_MS);
+    var tt2Expiring = A.cfg.tt2 && (!hud.tt2 || ((hud.rem && hud.rem.tt2) || 0) <= BUFF_RENEW_LEAD_MS);
+    var qhtExpiring = A.cfg.qht && (!hud.qht || ((hud.rem && hud.rem.qht) || 0) <= BUFF_RENEW_LEAD_MS);
+
+    if (!ttlExpiring && !tt2Expiring && !qhtExpiring) {
+      // Căn chính xác theo thời gian còn lại của vật phẩm sắp hết nhất
+      A.cool.buff_scan_15m = Date.now() + computeNextBuffCheckDelayMs(hud);
       return;
     }
     if (!canRunHiddenConsumable()) return;
-    var d1 = await tienThao(I, hud);
+    // Đánh dấu hết hạn nếu còn <= 15s để dùng bù ngay lập tức
+    var hudForUse = {
+      ttl: !ttlExpiring && hud.ttl,
+      tt2: !tt2Expiring && hud.tt2,
+      qht: !qhtExpiring && hud.qht
+    };
+    var d1 = await tienThao(I, hudForUse);
     if (!A.cfg.on) return;
     var Icur = (await info()) || I;
     var hudCur = scanHudBuffs(Icur);
-    var d2 = await queHoaTuu(Icur, hudCur);
+    var hudCurForUse = {
+      ttl: hudCur.ttl,
+      tt2: hudCur.tt2,
+      qht: !qhtExpiring && hudCur.qht
+    };
+    var d2 = await queHoaTuu(Icur, hudCurForUse);
     if (d1 && d2) {
-      A.cool.buff_scan_15m = Date.now() + BUFF_SCAN_MS;
+      var Ifinal = (await info()) || Icur;
+      var hudFinal = scanHudBuffs(Ifinal);
+      A.cool.buff_scan_15m = Date.now() + computeNextBuffCheckDelayMs(hudFinal);
     }
   }
 
@@ -2079,6 +2175,18 @@ class GameAutoPilot(
 
     var md = document.getElementById('modal');
     var gift = document.getElementById('giftBtn');
+    if (!gift || !isVis(gift)) {
+      var gCands = document.querySelectorAll('[data-open="gift"], [data-act="gift"], [title*="Phần thưởng" i], [aria-label*="Phần thưởng" i], button, [role="button"], .btn');
+      for (var gi = 0; gi < gCands.length; gi++) {
+        var gc = gCands[gi];
+        if (!isVis(gc) || gc.disabled || (md && md.contains(gc))) continue;
+        var gt = noAccent(gc.textContent || gc.getAttribute('title') || gc.getAttribute('aria-label') || '');
+        if (gt === 'phan thuong' || (gt.indexOf('phan thuong') >= 0 && gt.length <= 22)) {
+          gift = gc;
+          break;
+        }
+      }
+    }
     if (!md || !md.classList.contains('hidden') || !gift || gift.disabled) return;
     if (!ready('evHongBao', 45000)) return;
 
@@ -3153,8 +3261,10 @@ class GameAutoPilot(
       if (!ctx || !ctx.canvas) return;
       var cv = ctx.canvas;
       var idCls = ((cv.id || '') + ' ' + (typeof cv.className === 'string' ? cv.className : '')).toLowerCase();
+      var miniRect = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
+      var inTopRight = !!(miniRect && miniRect.right > (window.innerWidth || 800) * 0.65 && miniRect.top < (window.innerHeight || 480) * 0.45);
       var isMini = (idCls.indexOf('minimap') >= 0 || idCls.indexOf('radar') >= 0) ||
-        (cv !== O.targetEl && cv.width >= 40 && cv.width <= 260 && cv.height >= 40 && cv.height <= 260);
+        (cv !== O.targetEl && cv.width >= 40 && cv.width <= 280 && cv.height >= 40 && cv.height <= 280 && (inTopRight || cv.width <= 240));
       if (!isMini) return;
       if ((sizeW || 0) > 16 || (sizeH || 0) > 16) return;
       var role = classifyMinimapFillColor(ctx.fillStyle);
@@ -3232,32 +3342,39 @@ class GameAutoPilot(
   function findGameAutoButton() {
     try {
       var md = document.getElementById('modal');
-      var directIds = ['autoBtn', 'bAuto', 'btnAuto', 'u20auto', 'autoAtk', 'atkAuto', 'tAuto', 'autoPlay', 'btnTuDanh', 'tuDanhBtn'];
+      var directIds = ['autoBtn', 'bAuto', 'btnAuto', 'u20auto', 'autoAtk', 'atkAuto', 'tAuto', 'autoPlay', 'btnTuDanh', 'tuDanhBtn', 'u20Auto'];
       for (var i = 0; i < directIds.length; i++) {
         var el = document.getElementById(directIds[i]);
         if (el && isVis(el) && !el.disabled && (!md || !md.contains(el))) return el;
       }
-      var attrEls = document.querySelectorAll('[data-act="auto"], [data-cmd="auto"], [data-auto]');
+      var attrEls = document.querySelectorAll(
+        '[data-act="auto"], [data-cmd="auto"], [data-btn="auto"], [data-k="auto"], [data-auto], ' +
+        '[onclick*="toggleAuto" i], [onclick*="autoAtk" i], [onclick*="tuDanh" i], [onclick*="setAuto" i]'
+      );
       for (var ai = 0; ai < attrEls.length; ai++) {
         var ae = attrEls[ai];
         if (ae && isVis(ae) && !ae.disabled && (!md || !md.contains(ae)) && ae.id !== 'vlmAuto') return ae;
       }
-      var btns = document.querySelectorAll('button, [role="button"], .btn');
+      var btns = document.querySelectorAll('button, [role="button"], .btn, [onclick]');
       for (var bi = 0; bi < btns.length; bi++) {
         var b = btns[bi];
         if (!b || b.id === 'vlmAuto' || b.id === 'mswBtn' || !isVis(b) || b.disabled) continue;
         if (md && md.contains(b)) continue;
         if (b.closest && b.closest('#modeSw, #mswMenu, #tabs, #t-inv, #t-char, #chatLines, #u20lines, #logBox, #u20log')) continue;
         var imgEl = b.querySelector ? b.querySelector('img') : null;
+        var idCls = ((b.id || '') + ' ' + (typeof b.className === 'string' ? b.className : '') + ' ' + (imgEl ? (imgEl.getAttribute('src') || '') : '')).toLowerCase();
         var raw = (b.textContent || '') + ' ' + (b.getAttribute('title') || '') + ' ' +
           (b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('data-tip') || '') + ' ' +
           (b.getAttribute('data-tooltip') || '') + ' ' + (imgEl ? ((imgEl.getAttribute('alt') || '') + ' ' + (imgEl.getAttribute('title') || '')) : '');
         var t = noAccent(raw);
-        if (!t || t.length > 28) continue;
         if (t.indexOf('che do') >= 0 || t.indexOf('da tau') >= 0 || t.indexOf('sat thu') >= 0 ||
             t.indexOf('hanh trang') >= 0 || t.indexOf('pho ban') >= 0 || t.indexOf('nhiem vu') >= 0 ||
             t.indexOf('leo thap') >= 0 || t.indexOf('luyen cong') >= 0 || t.indexOf('ky tran') >= 0 ||
             t.indexOf('vlm') >= 0) continue;
+        if (/(?:^|[^a-z])(auto|tudanh|tuchien)(?:$|[^a-z])/.test(idCls) && idCls.indexOf('vlm') < 0) {
+          return b;
+        }
+        if (!t || t.length > 28) continue;
         if (t === 'auto' || t.indexOf('auto ') === 0 || t.indexOf('auto:') === 0 ||
             t === 'tu danh' || t.indexOf('tu danh') === 0 || t === 'tu chien' ||
             t.indexOf('tu chien') === 0 || t.indexOf('auto danh') >= 0 ||
@@ -3274,7 +3391,10 @@ class GameAutoPilot(
     var bg = '';
     try {
       var cs = window.getComputedStyle ? window.getComputedStyle(btn) : null;
-      if (cs) bg = (cs.backgroundColor || '') + '|' + (cs.color || '') + '|' + (cs.borderColor || '') + '|' + (cs.opacity || '');
+      if (cs) {
+        bg = (cs.backgroundColor || '') + '|' + (cs.color || '') + '|' +
+          (cs.borderColor || '') + '|' + (cs.boxShadow || '') + '|' + (cs.filter || '') + '|' + (cs.opacity || '');
+      }
     } catch (eCs) {}
     var inlineStyle = (btn.getAttribute && btn.getAttribute('style')) || '';
     return String(btn.className || '') + '||' + String(inlineStyle) + '||' + noAccent(btn.textContent || '') + '||' + bg;
@@ -3290,6 +3410,7 @@ class GameAutoPilot(
       if (A.info) {
         if (typeof A.info.auto === 'boolean') return A.info.auto ? 'on' : 'off';
         if (typeof A.info.tuDanh === 'boolean') return A.info.tuDanh ? 'on' : 'off';
+        if (typeof A.info.autoAtk === 'boolean') return A.info.autoAtk ? 'on' : 'off';
       }
       if (!btn) return 'unknown';
 
@@ -3301,11 +3422,11 @@ class GameAutoPilot(
       if (ac === 'true') return 'on';
       if (ac === 'false') return 'off';
 
-      var dataFlags = ['data-on', 'data-active', 'data-auto'];
+      var dataFlags = ['data-on', 'data-active', 'data-auto', 'data-state'];
       for (var di = 0; di < dataFlags.length; di++) {
         var dv = btn.getAttribute && btn.getAttribute(dataFlags[di]);
-        if (dv === '1' || dv === 'true') return 'on';
-        if (dv === '0' || dv === 'false') return 'off';
+        if (dv === '1' || dv === 'true' || dv === 'on') return 'on';
+        if (dv === '0' || dv === 'false' || dv === 'off') return 'off';
       }
 
       var t = noAccent(btn.textContent || '');
@@ -3314,13 +3435,20 @@ class GameAutoPilot(
 
       var cl = btn.classList;
       if (cl) {
-        if (cl.contains('on') || cl.contains('active') || cl.contains('checked') || cl.contains('enabled') || cl.contains('is-on') || cl.contains('btn-on')) {
+        if (cl.contains('on') || cl.contains('active') || cl.contains('checked') || cl.contains('enabled') ||
+            cl.contains('is-on') || cl.contains('btn-on') || cl.contains('lit') || cl.contains('glow') ||
+            cl.contains('selected') || cl.contains('running') || cl.contains('green') || cl.contains('emerald')) {
           return 'on';
         }
-        if (cl.contains('off') || cl.contains('inactive') || cl.contains('is-off') || cl.contains('btn-off')) {
+        if (cl.contains('off') || cl.contains('inactive') || cl.contains('is-off') || cl.contains('btn-off') || cl.contains('disabled')) {
           return 'off';
         }
       }
+
+      try {
+        var cs = window.getComputedStyle ? window.getComputedStyle(btn) : null;
+        if (cs && cs.filter && cs.filter.indexOf('grayscale') >= 0) return 'off';
+      } catch (eFilt) {}
 
       if (O.autoSawOn && O.autoPreMoveSig) {
         var curSig = autoBtnVisualSignature(btn);
@@ -3335,7 +3463,7 @@ class GameAutoPilot(
       if (O.moving) return false;
       if (isUserControlling(2500)) return false;
       var now = Date.now();
-      if (now - O.lastAutoRestoreAt < 380) return false;
+      if (now - O.lastAutoRestoreAt < 280) return false;
 
       var btn = findGameAutoButton();
       var state = detectGameAutoState(btn);
@@ -3347,17 +3475,17 @@ class GameAutoPilot(
 
       if (btn && state === 'off') {
         O.lastAutoRestoreAt = now;
-        O.autoPauseUntil = now + 110;
+        O.autoPauseUntil = now + 90;
         try { btn.click(); } catch (eClk) {}
         return true;
       }
 
-      // Nếu không xác định được rõ state qua class/text nhưng chữ ký nút đã đổi sau khi di chuyển
+      // Nếu state là 'unknown' nhưng chữ ký nút Auto đã thay đổi sau xung di chuyển -> bật lại ngay
       if (afterMovePulse && btn && O.autoSawOn && O.autoPreMoveSig) {
         var sigNow = autoBtnVisualSignature(btn);
         if (sigNow && sigNow !== O.autoPreMoveSig) {
           O.lastAutoRestoreAt = now;
-          O.autoPauseUntil = now + 110;
+          O.autoPauseUntil = now + 90;
           try { btn.click(); } catch (eClk2) {}
           return true;
         }
@@ -3579,9 +3707,10 @@ class GameAutoPilot(
         worldRadius: 90,
         cycleMs: 660,
         moveMs: 230,
-        rTarget: 0.10,
+        rTarget: 0.085,
         rMax: 0.42,
-        estSpeed: 0.44
+        estSpeed: 0.44,
+        isMelee: true
       };
     }
     return {
@@ -3743,12 +3872,14 @@ class GameAutoPilot(
     var curAngle = Math.atan2(ry, rx);
     var nextAngle = curAngle + params.stepRad;
 
-    // Nếu khoảng cách hiện tại lệch nhiều so với bán kính chuẩn (90 hoặc 400),
-    // ưu tiên kéo về đúng vành tròn (rUse) trước rồi mới xoay đều 30°
+    // Đánh gần: giữ khoảng cách tối thiểu là 90 (không lùi xa), áp sát lại ngay nếu lệch > 1.25x và xoay đều 20° quanh mục tiêu.
+    // Đánh xa: giữ bán kính chuẩn 400 và xoay đều 20° quanh mục tiêu.
     var distRatio = curDist / rUse;
+    var maxRatio = params.isMelee ? 1.25 : 1.35;
+    var minRatio = params.isMelee ? 0.85 : 0.65;
     var goalX, goalY;
-    if (distRatio > 1.35 || distRatio < 0.65) {
-      var pullAngle = curAngle + params.stepRad * 0.45;
+    if (distRatio > maxRatio || distRatio < minRatio) {
+      var pullAngle = curAngle + params.stepRad * (params.isMelee ? 0.6 : 0.45);
       goalX = pos.cx + rUse * Math.cos(pullAngle);
       goalY = pos.cy + rUse * Math.sin(pullAngle);
     } else {
@@ -3838,8 +3969,11 @@ class GameAutoPilot(
     O.lastAt = now;
     ensureGameAutoOn(true);
     setTimeout(function () {
-      try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA) {}
-    }, 180);
+      try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA1) {}
+    }, 80);
+    setTimeout(function () {
+      try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA2) {}
+    }, 260);
   }
 
   function orbitTick() {
@@ -4056,11 +4190,14 @@ class GameAutoPilot(
     O.moveStartedAt = now;
     O.lastAt = now;
 
-    // Ghi nhận chữ ký nút Auto trước khi gửi xung di chuyển
+    // Ghi nhận chữ ký nút Auto trước khi gửi xung di chuyển (kể cả khi state='unknown' để phát hiện nếu phím di chuyển làm tắt Auto)
     var autoBtnBefore = findGameAutoButton();
-    if (detectGameAutoState(autoBtnBefore) === 'on' && autoBtnBefore) {
-      O.autoSawOn = true;
-      O.autoPreMoveSig = autoBtnVisualSignature(autoBtnBefore);
+    if (autoBtnBefore) {
+      var stBefore = detectGameAutoState(autoBtnBefore);
+      if (stBefore !== 'off') {
+        O.autoSawOn = true;
+        O.autoPreMoveSig = autoBtnVisualSignature(autoBtnBefore);
+      }
     }
 
     // Chỉ dùng 1 kênh di chuyển sạch (joystick nếu hiện rõ, ngược lại phím mũi tên) để tránh xung đột
@@ -4129,10 +4266,10 @@ class GameAutoPilot(
   setInterval(function () {
     try {
       if (A.cfg.on && !O.moving && !isUserControlling(2500)) {
-        ensureGameAutoOn(false);
+        ensureGameAutoOn(true);
       }
     } catch (eAg) {}
-  }, 1200);
+  }, 1000);
   return 'installed';
 })();
     """.trimIndent()

@@ -119,10 +119,13 @@ fun ControlSheet(
     onToggleHideMap: () -> Unit = {},
     isHideGame: Boolean = false,
     onToggleHideGame: () -> Unit = {},
+    isPcMode: Boolean = false,
+    onTogglePcMode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
-    val maxSheetHeight = (configuration.screenHeightDp.dp * 0.46f)
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val maxSheetHeight = (configuration.screenHeightDp.dp * if (isLandscape) 0.72f else 0.46f)
 
     var lastSyncMode by remember { mutableStateOf<String?>(null) }
     var pendingGrow by remember { mutableStateOf<Int?>(null) }
@@ -508,6 +511,32 @@ fun ControlSheet(
                             onClick = {
                                 onInteract()
                                 onToggleHideGame()
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .testTag("sheet_pc_mode_row"),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val pcLabel = when {
+                            !isLandscape -> "🖥️ PC (Toàn màn hình 70% · Chỉ màn ngang)"
+                            isPcMode -> "🖥️ PC: ĐANG BẬT (Toàn màn hình 70%)"
+                            else -> "🖥️ PC (Toàn màn hình 70%)"
+                        }
+                        SegmentButton(
+                            label = pcLabel,
+                            selected = isLandscape && isPcMode,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .testTag("sheet_pc_mode_toggle"),
+                            onClick = {
+                                onInteract()
+                                if (isLandscape) onTogglePcMode()
                             }
                         )
                     }

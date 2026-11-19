@@ -75,6 +75,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isHideGameSynced = MutableStateFlow(prefs.getHideGame())
     val isHideGameSynced: StateFlow<Boolean> = _isHideGameSynced.asStateFlow()
 
+    private val _isPcMode = MutableStateFlow(prefs.getPcMode())
+    val isPcMode: StateFlow<Boolean> = _isPcMode.asStateFlow()
+
     private val _autoConfigs = MutableStateFlow(
         (0 until TabLimits.SLOT_COUNT).map { i -> AutoConfig.fromJson(prefs.getAutoConfig(i)) }
     )
@@ -221,6 +224,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isHideGameSynced.value = enabled
         prefs.setHideGame(enabled)
         tabManager.syncHideGame(enabled)
+    }
+
+    fun setPcMode(enabled: Boolean) {
+        _isPcMode.value = enabled
+        prefs.setPcMode(enabled)
     }
 
     fun syncSellExcessItems() {

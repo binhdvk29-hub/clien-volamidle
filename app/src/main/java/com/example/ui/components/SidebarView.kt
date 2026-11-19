@@ -65,6 +65,9 @@ fun SidebarView(
     onSyncHideMap: (Boolean) -> Unit = {},
     isHideGameSynced: Boolean = false,
     onSyncHideGame: (Boolean) -> Unit = {},
+    isPcMode: Boolean = false,
+    isLandscape: Boolean = false,
+    onTogglePcMode: () -> Unit = {},
     onSyncSellExcess: () -> Unit = {}
 ) {
     Surface(
@@ -268,6 +271,16 @@ fun SidebarView(
                 tabCount = tabCount,
                 testTag = "sync_hide_game_checkbox",
                 onToggle = { onSyncHideGame(!isHideGameSynced) }
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            SyncedToggleCheckboxRow(
+                label = if (isLandscape) "🖥️ PC (Toàn màn hình 70%)" else "🖥️ PC (Chỉ màn ngang)",
+                checked = isLandscape && isPcMode,
+                tabCount = tabCount,
+                testTag = "sync_pc_mode_checkbox",
+                onToggle = { if (isLandscape) onTogglePcMode() }
             )
 
             Spacer(modifier = Modifier.height(6.dp))

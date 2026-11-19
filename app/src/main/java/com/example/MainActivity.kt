@@ -40,6 +40,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.example.sleep.SleepWakeController
 import com.example.ui.MainViewModel
 import com.example.ui.components.AccountDialog
@@ -76,6 +79,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun applyFullscreenMode(fullscreen: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (fullscreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -101,6 +115,9 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     onSetWindowBrightnessLow = { low ->
                         applySleepBrightness(low)
+                    },
+                    onSetFullscreen = { fs ->
+                        applyFullscreenMode(fs)
                     }
                 )
             }
@@ -145,7 +162,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
-    onSetWindowBrightnessLow: (Boolean) -> Unit
+    onSetWindowBrightnessLow: (Boolean) -> Unit,
+    onSetFullscreen: (Boolean) -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -166,6 +184,8 @@ fun MainScreen(
     val isBlackScreenSynced by viewModel.isBlackScreenSynced.collectAsState()
     val isHideMapSynced by viewModel.isHideMapSynced.collectAsState()
     val isHideGameSynced by viewModel.isHideGameSynced.collectAsState()
+    val isPcMode by viewModel.isPcMode.collectAsState()
+    val isPcModeEffective = isPcMode && !isPortrait
     val autoConfigs by viewModel.autoConfigs.collectAsState()
     val autoDialogTabIndex by viewModel.autoDialogTabIndex.collectAsState()
     val tabCount by viewModel.tabCount.collectAsState()
@@ -181,6 +201,11 @@ fun MainScreen(
 
     LaunchedEffect(isSleepMode, isSleepWakeSetupDialogOpen) {
         onSetWindowBrightnessLow(isSleepMode && !isSleepWakeSetupDialogOpen)
+    }
+
+    LaunchedEffect(isPcModeEffective) {
+        onSetFullscreen(isPcModeEffective)
+        viewModel.tabManager.applyPcMode(isPcModeEffective)
     }
 
     BackHandler(enabled = isSleepWakeSetupDialogOpen || isSleepMode || editingAccount != null || autoDialogTabIndex != null || isControlSheetOpen || (isPortrait && isSidebarVisible)) {
@@ -208,10 +233,16 @@ fun MainScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                        )
+                    .then(
+                        if (isPcModeEffective) {
+                            Modifier
+                        } else {
+                            Modifier.windowInsetsPadding(
+                                WindowInsets.safeDrawing.only(
+                                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                                )
+                            )
+                        }
                     )
             ) {
                 if (isPortrait) {
@@ -261,6 +292,9 @@ fun MainScreen(
                                 onSyncHideMap = { viewModel.syncHideMap(it) },
                                 isHideGameSynced = isHideGameSynced,
                                 onSyncHideGame = { viewModel.syncHideGame(it) },
+                                isPcMode = isPcMode,
+                                isLandscape = !isPortrait,
+                                onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
                                 onSyncSellExcess = { viewModel.syncSellExcessItems() },
                                 modifier = Modifier
                                     .fillMaxHeight()
@@ -293,6 +327,9 @@ fun MainScreen(
                                 onSyncHideMap = { viewModel.syncHideMap(it) },
                                 isHideGameSynced = isHideGameSynced,
                                 onSyncHideGame = { viewModel.syncHideGame(it) },
+                                isPcMode = isPcMode,
+                                isLandscape = !isPortrait,
+                                onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
                                 onSyncSellExcess = { viewModel.syncSellExcessItems() },
                                 modifier = Modifier
                                     .width(265.dp)
@@ -367,7 +404,9 @@ fun MainScreen(
                 isHideMap = isHideMapSynced,
                 onToggleHideMap = { viewModel.syncHideMap(!isHideMapSynced) },
                 isHideGame = isHideGameSynced,
-                onToggleHideGame = { viewModel.syncHideGame(!isHideGameSynced) }
+                onToggleHideGame = { viewModel.syncHideGame(!isHideGameSynced) },
+                isPcMode = isPcMode,
+                onTogglePcMode = { viewModel.setPcMode(!isPcMode) }
             )
 
             if (isSleepMode) {

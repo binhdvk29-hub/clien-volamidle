@@ -26,6 +26,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_TAB_WARN_SHOWN = "pref_tab_warn_shown"
         private const val KEY_HIDE_MAP = "pref_hide_map"
         private const val KEY_HIDE_GAME = "pref_hide_game"
+        private const val KEY_PC_MODE = "pref_pc_mode"
 
         private const val KEY_DND_OVERRIDE_ACTIVE = "sleep_dnd_override_active"
         private const val KEY_DND_PREV_FILTER = "sleep_dnd_prev_filter"
@@ -105,6 +106,12 @@ class PreferencesManager(context: Context) {
 
     fun setHideGame(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_HIDE_GAME, enabled).apply()
+    }
+
+    fun getPcMode(): Boolean = prefs.getBoolean(KEY_PC_MODE, false)
+
+    fun setPcMode(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_PC_MODE, enabled).apply()
     }
 
     fun getAccount(tabIndex: Int, cluster: String = getCluster()): AccountConfig {

@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -117,7 +118,7 @@ fun AutoConfigDialog(
                 Column(
                     modifier = Modifier
                         .weight(1f, fill = false)
-                        .heightIn(max = 380.dp)
+                        .heightIn(max = minOf(380.dp, (LocalConfiguration.current.screenHeightDp * 0.56f).dp))
                         .verticalScroll(rememberScrollState())
                 ) {
                     if (tabCount > 1) {
