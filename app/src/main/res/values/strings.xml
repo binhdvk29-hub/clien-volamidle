@@ -1,0 +1,79 @@
+<resources>
+    <string name="app_name">Võ Lâm Idle</string>
+
+    <!-- Tab count stepper & confirmations -->
+    <string name="tab_count_label">Số tab chạy</string>
+    <string name="cd_tab_count_decrease">Giảm số tab</string>
+    <string name="cd_tab_count_increase">Tăng số tab</string>
+    <string name="tab_count_warn_inline">⚠️ Trên 4 tab tốn nhiều RAM/pin (tự hạ 30 FPS)</string>
+    <string name="tab_count_low_ram_block">Máy RAM thấp — giới hạn tối đa 4 tab</string>
+    <string name="tab_count_confirm_grow">Chạy %1$d tab tốn khoảng %2$s GB RAM và có thể nóng máy (~%3$d MB lưu lượng nền/ngày). Tiếp tục?</string>
+    <string name="tab_count_confirm_shrink">Giảm xuống %1$d tab sẽ dừng và đăng xuất Tab %2$d–%3$d đang chạy. Tăng lại số tab sau sẽ tự đăng nhập lại. Tiếp tục?</string>
+    <string name="tab_count_confirm_ok">Tiếp tục</string>
+    <string name="tab_count_confirm_cancel">Hủy</string>
+
+    <!-- Auto-update -->
+    <string name="update_version_row">📦 Phiên bản %1$s</string>
+    <string name="update_btn_check">Kiểm tra</string>
+    <string name="update_btn_download">Tải về</string>
+    <string name="update_btn_install">Cài đặt</string>
+    <string name="update_btn_open_settings">Mở cài đặt</string>
+    <string name="update_btn_open_releases">Mở trang tải</string>
+
+    <string name="cd_update_check">Kiểm tra cập nhật</string>
+    <string name="cd_update_download">Tải bản cập nhật</string>
+    <string name="cd_update_install">Cài đặt bản cập nhật</string>
+
+    <string name="update_state_checking">Đang kiểm tra…</string>
+    <string name="update_state_uptodate">Đang dùng bản mới nhất</string>
+    <string name="update_state_available">Có bản mới %1$s (%2$s)</string>
+    <string name="update_state_downloading">Đang tải %1$d%%</string>
+    <string name="update_state_verifying">Đang xác minh…</string>
+    <string name="update_state_needs_permission">Cần cấp quyền cài ứng dụng từ nguồn này</string>
+    <string name="update_state_installing">Đang mở trình cài đặt…</string>
+    <string name="update_state_nonetwork">Không có kết nối mạng</string>
+    <string name="update_state_ratelimited">Tạm giới hạn (thử lại sau)</string>
+    <string name="update_state_unparsable">Không đọc được phiên bản — mở trang phát hành</string>
+
+    <string name="update_confirm_title">Cài đặt bản %1$s?</string>
+    <string name="update_confirm_body">Ứng dụng sẽ đóng tạm thời để cài đặt gói %1$s, các tab game sẽ tải lại sau khi cập nhật xong.</string>
+    <string name="update_confirm_ok">Cài đặt</string>
+    <string name="update_confirm_cancel">Để sau</string>
+
+    <string name="update_notice_title">Có bản cập nhật mới %1$s</string>
+    <string name="update_notice_body">Phiên bản hiện tại: %1$s. Bạn có muốn tải bản mới ngay không?</string>
+    <string name="update_notice_update">Cập nhật</string>
+    <string name="update_notice_later">Để sau</string>
+
+    <string name="update_banner_available">Có bản mới %1$s — chạm để cập nhật</string>
+    <string name="update_banner_updated">Đã cập nhật lên %1$s — chạm để mở</string>
+    <string name="update_notif_channel">Cập nhật ứng dụng</string>
+
+    <string name="update_result_success">Đã cập nhật lên %1$s</string>
+    <string name="update_result_conflict">Xung đột với ứng dụng đang cài</string>
+    <string name="update_result_storage">Không đủ bộ nhớ để cài đặt</string>
+    <string name="update_result_timeout">Hết thời gian chờ trình cài đặt</string>
+
+    <string name="update_error_aborted">Đã hủy cài đặt</string>
+    <string name="update_error_blocked">Hệ thống đã chặn cài đặt bản cập nhật</string>
+    <string name="update_error_downgrade">Bản tải về cũ hơn hoặc trùng phiên bản đang cài</string>
+    <string name="update_error_generic">Lỗi cập nhật (%1$s)</string>
+    <string name="update_error_host">Nguồn tải không nằm trong danh sách cho phép</string>
+    <string name="update_error_invalid_apk">Tệp APK không hợp lệ</string>
+    <string name="update_error_no_asset">Không tìm thấy tệp APK trong bản phát hành</string>
+    <string name="update_error_sha">Tệp tải về bị lỗi kiểm tra toàn vẹn (SHA-256)</string>
+    <string name="update_error_signature">Chữ ký APK không khớp với bản đang cài — cần gỡ và cài lại</string>
+    <string name="update_error_storage">Không đủ dung lượng trống để tải bản cập nhật</string>
+
+    <!-- Treo máy: tạm dừng tự sáng màn hình -->
+    <string name="sleep_wake_dialog_title">🌙 Chống tự sáng màn hình khi Treo máy</string>
+    <string name="sleep_wake_status_dnd_granted">✅ Thông báo sáng màn hình: Đã cấp quyền (sẽ tự tạm tắt khi Treo máy và khôi phục khi mở khóa).</string>
+    <string name="sleep_wake_status_dnd_missing">⚠️ Thông báo sáng màn hình: Chưa có quyền Không làm phiền — hãy cấp quyền 1 lần để app tự chặn thông báo làm sáng màn hình.</string>
+    <string name="sleep_wake_lift_note">📱 Nhấc máy sáng màn hình: Android không cho ứng dụng tự tắt cảm biến hệ thống. Khi Treo máy, app sẽ giữ màn hình đen OLED ở độ sáng tối thiểu 1% (không vào màn hình khóa) và tự khóa lại nếu bị đánh thức. Bạn cũng có thể tắt nhanh mục \"Nhấc máy sáng màn hình\" trong Cài đặt Hiển thị bên dưới.</string>
+    <string name="sleep_wake_btn_grant_dnd">Cấp quyền chặn thông báo</string>
+    <string name="sleep_wake_btn_dnd_settings">Quyền Không làm phiền</string>
+    <string name="sleep_wake_btn_display_settings">Cài đặt Hiển thị</string>
+    <string name="sleep_wake_btn_enter_sleep">Treo máy ngay</string>
+    <string name="sleep_wake_btn_close">Đóng</string>
+    <string name="cd_sleep_wake_settings">Cài đặt chống tự sáng màn hình</string>
+</resources>

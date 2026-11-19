@@ -1,0 +1,6 @@
+{
+  "name": "Võ Lâm Idle",
+  "description": "Trình quản lý đa tài khoản Võ Lâm Idle 24/7 với điều khiển nhanh, tự động đăng nhập và cấu hình tự động trong game.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
