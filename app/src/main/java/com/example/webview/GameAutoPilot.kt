@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-16"
+        const val SCRIPT_VER = "vlmauto-17"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -744,10 +744,8 @@ class GameAutoPilot(
       A.cfg.thapMainSkill = String(A.cfg.thapMainSkill || '').trim();
     } catch (e) {}
     if (typeof t === 'number' && t > A.touchK) A.touchK = t;
-    if (!A.cfg.on || !A.cfg.thapNeDon) {
+    if (!A.cfg.on || (!A.cfg.thap && !A.cfg.thapNeDon)) {
       try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eRel) {}
-    }
-    if (!A.cfg.on || !A.cfg.thap || !A.cfg.thapNeDon) {
       try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl) {}
     }
     if (!A.cfg.on) {
@@ -2804,16 +2802,17 @@ class GameAutoPilot(
 
     if (isUserControlling(6000)) return;
 
-    var onlyTowerCfg = !!(A.cfg.thap && A.cfg.thapNeDon);
+    var forceOnlyTower = !!A.cfg.thapNeDon;
     var inTowerRightNow = !!(I.tower || (A.st && A.st.noi === 'thap') || isInTowerNow());
-    if (onlyTowerCfg && inTowerRightNow) {
+
+    // Khi tích "Chỉ Leo Tháp": dù đang làm gì cũng lập tức khóa & chuyển sang Chế độ: Leo Tháp
+    if (forceOnlyTower) {
       towerLockSet(true);
     }
-    var towerLocked = onlyTowerCfg && towerLockGet();
 
-    // ƯU TIÊN CAO NHẤT THEO KHUNG GIỜ: 4 mốc Boss Hoàng Kim (12:00, 15:30, 19:30, 22:00)
-    // Chuyển về Chế độ Luyện Công (farm) kết hợp Auto ingame đi đánh Boss HK, xong tự khôi phục chế độ trước đó.
-    var activeBossSlot = getActiveBossHkSlot();
+    // ƯU TIÊN KHUNG GIỜ: 4 mốc Boss Hoàng Kim (12:00, 15:30, 19:30, 22:00)
+    // (Bỏ qua nếu người chơi đang bật "Chỉ Leo Tháp" để tuyệt đối giữ Chế độ Leo Tháp)
+    var activeBossSlot = forceOnlyTower ? null : getActiveBossHkSlot();
     var savedBossPrev = bossHkPrevGet();
     if (activeBossSlot) {
       if (!savedBossPrev && mode && mode !== 'farm') {
@@ -2830,7 +2829,9 @@ class GameAutoPilot(
       }
       return;
     } else if (savedBossPrev) {
-      if (!I.dead && !isUserControlling(6000) && ready('mode_bosshk_restore', 8000)) {
+      if (forceOnlyTower) {
+        bossHkPrevSet(null);
+      } else if (!I.dead && !isUserControlling(6000) && ready('mode_bosshk_restore', 8000)) {
         if (mode !== savedBossPrev) {
           if (await switchMode(savedBossPrev)) {
             bossHkPrevSet(null);
@@ -2839,19 +2840,28 @@ class GameAutoPilot(
         } else {
           bossHkPrevSet(null);
         }
+        return;
+      } else {
+        return;
       }
-      return;
     }
 
     // THỨ TỰ HOẠT ĐỘNG TRONG NGÀY:
     // 1. Dã Tẩu + Boss Sát Thủ + Đi thuyền (Phong Lăng Độ) -> 'quest'
     // 2. Phó Bản -> 'dg'
-    // 3. Leo Tháp -> 'tower'
-    var dtCon = !towerLocked && A.cfg.dt && lv >= 20 && !t.du && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
-    var stCon = !towerLocked && A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
-    var pldCon = !towerLocked && !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
-    var pbCon = !towerLocked && A.cfg.pb && !pbXong();
-    var thapCon = A.cfg.thap;
+    // 3. Leo Tháp -> 'tower' (khi xong hết hoạt động & tích Ưu tiên Leo Tháp, sẽ tự bật các tính năng của Chỉ Leo Tháp)
+    var dtCon = !forceOnlyTower && A.cfg.dt && lv >= 20 && !t.du && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
+    var stCon = !forceOnlyTower && A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
+    var pldCon = !forceOnlyTower && !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
+    var pbCon = !forceOnlyTower && A.cfg.pb && !pbXong();
+    var dailyDoneForTower = !dtCon && !stCon && !pldCon && !pbCon;
+
+    if (A.cfg.thap && dailyDoneForTower && (inTowerRightNow || mode === 'tower')) {
+      towerLockSet(true);
+    }
+
+    var towerLocked = forceOnlyTower || (!!A.cfg.thap && dailyDoneForTower && towerLockGet());
+    var thapCon = !!(A.cfg.thap || forceOnlyTower);
     var want = towerLocked ? 'tower' : ((dtCon || stCon || pldCon) ? 'quest' : (pbCon ? 'dg' : (thapCon ? 'tower' : null)));
     var prev = prevGet();
 
@@ -2921,7 +2931,7 @@ class GameAutoPilot(
       if (await switchMode(want)) {
         if (!prev) prevSet(savedPrev);
         A.pbOut = 0;
-        if (want === 'tower' && onlyTowerCfg) towerLockSet(true);
+        if (want === 'tower' && (forceOnlyTower || A.cfg.thap)) towerLockSet(true);
         note(want === 'dg'
           ? 'chuyển Tự chạy Phó Bản (còn lượt)'
           : (want === 'quest' ? ('chuyển Dã Tẩu tối đa (' + (dtCon ? 'còn Dã Tẩu' : 'có Lệnh Bài Sát Thủ') + ')') : 'chuyển Leo Tháp'));
@@ -3497,8 +3507,12 @@ class GameAutoPilot(
     return false;
   }
 
+  function isTowerOrbitEnabled() {
+    return !!(A.cfg.on && (A.cfg.thapNeDon || A.cfg.thap));
+  }
+
   function isOrbitEligible() {
-    if (!A.cfg.on || !A.cfg.thapNeDon) return false;
+    if (!isTowerOrbitEnabled()) return false;
     if (isUserControlling(3500)) return false;
     try {
       var ae = document.activeElement;
@@ -3829,7 +3843,7 @@ class GameAutoPilot(
   }
 
   function orbitTick() {
-    if (!A.cfg.on || !A.cfg.thapNeDon) {
+    if (!isTowerOrbitEnabled()) {
       if (O.active || O.moving || O.wasInTower || O.held.up || O.held.down || O.held.left || O.held.right || O.joyPtrActive) {
         releaseOrbitKeys();
       }

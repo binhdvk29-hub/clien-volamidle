@@ -390,7 +390,7 @@ fun AutoConfigDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Khi chọn đồng thời \"Ưu tiên Leo Tháp...\" và \"Chỉ Leo Tháp\", nhân vật khi đã vào Thông Thiên Tháp sẽ khóa cứng Chế độ: Leo Tháp. Dù bị Rớt Tháp hay mất kết nối tải lại game, hệ thống vẫn tự động vào lại Tháp.",
+                                text = "• Ưu tiên Leo Tháp: chạy xong hoạt động trong ngày sẽ tự vào Tháp và áp dụng toàn bộ tính năng của Chỉ Leo Tháp.\n• Chỉ Leo Tháp: dù đang làm gì cũng lập tức chuyển sang Chế độ: Leo Tháp (tự vào lại khi Rớt Tháp / mất kết nối).",
                                 color = Color(0xFFCBD5E1),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 3.dp)
