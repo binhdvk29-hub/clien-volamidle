@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-20"
+        const val SCRIPT_VER = "vlmauto-21"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3941,6 +3941,54 @@ class GameAutoPilot(
     } catch (e) {}
   }
 
+  // Giả lập chuột trái click trực tiếp lên nền canvas theo hướng (vx, vy)
+  // Thay thế phím mũi tên vì phím mũi tên thường làm game tự tắt Auto đánh.
+  function clickCanvasMove(stage, vx, vy, stepScale) {
+    if (!stage || !stage.canvas || !stage.rect) return false;
+    var r = stage.rect;
+    var now = Date.now();
+    // Lấy vị trí nhân vật trên màn hình (mặc định giữa canvas)
+    var baseNx = (O.obsPlayer && now - O.obsPlayer.at < 1200) ? O.obsPlayer.nx : 0.5;
+    var baseNy = (O.obsPlayer && now - O.obsPlayer.at < 1200) ? O.obsPlayer.ny : 0.52;
+    var baseX = r.left + r.width * baseNx;
+    var baseY = r.top + r.height * baseNy;
+
+    var stepPx = Math.min(r.width, r.height) * (stepScale || 0.16);
+    var rawX = baseX + vx * stepPx;
+    var rawY = baseY + vy * stepPx;
+
+    // Giữ điểm click nằm gọn trong vùng giữa canvas, tuyệt đối không bấm trúng thanh HUD/chat/kỹ năng
+    var minX = r.left + r.width * 0.18;
+    var maxX = r.left + r.width * 0.82;
+    var minY = r.top + r.height * 0.18;
+    var maxY = r.top + r.height * 0.78;
+    var cx = Math.max(minX, Math.min(maxX, rawX));
+    var cy = Math.max(minY, Math.min(maxY, rawY));
+
+    try {
+      dispatchOrbitPointer(stage.canvas, 'pointerdown', cx, cy);
+      dispatchOrbitPointer(stage.canvas, 'mousedown', cx, cy);
+      setTimeout(function () {
+        try {
+          dispatchOrbitPointer(stage.canvas, 'pointerup', cx, cy);
+          dispatchOrbitPointer(stage.canvas, 'mouseup', cx, cy);
+          var cEv = new MouseEvent('click', {
+            clientX: cx,
+            clientY: cy,
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+            buttons: 0
+          });
+          stage.canvas.dispatchEvent(cEv);
+        } catch (eUp) {}
+      }, 35);
+      return true;
+    } catch (eClk) {
+      return false;
+    }
+  }
+
   function pulseJoystickOrbit(vx, vy, joyEl) {
     var joy = joyEl || findVisibleJoystick();
     if (!joy) return false;
@@ -4116,13 +4164,12 @@ class GameAutoPilot(
       O.lastMoveVy = rvy;
       O.moveStartedAt = now;
       O.lastAt = now;
-      syncOrbitKeys({
-        up: rvy < -0.382,
-        down: rvy > 0.382,
-        left: rvx < -0.382,
-        right: rvx > 0.382
-      }, stage.canvas);
-      O.moving = true;
+      // Giả lập chuột trái click về hướng trung tâm map (mỗi 280ms 1 click để không spam)
+      if (!O.lastRetClickAt || (now - O.lastRetClickAt) >= 280) {
+        O.lastRetClickAt = now;
+        clickCanvasMove(stage, rvx, rvy, 0.22);
+      }
+      O.moving = false;
       O.active = true;
       return;
     }
@@ -4197,14 +4244,9 @@ class GameAutoPilot(
       }
     }
 
-    // Di chuyển hoàn toàn bằng phím điều hướng (KHÔNG chạm màn hình / không gửi pointerdown lên joystick)
-    // để hạn chế tối đa việc game tự tắt Auto khi phát hiện chạm cảm ứng.
-    syncOrbitKeys({
-      up: steer.vy < -0.382,
-      down: steer.vy > 0.382,
-      left: steer.vx < -0.382,
-      right: steer.vx > 0.382
-    }, stage.canvas);
+    // Giả lập chuột trái click lên nền canvas theo hướng quỹ đạo 20° (KHÔNG dùng phím mũi tên để tránh tắt Auto)
+    syncOrbitKeys({ up: false, down: false, left: false, right: false }, stage.canvas);
+    clickCanvasMove(stage, steer.vx, steer.vy, style === 'melee' ? 0.13 : 0.18);
 
     O.moving = true;
     if (O.moveEndTimer) clearTimeout(O.moveEndTimer);
