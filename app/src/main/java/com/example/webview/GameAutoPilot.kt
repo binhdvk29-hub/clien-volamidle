@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-12"
+        const val SCRIPT_VER = "vlmauto-14"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -978,7 +978,11 @@ class GameAutoPilot(
         leave: function () {
           this.count = Math.max(0, (this.count | 0) - 1);
           if (this.count === 0) {
-            try { document.documentElement.classList.remove('__vlm-stealth'); } catch (e) {}
+            setTimeout(function () {
+              if (window.__vlmStealth && window.__vlmStealth.count === 0) {
+                try { document.documentElement.classList.remove('__vlm-stealth'); } catch (e) {}
+              }
+            }, 120);
           }
         }
       };
@@ -1461,6 +1465,9 @@ class GameAutoPilot(
   }
 
   async function scanAndUseOneFromHiddenBagDom(kind) {
+    // Tuyệt đối KHÔNG tự bấm mở tab Hành trang / Nhân vật / Võ công trên giao diện game.
+    // Chỉ sử dụng kênh API ẩn (dungTui) ở ensureOneConsumable để tránh bật tab chức năng.
+    return { scanned: true, used: false };
     if (!canRunHiddenConsumable()) return { scanned: false, used: false };
 
     lockModal(18000);
@@ -3010,8 +3017,16 @@ class GameAutoPilot(
     towerEnteredAt: 0,
     wasInTower: false,
     lastFloorNum: -1,
+    lastStageText: '',
     returningToCenter: false,
+    returnStartedAt: 0,
     hadTargetInFloor: false,
+    prevPx: 0,
+    prevPy: 0,
+    stuckBeats: 0,
+    lastTargetCx: 0,
+    lastTargetCy: 0,
+    lastTargetAt: 0,
     estX: 0,
     estY: 0,
     lastMoveVx: 0,
@@ -3305,8 +3320,9 @@ class GameAutoPilot(
   function ensureGameAutoOn(afterMovePulse) {
     try {
       if (O.moving) return false;
+      if (isUserControlling(2500)) return false;
       var now = Date.now();
-      if (now - O.lastAutoRestoreAt < 450) return false;
+      if (now - O.lastAutoRestoreAt < 380) return false;
 
       var btn = findGameAutoButton();
       var state = detectGameAutoState(btn);
@@ -3318,9 +3334,20 @@ class GameAutoPilot(
 
       if (btn && state === 'off') {
         O.lastAutoRestoreAt = now;
-        O.autoPauseUntil = now + 130;
+        O.autoPauseUntil = now + 110;
         try { btn.click(); } catch (eClk) {}
         return true;
+      }
+
+      // Nếu không xác định được rõ state qua class/text nhưng chữ ký nút đã đổi sau khi di chuyển
+      if (afterMovePulse && btn && O.autoSawOn && O.autoPreMoveSig) {
+        var sigNow = autoBtnVisualSignature(btn);
+        if (sigNow && sigNow !== O.autoPreMoveSig) {
+          O.lastAutoRestoreAt = now;
+          O.autoPauseUntil = now + 110;
+          try { btn.click(); } catch (eClk2) {}
+          return true;
+        }
       }
     } catch (eEns) {}
     return false;
@@ -3387,8 +3414,16 @@ class GameAutoPilot(
     O.wasInTower = false;
     O.towerEnteredAt = 0;
     O.lastFloorNum = -1;
+    O.lastStageText = '';
     O.returningToCenter = false;
+    O.returnStartedAt = 0;
     O.hadTargetInFloor = false;
+    O.prevPx = 0;
+    O.prevPy = 0;
+    O.stuckBeats = 0;
+    O.lastTargetCx = 0;
+    O.lastTargetCy = 0;
+    O.lastTargetAt = 0;
     O.lastAt = 0;
     O.phaseStart = 0;
     O.lastBeatIdx = -1;
@@ -3650,17 +3685,60 @@ class GameAutoPilot(
     };
   }
 
-  function computeCenterAnchoredVector(pos, params, theta) {
+  function computeOrbitSteeringVector(pos, params, fallbackTheta) {
     var rUse = pos.rNorm || params.rTarget;
-    var goalX = Math.max(-0.44, Math.min(0.44, pos.cx + rUse * Math.cos(theta)));
-    var goalY = Math.max(-0.44, Math.min(0.44, pos.cy + rUse * Math.sin(theta)));
+
+    // Trường hợp không đọc được tọa độ trực tiếp (dead-reckoning):
+    // đi đúng tiếp tuyến của đa giác đều 12 cạnh (mỗi nhịp 30°) để không chạy lệch linh tinh.
+    if (pos.source === 'center_anchor') {
+      return {
+        vx: -Math.sin(fallbackTheta),
+        vy: Math.cos(fallbackTheta),
+        clamped: false
+      };
+    }
+
+    var rx = pos.px - pos.cx;
+    var ry = pos.py - pos.cy;
+    var curDist = Math.hypot(rx, ry);
+
+    // Nếu đang quá gần hoặc trùng tâm mục tiêu, đẩy thẳng ra đúng khoảng cách rUse theo góc fallbackTheta
+    if (curDist < 0.005) {
+      return {
+        vx: Math.cos(fallbackTheta),
+        vy: Math.sin(fallbackTheta),
+        clamped: false
+      };
+    }
+
+    // Luôn tính góc thực tế hiện tại quanh mục tiêu, sau đó đặt điểm đích kế tiếp đúng +30° (PI/6) trên đường tròn bán kính rUse
+    var curAngle = Math.atan2(ry, rx);
+    var nextAngle = curAngle + params.stepRad;
+
+    // Nếu khoảng cách hiện tại lệch nhiều so với bán kính chuẩn (90 hoặc 400),
+    // ưu tiên kéo về đúng vành tròn (rUse) trước rồi mới xoay đều 30°
+    var distRatio = curDist / rUse;
+    var goalX, goalY;
+    if (distRatio > 1.35 || distRatio < 0.65) {
+      var pullAngle = curAngle + params.stepRad * 0.45;
+      goalX = pos.cx + rUse * Math.cos(pullAngle);
+      goalY = pos.cy + rUse * Math.sin(pullAngle);
+    } else {
+      goalX = pos.cx + rUse * Math.cos(nextAngle);
+      goalY = pos.cy + rUse * Math.sin(nextAngle);
+    }
+
+    // Giới hạn điểm đích nằm trong khung bản đồ an toàn để không đâm vào góc/cạnh
+    goalX = Math.max(-0.40, Math.min(0.40, goalX));
+    goalY = Math.max(-0.40, Math.min(0.40, goalY));
+
     var errX = goalX - pos.px;
     var errY = goalY - pos.py;
     var errLen = Math.hypot(errX, errY);
     if (errLen < 0.0001) {
       return {
-        vx: -Math.sin(theta),
-        vy: Math.cos(theta),
+        vx: -Math.sin(curAngle),
+        vy: Math.cos(curAngle),
         clamped: false
       };
     }
@@ -3731,6 +3809,9 @@ class GameAutoPilot(
     pauseOrbitMovement();
     O.lastAt = now;
     ensureGameAutoOn(true);
+    setTimeout(function () {
+      try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA) {}
+    }, 180);
   }
 
   function orbitTick() {
@@ -3795,24 +3876,111 @@ class GameAutoPilot(
     }
 
     var params = computeOrbitParams(style);
+    O.style = style;
+    O.skillName = resolved.skill || '';
+
+    // 1. Kiểm tra liên tục (mỗi 90ms) việc lên tầng, hết quái, hoặc bị dạt ra góc / sát cạnh bản đồ
+    var curFloor = readCurrentTowerFloor();
+    var stgEl = document.getElementById('stageLbl');
+    var curStageText = stgEl ? noAccent(stgEl.textContent || '') : '';
+    var floorChanged = false;
+    if (curFloor > 0) {
+      if (O.lastFloorNum > 0 && curFloor > O.lastFloorNum) floorChanged = true;
+      O.lastFloorNum = curFloor;
+    }
+    if (curStageText && O.lastStageText && curStageText !== O.lastStageText && curStageText.indexOf('tang') >= 0) {
+      floorChanged = true;
+    }
+    if (curStageText) O.lastStageText = curStageText;
+
+    var pos = resolveArenaPosition(now, params);
+    if (pos.source !== 'center_anchor') {
+      O.estX = pos.px - pos.cx;
+      O.estY = pos.py - pos.cy;
+    }
+
+    // Ổn định mục tiêu: lưu vị trí mục tiêu gần nhất trong 1.8s để tránh nhấp nháy 1-2 frame khi canvas vẽ lại
+    if (pos.hasTarget) {
+      O.hadTargetInFloor = true;
+      O.lastTargetCx = pos.cx;
+      O.lastTargetCy = pos.cy;
+      O.lastTargetAt = now;
+    } else if (O.hadTargetInFloor && O.lastTargetAt > 0 && (now - O.lastTargetAt) < 1800 && pos.source !== 'state') {
+      // Tạm giữ tâm mục tiêu trong 1.8s nếu chữ trên canvas vừa chớp tắt
+      pos.hasTarget = true;
+      pos.cx = O.lastTargetCx;
+      pos.cy = O.lastTargetCy;
+    }
+
+    // Phát hiện vừa lên tầng hoặc vừa tiêu diệt hết quái của tầng -> chạy ngay về trung tâm map
+    if (floorChanged) {
+      O.returningToCenter = true;
+      O.returnStartedAt = now;
+      O.hadTargetInFloor = false;
+      O.lastTargetAt = 0;
+      O.stuckBeats = 0;
+      O.theta = 0;
+    } else if (!pos.hasTarget && O.hadTargetInFloor) {
+      O.returningToCenter = true;
+      O.returnStartedAt = now;
+      O.hadTargetInFloor = false;
+      O.lastTargetAt = 0;
+    }
+
+    // Phát hiện nhân vật bị dạt ra góc hoặc sát cạnh bản đồ -> lập tức chạy thẳng về trung tâm map
+    var nearEdge = (Math.abs(pos.px) >= 0.36 || Math.abs(pos.py) >= 0.36 || Math.hypot(pos.px, pos.py) >= 0.40);
+    if (nearEdge && !O.returningToCenter) {
+      O.returningToCenter = true;
+      O.returnStartedAt = now;
+      O.stuckBeats = 0;
+    }
+
+    // 2. Nếu đang ở trạng thái chạy về trung tâm map -> di chuyển LIÊN TỤC cho tới khi về gần tâm (không dừng nhịp)
+    if (O.returningToCenter) {
+      var toCx = -pos.px;
+      var toCy = -pos.py;
+      var distToCenter = Math.hypot(toCx, toCy);
+      var returnElapsed = now - (O.returnStartedAt || now);
+      if (distToCenter <= 0.08 || returnElapsed > 2600) {
+        O.returningToCenter = false;
+        O.returnStartedAt = 0;
+        pauseOrbitMovement();
+        ensureGameAutoOn(true);
+        return;
+      }
+      var rvx = toCx / distToCenter;
+      var rvy = toCy / distToCenter;
+      O.lastMoveVx = rvx;
+      O.lastMoveVy = rvy;
+      O.moveStartedAt = now;
+      O.lastAt = now;
+      var joyRet = findVisibleJoystick();
+      if (joyRet) {
+        syncOrbitKeys({ up: false, down: false, left: false, right: false }, stage.canvas);
+        pulseJoystickOrbit(rvx, rvy, joyRet);
+      } else {
+        syncOrbitKeys({
+          up: rvy < -0.25,
+          down: rvy > 0.25,
+          left: rvx < -0.25,
+          right: rvx > 0.25
+        }, stage.canvas);
+      }
+      O.moving = true;
+      O.active = true;
+      return;
+    }
+
     var elapsedTotal = Math.max(0, now - O.phaseStart);
     var beatIdx = Math.floor(elapsedTotal / params.cycleMs);
     var elapsedInBeat = elapsedTotal % params.cycleMs;
     var isMoveBeat = elapsedInBeat < params.moveMs;
 
-    O.style = style;
-    O.skillName = resolved.skill || '';
-
     if (!isMoveBeat) {
       if (O.moving) {
         finishOrbitMovePulse();
       } else {
-        // Trong nhịp dừng đánh: luôn giữ Auto game BẬT để nhân vật khóa mục tiêu & tung chiêu
-        if (O.lastEstDecayAt > 0 && now - O.lastEstDecayAt >= 180) {
-          O.estX *= 0.86;
-          O.estY *= 0.86;
-          O.lastEstDecayAt = now;
-        }
+        // Trong nhịp dừng đánh: giữ nguyên tọa độ ước lượng (không kéo lệch về 0) và luôn giữ Auto game BẬT
         ensureGameAutoOn(false);
       }
       O.lastAt = now;
@@ -3824,7 +3992,6 @@ class GameAutoPilot(
       return;
     }
 
-    // Mỗi nhịp chỉ tạo 1 bước né ngắn theo mục tiêu vòng tròn quanh trung tâm map
     if (O.moving && beatIdx === O.lastBeatIdx) {
       if (O.moveStartedAt > 0 && now - O.moveStartedAt >= params.moveMs) {
         finishOrbitMovePulse();
@@ -3838,46 +4005,34 @@ class GameAutoPilot(
 
     O.lastBeatIdx = beatIdx;
 
-    var curFloor = readCurrentTowerFloor();
-    if (curFloor > 0) {
-      if (O.lastFloorNum > 0 && curFloor > O.lastFloorNum) {
-        // Vừa vượt tầng tháp -> lập tức di chuyển nhanh về tâm map
-        O.returningToCenter = true;
-        O.hadTargetInFloor = false;
-        O.theta = 0;
-      }
-      O.lastFloorNum = curFloor;
-    }
-
-    var pos = resolveArenaPosition(now, params);
-    if (pos.hasTarget) {
-      O.hadTargetInFloor = true;
-    } else if (O.hadTargetInFloor && pos.source !== 'center_anchor') {
-      O.returningToCenter = true;
-      O.hadTargetInFloor = false;
-    }
-
+    // Kiểm tra kẹt góc (vị trí gần như không đổi sau 2 nhịp di chuyển) -> chạy ngay về trung tâm map
     if (pos.source !== 'center_anchor') {
-      O.estX = pos.px - pos.cx;
-      O.estY = pos.py - pos.cy;
+      var movedDist = Math.hypot(pos.px - O.prevPx, pos.py - O.prevPy);
+      O.prevPx = pos.px;
+      O.prevPy = pos.py;
+      if (movedDist < 0.008 && Math.hypot(pos.px, pos.py) > 0.22) {
+        O.stuckBeats++;
+        if (O.stuckBeats >= 2) {
+          O.returningToCenter = true;
+          O.returnStartedAt = now;
+          O.stuckBeats = 0;
+          return;
+        }
+      } else {
+        O.stuckBeats = 0;
+      }
     }
 
-    var steer;
-    if (O.returningToCenter) {
-      var toCx = -pos.px;
-      var toCy = -pos.py;
-      var distToCenter = Math.hypot(toCx, toCy);
-      if (distToCenter <= 0.035) {
-        O.returningToCenter = false;
-        pauseOrbitMovement();
-        return;
-      }
-      steer = { vx: toCx / distToCenter, vy: toCy / distToCenter, clamped: false };
-    } else {
-      // Tiến đều 30 độ (PI/6) quanh mục tiêu đã chọn với bán kính 90 (Đánh gần) / 400 (Đánh xa)
-      O.theta = (O.theta + params.stepRad) % (Math.PI * 2);
-      steer = computeCenterAnchoredVector(pos, params, O.theta);
+    // Không có mục tiêu thực tế thì đứng yên chờ Auto khóa mục tiêu, tuyệt đối không chạy linh tinh
+    if (!pos.hasTarget && pos.source !== 'center_anchor') {
+      pauseOrbitMovement();
+      ensureGameAutoOn(false);
+      return;
     }
+
+    // Tiến đều 30 độ (PI/6) quanh mục tiêu đã chọn, giữ chặt bán kính 90 (Đánh gần) / 400 (Đánh xa)
+    O.theta = (O.theta + params.stepRad) % (Math.PI * 2);
+    var steer = computeOrbitSteeringVector(pos, params, O.theta);
     O.lastMoveVx = steer.vx;
     O.lastMoveVy = steer.vy;
     O.moveStartedAt = now;
@@ -3897,10 +4052,10 @@ class GameAutoPilot(
       pulseJoystickOrbit(steer.vx, steer.vy, joyEl);
     } else {
       syncOrbitKeys({
-        up: steer.vy < -0.35,
-        down: steer.vy > 0.35,
-        left: steer.vx < -0.35,
-        right: steer.vx > 0.35
+        up: steer.vy < -0.382,
+        down: steer.vy > 0.382,
+        left: steer.vx < -0.382,
+        right: steer.vx > 0.382
       }, stage.canvas);
     }
 
@@ -3953,6 +4108,13 @@ class GameAutoPilot(
   window.__vlmOrbitTimer = setInterval(function () {
     try { orbitTick(); } catch (eOrb) {}
   }, 90);
+  setInterval(function () {
+    try {
+      if (A.cfg.on && !O.moving && !isUserControlling(2500)) {
+        ensureGameAutoOn(false);
+      }
+    } catch (eAg) {}
+  }, 1200);
   return 'installed';
 })();
     """.trimIndent()
