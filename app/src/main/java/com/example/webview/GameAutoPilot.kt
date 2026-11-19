@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-11"
+        const val SCRIPT_VER = "vlmauto-12"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -661,11 +661,14 @@ class GameAutoPilot(
     } catch (e) {}
   }
 
-  var evList = ['mousedown', 'keydown', 'wheel', 'touchstart'];
+  var evList = ['mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown'];
   for (var ei = 0; ei < evList.length; ei++) {
     (function (ev) {
       document.addEventListener(ev, function (e) {
-        if (e && e.isTrusted) A.userAt = Date.now();
+        if (e && e.isTrusted) {
+          A.userAt = Date.now();
+          try { if (typeof pauseOrbitMovement === 'function') pauseOrbitMovement(); } catch (eP) {}
+        }
       }, true);
     })(evList[ei]);
   }
@@ -785,6 +788,9 @@ class GameAutoPilot(
         localStorage.removeItem(keyName);
       }
       A.pbOut = 0; A.pbSeen = 0; A.gate = 0; A.cool = {};
+      try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl0) {}
+      try { if (typeof bossHkPrevSet === 'function') bossHkPrevSet(null); } catch (eBh0) {}
+      try { if (typeof prevSet === 'function') prevSet(null); } catch (ePr0) {}
       if (!silent) note('đã đặt lại bộ đếm ngày');
     } catch (e) {}
   }
@@ -817,12 +823,53 @@ class GameAutoPilot(
     return true;
   };
 
+  var isUserControlling = function (graceMs) {
+    var g = graceMs || 5000;
+    if (window.__isUserTouching) return true;
+    var now = Date.now();
+    if (now - A.userAt <= g) return true;
+    if (now - (A.touchK || 0) <= g) return true;
+    return false;
+  };
+
   var ranh = function () {
+    if (isUserControlling(6000)) return false;
     if (A.immediate || A.immUntil > Date.now()) {
-      return Date.now() - A.userAt > 4000;
+      return !isUserControlling(6000);
     }
     if (Date.now() - A.userAt <= 45000) return false;
     return Date.now() - (A.touchK || 0) > 15000;
+  };
+
+  // 4 mốc Boss Hoàng Kim theo giờ Việt Nam (GMT+7): 12:00, 15:30, 19:30, 22:00
+  // Cửa sổ ưu tiên: trước 1 phút đến sau 20 phút (ví dụ 11:59 -> 12:20)
+  var BOSS_HK_SLOTS_MIN = [12 * 60, 15 * 60 + 30, 19 * 60 + 30, 22 * 60];
+  function getActiveBossHkSlot() {
+    var v = new Date(Date.now() + 7 * 3600e3);
+    var curMin = v.getUTCHours() * 60 + v.getUTCMinutes();
+    for (var i = 0; i < BOSS_HK_SLOTS_MIN.length; i++) {
+      var start = BOSS_HK_SLOTS_MIN[i] - 1;
+      var end = BOSS_HK_SLOTS_MIN[i] + 20;
+      if (curMin >= start && curMin < end) {
+        return vnTradeDay() + '_' + BOSS_HK_SLOTS_MIN[i];
+      }
+    }
+    return null;
+  }
+
+  var bossHkPrevKey = function () {
+    var who = dayWho();
+    return 'vlm_auto_bosshk_prev' + (who ? '_' + who : '');
+  };
+  var bossHkPrevGet = function () {
+    try { return localStorage.getItem(bossHkPrevKey()); } catch (e) { return null; }
+  };
+  var bossHkPrevSet = function (m) {
+    try {
+      var k = bossHkPrevKey();
+      if (m) localStorage.setItem(k, m);
+      else localStorage.removeItem(k);
+    } catch (e) {}
   };
 
   var isAuthOrProtectedModalOpen = function () {
@@ -2748,6 +2795,8 @@ class GameAutoPilot(
       }
     }
 
+    if (isUserControlling(6000)) return;
+
     var onlyTowerCfg = !!(A.cfg.thap && A.cfg.thapNeDon);
     var inTowerRightNow = !!(I.tower || (A.st && A.st.noi === 'thap') || isInTowerNow());
     if (onlyTowerCfg && inTowerRightNow) {
@@ -2755,11 +2804,48 @@ class GameAutoPilot(
     }
     var towerLocked = onlyTowerCfg && towerLockGet();
 
-    var pbCon = !towerLocked && A.cfg.pb && !pbXong();
+    // ƯU TIÊN CAO NHẤT THEO KHUNG GIỜ: 4 mốc Boss Hoàng Kim (12:00, 15:30, 19:30, 22:00)
+    // Chuyển về Chế độ Luyện Công (farm) kết hợp Auto ingame đi đánh Boss HK, xong tự khôi phục chế độ trước đó.
+    var activeBossSlot = getActiveBossHkSlot();
+    var savedBossPrev = bossHkPrevGet();
+    if (activeBossSlot) {
+      if (!savedBossPrev && mode && mode !== 'farm') {
+        bossHkPrevSet(mode);
+      }
+      if (mode !== 'farm') {
+        if (I.dead || isUserControlling(6000) || !ready('mode_bosshk', 8000)) return;
+        if (await switchMode('farm')) {
+          ensureGameAutoOn(false);
+          note('👹 Đến giờ Boss Hoàng Kim → chuyển Luyện Công đánh Boss');
+        }
+      } else {
+        ensureGameAutoOn(false);
+      }
+      return;
+    } else if (savedBossPrev) {
+      if (!I.dead && !isUserControlling(6000) && ready('mode_bosshk_restore', 8000)) {
+        if (mode !== savedBossPrev) {
+          if (await switchMode(savedBossPrev)) {
+            bossHkPrevSet(null);
+            note('✅ Xong khung giờ Boss Hoàng Kim → trở về ' + (MODE_VI[savedBossPrev] || savedBossPrev));
+          }
+        } else {
+          bossHkPrevSet(null);
+        }
+      }
+      return;
+    }
+
+    // THỨ TỰ HOẠT ĐỘNG TRONG NGÀY:
+    // 1. Dã Tẩu + Boss Sát Thủ + Đi thuyền (Phong Lăng Độ) -> 'quest'
+    // 2. Phó Bản -> 'dg'
+    // 3. Leo Tháp -> 'tower'
     var dtCon = !towerLocked && A.cfg.dt && lv >= 20 && !t.du && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
     var stCon = !towerLocked && A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
+    var pldCon = !towerLocked && !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
+    var pbCon = !towerLocked && A.cfg.pb && !pbXong();
     var thapCon = A.cfg.thap;
-    var want = towerLocked ? 'tower' : (pbCon ? 'dg' : ((dtCon || stCon) ? 'quest' : (thapCon ? 'tower' : null)));
+    var want = towerLocked ? 'tower' : ((dtCon || stCon || pldCon) ? 'quest' : (pbCon ? 'dg' : (thapCon ? 'tower' : null)));
     var prev = prevGet();
 
     async function switchMode(targetMode) {
@@ -2791,7 +2877,7 @@ class GameAutoPilot(
     // tự động vào lại Tháp sau khi Rớt Tháp (chết) hoặc mất kết nối / tải lại game.
     if (towerLocked) {
       if (I.dead) return;
-      if (Date.now() - A.userAt <= 3000) return;
+      if (isUserControlling(6000)) return;
       if (mode !== 'tower') {
         if (!ready('mode_tower_lock', 7000)) return;
         if (await switchMode('tower')) {
@@ -3375,8 +3461,7 @@ class GameAutoPilot(
 
   function isOrbitEligible() {
     if (!A.cfg.on || !A.cfg.thapNeDon) return false;
-    if (window.__isUserTouching) return false;
-    if (Date.now() - A.userAt <= 2500) return false;
+    if (isUserControlling(3500)) return false;
     try {
       var ae = document.activeElement;
       if (ae) {
@@ -3434,26 +3519,27 @@ class GameAutoPilot(
   var ORBIT_STEP_RAD = Math.PI / 6; // Bước 30 độ cố định mỗi nhịp
 
   function computeOrbitParams(style) {
+    // Nhịp di chuyển trước (moveMs), tung skill sau (phần còn lại của cycleMs)
     // Bán kính thế giới: 90 cho Đánh gần (MELEE), 400 cho Đánh xa (RANGED)
     if (style === 'melee') {
       return {
         stepRad: ORBIT_STEP_RAD,
         worldRadius: 90,
-        cycleMs: 750,
-        moveMs: 220,
+        cycleMs: 680,
+        moveMs: 240,
         rTarget: 0.09,
-        rMax: 0.42,
-        estSpeed: 0.42
+        rMax: 0.44,
+        estSpeed: 0.44
       };
     }
     return {
       stepRad: ORBIT_STEP_RAD,
       worldRadius: 400,
-      cycleMs: 750,
-      moveMs: 260,
+      cycleMs: 680,
+      moveMs: 280,
       rTarget: 0.36,
-      rMax: 0.44,
-      estSpeed: 0.46
+      rMax: 0.45,
+      estSpeed: 0.48
     };
   }
 
@@ -3694,14 +3780,13 @@ class GameAutoPilot(
       return;
     }
 
-    // Chờ ~900ms khi mới vào tầng để Auto tiếp cận khu vực trung tâm map / boss và ghi nhận trạng thái Auto
-    if (now - O.towerEnteredAt < 900) {
+    // Ghi nhận trạng thái nút Auto ngay khi vào tầng, KHÔNG trì hoãn: có mục tiêu là di chuyển vòng tròn ngay (di chuyển trước, tung skill sau)
+    if (now - O.towerEnteredAt < 250) {
       var preBtn = findGameAutoButton();
       if (detectGameAutoState(preBtn) === 'on' && preBtn) {
         O.autoSawOn = true;
         O.autoPreMoveSig = autoBtnVisualSignature(preBtn);
       }
-      return;
     }
 
     if (!O.phaseStart) {
