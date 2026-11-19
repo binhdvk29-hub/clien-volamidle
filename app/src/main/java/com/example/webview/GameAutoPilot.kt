@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-19"
+        const val SCRIPT_VER = "vlmauto-20"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3463,7 +3463,8 @@ class GameAutoPilot(
       if (O.moving) return false;
       if (isUserControlling(2500)) return false;
       var now = Date.now();
-      if (now - O.lastAutoRestoreAt < 280) return false;
+      if (!afterMovePulse && now - O.lastAutoRestoreAt < 250) return false;
+      if (afterMovePulse && now - O.lastAutoRestoreAt < 90) return false;
 
       var btn = findGameAutoButton();
       var state = detectGameAutoState(btn);
@@ -3699,14 +3700,15 @@ class GameAutoPilot(
   var ORBIT_STEP_RAD = Math.PI / 9; // Bước 20 độ (20° = PI / 9) cố định mỗi nhịp
 
   function computeOrbitParams(style) {
-    // Chu kỳ 2 nhịp rõ ràng: Nhịp 1 Di chuyển vòng tròn 20° (moveMs) -> Nhịp 2 Dừng tung chiêu Auto ingame (cycleMs - moveMs)
+    // Tách nhịp di chuyển chậm hơn 1 nhịp (~1.35s - 1.4s/chu kỳ):
+    // Nhịp di chuyển ngắn (220-260ms) -> Nhịp nghỉ giữ Auto tự đánh lâu hơn (~1130-1140ms)
     // Bán kính thế giới: 90 cho Đánh gần (MELEE), 400 cho Đánh xa (RANGED)
     if (style === 'melee') {
       return {
         stepRad: ORBIT_STEP_RAD,
         worldRadius: 90,
-        cycleMs: 660,
-        moveMs: 230,
+        cycleMs: 1350,
+        moveMs: 220,
         rTarget: 0.085,
         rMax: 0.42,
         estSpeed: 0.44,
@@ -3716,8 +3718,8 @@ class GameAutoPilot(
     return {
       stepRad: ORBIT_STEP_RAD,
       worldRadius: 400,
-      cycleMs: 700,
-      moveMs: 270,
+      cycleMs: 1400,
+      moveMs: 260,
       rTarget: 0.34,
       rMax: 0.44,
       estSpeed: 0.48
@@ -3967,13 +3969,14 @@ class GameAutoPilot(
     O.estY += O.lastMoveVy * params.estSpeed * moveSec;
     pauseOrbitMovement();
     O.lastAt = now;
+    // Kích hoạt lại Auto ingame NGAY LẬP TỨC khi vừa dừng di chuyển
     ensureGameAutoOn(true);
     setTimeout(function () {
       try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA1) {}
-    }, 80);
+    }, 50);
     setTimeout(function () {
       try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA2) {}
-    }, 260);
+    }, 180);
   }
 
   function orbitTick() {
@@ -4113,18 +4116,12 @@ class GameAutoPilot(
       O.lastMoveVy = rvy;
       O.moveStartedAt = now;
       O.lastAt = now;
-      var joyRet = findVisibleJoystick();
-      if (joyRet) {
-        syncOrbitKeys({ up: false, down: false, left: false, right: false }, stage.canvas);
-        pulseJoystickOrbit(rvx, rvy, joyRet);
-      } else {
-        syncOrbitKeys({
-          up: rvy < -0.382,
-          down: rvy > 0.382,
-          left: rvx < -0.382,
-          right: rvx > 0.382
-        }, stage.canvas);
-      }
+      syncOrbitKeys({
+        up: rvy < -0.382,
+        down: rvy > 0.382,
+        left: rvx < -0.382,
+        right: rvx > 0.382
+      }, stage.canvas);
       O.moving = true;
       O.active = true;
       return;
@@ -4200,19 +4197,14 @@ class GameAutoPilot(
       }
     }
 
-    // Chỉ dùng 1 kênh di chuyển sạch (joystick nếu hiện rõ, ngược lại phím mũi tên) để tránh xung đột
-    var joyEl = findVisibleJoystick();
-    if (joyEl) {
-      syncOrbitKeys({ up: false, down: false, left: false, right: false }, stage.canvas);
-      pulseJoystickOrbit(steer.vx, steer.vy, joyEl);
-    } else {
-      syncOrbitKeys({
-        up: steer.vy < -0.382,
-        down: steer.vy > 0.382,
-        left: steer.vx < -0.382,
-        right: steer.vx > 0.382
-      }, stage.canvas);
-    }
+    // Di chuyển hoàn toàn bằng phím điều hướng (KHÔNG chạm màn hình / không gửi pointerdown lên joystick)
+    // để hạn chế tối đa việc game tự tắt Auto khi phát hiện chạm cảm ứng.
+    syncOrbitKeys({
+      up: steer.vy < -0.382,
+      down: steer.vy > 0.382,
+      left: steer.vx < -0.382,
+      right: steer.vx > 0.382
+    }, stage.canvas);
 
     O.moving = true;
     if (O.moveEndTimer) clearTimeout(O.moveEndTimer);
