@@ -156,7 +156,7 @@ class GameTabManager(
     private var isHideGameSynced: Boolean = prefs.getHideGame()
 
     @Volatile
-    private var isPcModeActive: Boolean = false
+    private var isPcModeActive: Boolean = prefs.getPcMode()
 
     @Volatile
     private var visibleTabsInLayout: Set<Int> = (0 until TabLimits.SLOT_COUNT).toSet()
@@ -180,6 +180,10 @@ class GameTabManager(
         isTabActive = { i -> isTabActive.getOrNull(i) == true },
         isSystemRunning = { _isSystemRunning.value }
     )
+
+    fun saveAutoConfigOnly(tabIndex: Int, json: String?) {
+        autoPilot.saveConfigOnly(tabIndex, json)
+    }
 
     fun updateAutoConfig(tabIndex: Int, json: String?, immediate: Boolean = true) {
         autoPilot.updateConfig(tabIndex, json, immediate = immediate)
@@ -1058,19 +1062,19 @@ class GameTabManager(
         }
     }
 
-    fun applyPcMode(activeInLandscape: Boolean) {
-        if (isPcModeActive == activeInLandscape) return
-        isPcModeActive = activeInLandscape
+    fun applyPcMode(enabled: Boolean) {
+        val changed = (isPcModeActive != enabled)
+        isPcModeActive = enabled
         mainHandler.post {
-            val script = buildPcModeScript(activeInLandscape)
-            val statusMsg = if (activeInLandscape) "🖥️ Chế độ PC: Toàn màn hình (70%)" else "🖥️ Đã tắt Chế độ PC"
+            val script = buildPcModeScript(enabled)
+            val statusMsg = if (enabled) "🖥️ Chế độ PC: Toàn màn hình (70%)" else "🖥️ Đã tắt Chế độ PC"
             for (i in 0 until tabCount) {
                 val wv = webViews[i] ?: continue
                 try {
                     if (wv.url != null && wv.url != "about:blank") {
                         wv.evaluateJavascript(script, null)
                     }
-                    if (isTabActive[i]) {
+                    if (changed && isTabActive[i]) {
                         updateStatus(i, statusMsg)
                     }
                 } catch (_: Exception) {}

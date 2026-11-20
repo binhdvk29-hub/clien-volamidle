@@ -39,6 +39,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,19 +65,27 @@ fun AutoConfigDialog(
     characterName: String = "",
     characterSects: List<String> = emptyList(),
     onSelectTab: (Int) -> Unit,
+    onToggleAuto: (Int, Boolean, AutoConfig) -> Unit = { _, _, _ -> },
     onSave: (Int, AutoConfig) -> Unit,
     onSaveAll: (AutoConfig) -> Unit = {},
     onResetCounters: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
     val currentConfig = configs.getOrElse(tabIndex) { AutoConfig() }
-    var draft by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig) }
+    var draft by remember(tabIndex) { mutableStateOf(currentConfig) }
     val currentSectRaw = characterSects.getOrElse(tabIndex) { "" }
 
-    var k2kText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.k2k.toString()) }
-    var lbMuaText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.lbMua.toString()) }
-    var knbMuaText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.knbMua.toString()) }
-    var knbGiuText by remember(tabIndex, currentConfig) { mutableStateOf(currentConfig.knbGiu.toString()) }
+    var k2kText by remember(tabIndex) { mutableStateOf(currentConfig.k2k.toString()) }
+    var lbMuaText by remember(tabIndex) { mutableStateOf(currentConfig.lbMua.toString()) }
+    var knbMuaText by remember(tabIndex) { mutableStateOf(currentConfig.knbMua.toString()) }
+    var knbGiuText by remember(tabIndex) { mutableStateOf(currentConfig.knbGiu.toString()) }
+    var statusNotice by remember(tabIndex) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(tabIndex, currentConfig.on) {
+        if (draft.on != currentConfig.on) {
+            draft = draft.copy(on = currentConfig.on)
+        }
+    }
 
     fun buildDraftConfig(): AutoConfig = draft.copy(
         k2k = parseClamped(k2kText, AutoConfig.K2K_MAX),
@@ -192,9 +201,9 @@ fun AutoConfigDialog(
                                 )
                                 Text(
                                     text = if (draft.on) {
-                                        "🟢 Đang bật riêng cho Tab ${tabIndex + 1}"
+                                        "🟢 Đang chạy tự động cho Tab ${tabIndex + 1}"
                                     } else {
-                                        "⚪ Đang tắt (Tab ${tabIndex + 1})"
+                                        "⚪ Đang tắt — gạt công tắc để auto app bắt đầu hoạt động"
                                     },
                                     color = if (draft.on) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
                                     fontSize = 9.sp
@@ -202,7 +211,16 @@ fun AutoConfigDialog(
                             }
                             Switch(
                                 checked = draft.on,
-                                onCheckedChange = { draft = draft.copy(on = it) },
+                                onCheckedChange = { enabled ->
+                                    val updated = buildDraftConfig().copy(on = enabled)
+                                    draft = updated
+                                    statusNotice = if (enabled) {
+                                        "🟢 Đã bật tự động cho Tab ${tabIndex + 1}"
+                                    } else {
+                                        "⚪ Đã tắt tự động cho Tab ${tabIndex + 1}"
+                                    }
+                                    onToggleAuto(tabIndex, enabled, updated)
+                                },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
                                     checkedTrackColor = Color(0xFF10B981),
@@ -406,6 +424,19 @@ fun AutoConfigDialog(
                     }
                 }
 
+                statusNotice?.let { msg ->
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = msg,
+                        color = Color(0xFF6EE7B7),
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("auto_save_notice")
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
@@ -414,7 +445,14 @@ fun AutoConfigDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
-                        onClick = { onSave(tabIndex, buildDraftConfig()) },
+                        onClick = {
+                            onSave(tabIndex, buildDraftConfig())
+                            statusNotice = if (draft.on) {
+                                "✅ Đã lưu cài đặt cho Tab ${tabIndex + 1}"
+                            } else {
+                                "✅ Đã lưu cài đặt Tab ${tabIndex + 1} (gạt công tắc Bật tự động để chạy)"
+                            }
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                         modifier = Modifier
                             .weight(1f)
@@ -430,7 +468,10 @@ fun AutoConfigDialog(
                     }
 
                     Button(
-                        onClick = { onSaveAll(buildDraftConfig()) },
+                        onClick = {
+                            onSaveAll(buildDraftConfig())
+                            statusNotice = "✅ Đã lưu cài đặt cho tất cả $tabCount tab (chỉ chạy tab đã bật công tắc)"
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                         modifier = Modifier
                             .weight(1f)
@@ -471,7 +512,7 @@ fun AutoConfigDialog(
                             .heightIn(min = 48.dp)
                             .testTag("auto_cancel_button")
                     ) {
-                        Text("Hủy", fontSize = 10.sp)
+                        Text("Đóng", fontSize = 10.sp)
                     }
                 }
             }

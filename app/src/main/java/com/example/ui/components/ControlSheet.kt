@@ -522,21 +522,21 @@ fun ControlSheet(
                             .testTag("sheet_pc_mode_row"),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val pcLabel = when {
-                            !isLandscape -> "🖥️ PC (Toàn màn hình 70% · Chỉ màn ngang)"
-                            isPcMode -> "🖥️ PC: ĐANG BẬT (Toàn màn hình 70%)"
-                            else -> "🖥️ PC (Toàn màn hình 70%)"
+                        val pcLabel = if (isPcMode) {
+                            "🖥️ PC: ĐANG BẬT (Toàn màn hình 70%)"
+                        } else {
+                            "🖥️ PC (Toàn màn hình 70%)"
                         }
                         SegmentButton(
                             label = pcLabel,
-                            selected = isLandscape && isPcMode,
+                            selected = isPcMode,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(36.dp)
                                 .testTag("sheet_pc_mode_toggle"),
                             onClick = {
                                 onInteract()
-                                if (isLandscape) onTogglePcMode()
+                                onTogglePcMode()
                             }
                         )
                     }

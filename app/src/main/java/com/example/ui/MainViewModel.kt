@@ -270,30 +270,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveAutoConfig(tabIndex: Int, config: AutoConfig) {
         if (tabIndex !in 0 until TabLimits.SLOT_COUNT) return
-        val json = config.toJson().toString()
+        // Chỉ lưu các thay đổi lựa chọn, giữ nguyên trạng thái Bật/Tắt hiện tại,
+        // không đóng cửa sổ nổi và không tự chạy auto app.
+        val existingOn = _autoConfigs.value.getOrNull(tabIndex)?.on == true
+        val saved = config.copy(on = existingOn)
+        val json = saved.toJson().toString()
         prefs.setAutoConfig(tabIndex, json)
         val mutable = _autoConfigs.value.toMutableList()
         if (tabIndex in mutable.indices) {
-            mutable[tabIndex] = config
+            mutable[tabIndex] = saved
             _autoConfigs.value = mutable
         }
-        _autoDialogTabIndex.value = null
-        tabManager.updateAutoConfig(tabIndex, json, immediate = true)
+        tabManager.saveAutoConfigOnly(tabIndex, json)
     }
 
     fun saveAllAutoConfig(config: AutoConfig) {
         val count = tabManager.tabCountState.value.coerceIn(1, TabLimits.SLOT_COUNT)
-        val json = config.toJson().toString()
         val mutable = _autoConfigs.value.toMutableList()
         for (i in 0 until count) {
+            // Lưu các lựa chọn cho tất cả tab nhưng giữ nguyên trạng thái Bật/Tắt riêng từng tab,
+            // không đóng cửa sổ nổi và không tự bật/chạy auto app.
+            val existingOn = mutable.getOrNull(i)?.on == true
+            val perTab = config.copy(on = existingOn)
+            val json = perTab.toJson().toString()
             prefs.setAutoConfig(i, json)
             if (i in mutable.indices) {
-                mutable[i] = config
+                mutable[i] = perTab
             }
-            tabManager.updateAutoConfig(i, json, immediate = true)
+            tabManager.saveAutoConfigOnly(i, json)
         }
         _autoConfigs.value = mutable
-        _autoDialogTabIndex.value = null
+    }
+
+    fun setAutoEnabled(tabIndex: Int, enabled: Boolean, config: AutoConfig) {
+        if (tabIndex !in 0 until TabLimits.SLOT_COUNT) return
+        val updated = config.copy(on = enabled)
+        val json = updated.toJson().toString()
+        prefs.setAutoConfig(tabIndex, json)
+        val mutable = _autoConfigs.value.toMutableList()
+        if (tabIndex in mutable.indices) {
+            mutable[tabIndex] = updated
+            _autoConfigs.value = mutable
+        }
+        tabManager.updateAutoConfig(tabIndex, json, immediate = enabled)
     }
 
     fun resetAutoDailyCounters(tabIndex: Int) {

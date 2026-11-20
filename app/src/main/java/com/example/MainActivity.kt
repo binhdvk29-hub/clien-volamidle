@@ -131,12 +131,18 @@ class MainActivity : ComponentActivity() {
         if (viewModel.isSleepMode.value) {
             applySleepBrightness(!viewModel.isSleepWakeSetupDialogOpen.value)
         }
+        applyFullscreenMode(viewModel.isPcMode.value)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && viewModel.isSleepMode.value) {
-            applySleepBrightness(!viewModel.isSleepWakeSetupDialogOpen.value)
+        if (hasFocus) {
+            if (viewModel.isSleepMode.value) {
+                applySleepBrightness(!viewModel.isSleepWakeSetupDialogOpen.value)
+            }
+            if (viewModel.isPcMode.value) {
+                applyFullscreenMode(true)
+            }
         }
     }
 
@@ -185,7 +191,7 @@ fun MainScreen(
     val isHideMapSynced by viewModel.isHideMapSynced.collectAsState()
     val isHideGameSynced by viewModel.isHideGameSynced.collectAsState()
     val isPcMode by viewModel.isPcMode.collectAsState()
-    val isPcModeEffective = isPcMode && !isPortrait
+    val isPcModeEffective = isPcMode
     val autoConfigs by viewModel.autoConfigs.collectAsState()
     val autoDialogTabIndex by viewModel.autoDialogTabIndex.collectAsState()
     val tabCount by viewModel.tabCount.collectAsState()
@@ -457,6 +463,9 @@ fun MainScreen(
                     characterName = tabCharName,
                     characterSects = tabSects,
                     onSelectTab = { newTab -> viewModel.switchAutoDialogTab(newTab) },
+                    onToggleAuto = { tIdx, enabled, updated ->
+                        viewModel.setAutoEnabled(tIdx, enabled, updated)
+                    },
                     onSave = { tIdx, updated -> viewModel.saveAutoConfig(tIdx, updated) },
                     onSaveAll = { updated -> viewModel.saveAllAutoConfig(updated) },
                     onResetCounters = { tIdx -> viewModel.resetAutoDailyCounters(tIdx) },

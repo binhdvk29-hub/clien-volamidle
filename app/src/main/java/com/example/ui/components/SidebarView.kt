@@ -276,11 +276,11 @@ fun SidebarView(
             Spacer(modifier = Modifier.height(6.dp))
 
             SyncedToggleCheckboxRow(
-                label = if (isLandscape) "🖥️ PC (Toàn màn hình 70%)" else "🖥️ PC (Chỉ màn ngang)",
-                checked = isLandscape && isPcMode,
+                label = "🖥️ PC (Toàn màn hình 70%)",
+                checked = isPcMode,
                 tabCount = tabCount,
                 testTag = "sync_pc_mode_checkbox",
-                onToggle = { if (isLandscape) onTogglePcMode() }
+                onToggle = { onTogglePcMode() }
             )
 
             Spacer(modifier = Modifier.height(6.dp))
