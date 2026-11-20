@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-24"
+        const val SCRIPT_VER = "vlmauto-25"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3706,19 +3706,19 @@ class GameAutoPilot(
   var ORBIT_STEP_RAD = Math.PI / 9; // Bước 20 độ (20° = PI / 9) cố định mỗi nhịp
 
   function computeOrbitParams(style) {
-    // Tính toán chuẩn hình học đường tròn quanh tâm mục tiêu (1 nhịp di chuyển : 3 nhịp đánh Auto):
-    // - Đánh gần (MELEE): R = 90, N = 12 nhịp/vòng (>= 10 nhịp), góc Δθ = 30° (PI/6), dây cung L ≈ 46.6
-    // - Đánh xa (RANGED): R = 400, N = 18 nhịp/vòng (>= 15 nhịp), góc Δθ = 20° (PI/9), dây cung L ≈ 138.9
+    // Di chuyển vòng tròn nhanh ngang tốc độ xuất chiêu (~520ms-580ms/nhịp click chuột trái):
+    // - Đánh gần (MELEE): R = 90, N = 12 nhịp/vòng (góc 30°), click sát quanh mục tiêu
+    // - Đánh xa (RANGED): R = 400, N = 18 nhịp/vòng (góc 20°), click vòng tròn rộng quanh mục tiêu
     if (style === 'melee') {
       return {
         stepsPerCircle: 12,
         stepRad: Math.PI / 6, // 30° -> 12 nhịp/vòng
         worldRadius: 90,
-        cycleMs: 1980,
-        moveMs: 220,
-        rTarget: 0.085,
-        rMax: 0.40,
-        clickStep: 0.12,
+        cycleMs: 520,
+        moveMs: 140,
+        rTarget: 0.09,
+        rMax: 0.44,
+        clickStep: 0.14,
         estSpeed: 0.44,
         isMelee: true
       };
@@ -3727,11 +3727,11 @@ class GameAutoPilot(
       stepsPerCircle: 18,
       stepRad: Math.PI / 9, // 20° -> 18 nhịp/vòng
       worldRadius: 400,
-      cycleMs: 2150,
-      moveMs: 260,
-      rTarget: 0.34,
-      rMax: 0.42,
-      clickStep: 0.21,
+      cycleMs: 580,
+      moveMs: 160,
+      rTarget: 0.26,
+      rMax: 0.44,
+      clickStep: 0.22,
       estSpeed: 0.48,
       isMelee: false
     };
@@ -3891,14 +3891,15 @@ class GameAutoPilot(
   }
 
   function isPointOutOfMapBounds(nx, ny) {
-    return (Math.abs(nx) + Math.abs(ny)) >= 0.42 || Math.abs(nx) >= 0.35 || Math.abs(ny) >= 0.35;
+    // Chỉ coi là vượt biên khi thực sự chạm sát mép ngoài bản đồ (không chặn nhầm vòng tròn đánh xa)
+    return (Math.abs(nx) + Math.abs(ny)) >= 0.62 || Math.abs(nx) >= 0.44 || Math.abs(ny) >= 0.44;
   }
 
   function computeOrbitSteeringVector(pos, params, fallbackTheta) {
     var rUse = pos.rNorm || params.rTarget;
 
-    // Trường hợp không đọc được tọa độ trực tiếp: đi đúng tiếp tuyến của đa giác đều N cạnh (12 cho cận chiến, 18 cho đánh xa)
-    if (pos.source === 'center_anchor') {
+    // Luôn xoay đều theo góc fallbackTheta nếu chưa có tọa độ tương đối
+    if (pos.source === 'center_anchor' || !pos.hasTarget) {
       return {
         vx: -Math.sin(fallbackTheta),
         vy: Math.cos(fallbackTheta),
@@ -3911,7 +3912,6 @@ class GameAutoPilot(
     var ry = pos.py - pos.cy;
     var curDist = Math.hypot(rx, ry);
 
-    // Nếu đang trùng tâm mục tiêu, đẩy thẳng ra đúng bán kính rUse (90 hoặc 400)
     if (curDist < 0.005) {
       return {
         vx: Math.cos(fallbackTheta),
@@ -3921,23 +3921,21 @@ class GameAutoPilot(
       };
     }
 
-    // Góc cực thực tế của nhân vật quanh tâm mục tiêu (cx, cy)
     var curAngle = Math.atan2(ry, rx);
     var distRatio = curDist / rUse;
-    // Nếu đang lệch bán kính chuẩn > 30%, giảm bước góc để kéo về đúng bán kính R (90 hoặc 400) trước rồi xoay đều
-    var advanceRad = (distRatio > 1.30 || distRatio < 0.70) ? (params.stepRad * 0.40) : params.stepRad;
+    var advanceRad = (distRatio > 1.35 || distRatio < 0.65) ? (params.stepRad * 0.50) : params.stepRad;
     var nextAngle = curAngle + advanceRad;
 
     var goalX = pos.cx + rUse * Math.cos(nextAngle);
     var goalY = pos.cy + rUse * Math.sin(nextAngle);
 
-    // Kiểm tra trước: nếu điểm đích kế tiếp trên vòng tròn vượt giới hạn bản đồ -> báo kẹt biên để về tâm map ngay
-    if (pos.hasMapPos && isPointOutOfMapBounds(goalX, goalY)) {
+    // Chỉ báo kẹt biên khi CẢ vị trí hiện tại đang sát tường VÀ điểm đích tiếp theo vẫn đâm ra ngoài biên
+    if (pos.hasMapPos && isPointOutOfMapBounds(pos.mapPx, pos.mapPy) && isPointOutOfMapBounds(goalX, goalY)) {
       return {
         vx: -pos.mapPx,
         vy: -pos.mapPy,
         blocked: true,
-        stepScale: 0.32
+        stepScale: 0.30
       };
     }
 
@@ -4186,13 +4184,13 @@ class GameAutoPilot(
       O.lastTargetAt = 0;
     }
 
-    // 1c. Phát hiện bị dồn vào góc vuông hoặc 4 cạnh tường chéo của bản đồ tháp hình thoi (isometric)
+    // 1c. Phát hiện bị dồn sát góc vuông hoặc tường ngoài cùng của bản đồ tháp
     var manhattanDist = pos.hasMapPos ? (Math.abs(pos.mapPx) + Math.abs(pos.mapPy)) : 0;
     var inCornerOrWall = pos.hasMapPos && (
-      manhattanDist >= 0.38 ||
-      Math.abs(pos.mapPx) >= 0.30 ||
-      Math.abs(pos.mapPy) >= 0.30 ||
-      Math.hypot(pos.mapPx, pos.mapPy) >= 0.34
+      manhattanDist >= 0.56 ||
+      Math.abs(pos.mapPx) >= 0.42 ||
+      Math.abs(pos.mapPy) >= 0.42 ||
+      Math.hypot(pos.mapPx, pos.mapPy) >= 0.44
     );
     if (inCornerOrWall && !O.returningToCenter) {
       O.returningToCenter = true;
