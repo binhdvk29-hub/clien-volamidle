@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-23"
+        const val SCRIPT_VER = "vlmauto-24"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3706,30 +3706,32 @@ class GameAutoPilot(
   var ORBIT_STEP_RAD = Math.PI / 9; // Bước 20 độ (20° = PI / 9) cố định mỗi nhịp
 
   function computeOrbitParams(style) {
-    // Học theo nhịp thực tế: 1 nhịp di chuyển click chuột trái + 3 nhịp đứng đánh Auto ingame
-    // - Đánh gần (MELEE): bám sát mục tiêu (bán kính 90), xoay đều 20° quanh mục tiêu, bước click ngắn 0.13
-    // - Đánh xa (RANGED): giữ khoảng cách rộng (bán kính 400), xoay cung rộng 30° quanh mục tiêu, bước click 0.22
+    // Tính toán chuẩn hình học đường tròn quanh tâm mục tiêu (1 nhịp di chuyển : 3 nhịp đánh Auto):
+    // - Đánh gần (MELEE): R = 90, N = 12 nhịp/vòng (>= 10 nhịp), góc Δθ = 30° (PI/6), dây cung L ≈ 46.6
+    // - Đánh xa (RANGED): R = 400, N = 18 nhịp/vòng (>= 15 nhịp), góc Δθ = 20° (PI/9), dây cung L ≈ 138.9
     if (style === 'melee') {
       return {
-        stepRad: ORBIT_STEP_RAD, // 20°
+        stepsPerCircle: 12,
+        stepRad: Math.PI / 6, // 30° -> 12 nhịp/vòng
         worldRadius: 90,
         cycleMs: 1980,
         moveMs: 220,
-        rTarget: 0.08,
+        rTarget: 0.085,
         rMax: 0.40,
-        clickStep: 0.13,
+        clickStep: 0.12,
         estSpeed: 0.44,
         isMelee: true
       };
     }
     return {
-      stepRad: Math.PI / 6, // 30° cung rộng cho đánh xa
+      stepsPerCircle: 18,
+      stepRad: Math.PI / 9, // 20° -> 18 nhịp/vòng
       worldRadius: 400,
       cycleMs: 2150,
       moveMs: 260,
       rTarget: 0.34,
       rMax: 0.42,
-      clickStep: 0.22,
+      clickStep: 0.21,
       estSpeed: 0.48,
       isMelee: false
     };
@@ -3888,16 +3890,20 @@ class GameAutoPilot(
     };
   }
 
+  function isPointOutOfMapBounds(nx, ny) {
+    return (Math.abs(nx) + Math.abs(ny)) >= 0.42 || Math.abs(nx) >= 0.35 || Math.abs(ny) >= 0.35;
+  }
+
   function computeOrbitSteeringVector(pos, params, fallbackTheta) {
     var rUse = pos.rNorm || params.rTarget;
 
-    // Trường hợp không đọc được tọa độ trực tiếp (dead-reckoning):
-    // đi đúng tiếp tuyến của đa giác đều 12 cạnh (mỗi nhịp 30°) để không chạy lệch linh tinh.
+    // Trường hợp không đọc được tọa độ trực tiếp: đi đúng tiếp tuyến của đa giác đều N cạnh (12 cho cận chiến, 18 cho đánh xa)
     if (pos.source === 'center_anchor') {
       return {
         vx: -Math.sin(fallbackTheta),
         vy: Math.cos(fallbackTheta),
-        clamped: false
+        blocked: false,
+        stepScale: params.clickStep
       };
     }
 
@@ -3905,37 +3911,35 @@ class GameAutoPilot(
     var ry = pos.py - pos.cy;
     var curDist = Math.hypot(rx, ry);
 
-    // Nếu đang quá gần hoặc trùng tâm mục tiêu, đẩy thẳng ra đúng khoảng cách rUse theo góc fallbackTheta
+    // Nếu đang trùng tâm mục tiêu, đẩy thẳng ra đúng bán kính rUse (90 hoặc 400)
     if (curDist < 0.005) {
       return {
         vx: Math.cos(fallbackTheta),
         vy: Math.sin(fallbackTheta),
-        clamped: false
+        blocked: false,
+        stepScale: params.clickStep
       };
     }
 
-    // Luôn tính góc thực tế hiện tại quanh mục tiêu, sau đó đặt điểm đích kế tiếp đúng +30° (PI/6) trên đường tròn bán kính rUse
+    // Góc cực thực tế của nhân vật quanh tâm mục tiêu (cx, cy)
     var curAngle = Math.atan2(ry, rx);
-    var nextAngle = curAngle + params.stepRad;
-
-    // Đánh gần: giữ khoảng cách tối thiểu là 90 (không lùi xa), áp sát lại ngay nếu lệch > 1.25x và xoay đều 20° quanh mục tiêu.
-    // Đánh xa: giữ bán kính chuẩn 400 và xoay đều 20° quanh mục tiêu.
     var distRatio = curDist / rUse;
-    var maxRatio = params.isMelee ? 1.25 : 1.35;
-    var minRatio = params.isMelee ? 0.85 : 0.65;
-    var goalX, goalY;
-    if (distRatio > maxRatio || distRatio < minRatio) {
-      var pullAngle = curAngle + params.stepRad * (params.isMelee ? 0.6 : 0.45);
-      goalX = pos.cx + rUse * Math.cos(pullAngle);
-      goalY = pos.cy + rUse * Math.sin(pullAngle);
-    } else {
-      goalX = pos.cx + rUse * Math.cos(nextAngle);
-      goalY = pos.cy + rUse * Math.sin(nextAngle);
-    }
+    // Nếu đang lệch bán kính chuẩn > 30%, giảm bước góc để kéo về đúng bán kính R (90 hoặc 400) trước rồi xoay đều
+    var advanceRad = (distRatio > 1.30 || distRatio < 0.70) ? (params.stepRad * 0.40) : params.stepRad;
+    var nextAngle = curAngle + advanceRad;
 
-    // Giới hạn điểm đích nằm trong khung bản đồ an toàn để không đâm vào góc/cạnh
-    goalX = Math.max(-0.40, Math.min(0.40, goalX));
-    goalY = Math.max(-0.40, Math.min(0.40, goalY));
+    var goalX = pos.cx + rUse * Math.cos(nextAngle);
+    var goalY = pos.cy + rUse * Math.sin(nextAngle);
+
+    // Kiểm tra trước: nếu điểm đích kế tiếp trên vòng tròn vượt giới hạn bản đồ -> báo kẹt biên để về tâm map ngay
+    if (pos.hasMapPos && isPointOutOfMapBounds(goalX, goalY)) {
+      return {
+        vx: -pos.mapPx,
+        vy: -pos.mapPy,
+        blocked: true,
+        stepScale: 0.32
+      };
+    }
 
     var errX = goalX - pos.px;
     var errY = goalY - pos.py;
@@ -3944,13 +3948,15 @@ class GameAutoPilot(
       return {
         vx: -Math.sin(curAngle),
         vy: Math.cos(curAngle),
-        clamped: false
+        blocked: false,
+        stepScale: params.clickStep
       };
     }
     return {
       vx: errX / errLen,
       vy: errY / errLen,
-      clamped: false
+      blocked: false,
+      stepScale: params.clickStep
     };
   }
 
@@ -4146,20 +4152,26 @@ class GameAutoPilot(
       O.estY = pos.py - pos.cy;
     }
 
-    // Ổn định mục tiêu: lưu vị trí mục tiêu gần nhất trong 1.8s để tránh nhấp nháy 1-2 frame khi canvas vẽ lại
+    // Ổn định mục tiêu & phát hiện đổi mục tiêu mới (khi mục tiêu cũ biến mất -> tự tạo vòng tròn quanh mục tiêu mới)
     if (pos.hasTarget) {
+      var targetSwitched = O.hadTargetInFloor && (Math.hypot(pos.cx - O.lastTargetCx, pos.cy - O.lastTargetCy) > 0.08);
       O.hadTargetInFloor = true;
       O.lastTargetCx = pos.cx;
       O.lastTargetCy = pos.cy;
       O.lastTargetAt = now;
-    } else if (O.hadTargetInFloor && O.lastTargetAt > 0 && (now - O.lastTargetAt) < 1800 && pos.source !== 'state') {
-      // Tạm giữ tâm mục tiêu trong 1.8s nếu chữ trên canvas vừa chớp tắt
+      if (targetSwitched) {
+        // Cập nhật góc khởi đầu theo vị trí hiện tại so với mục tiêu mới để xoay mượt, không giật ngược
+        O.theta = Math.atan2(pos.py - pos.cy, pos.px - pos.cx);
+        O.stuckBeats = 0;
+      }
+    } else if (O.hadTargetInFloor && O.lastTargetAt > 0 && (now - O.lastTargetAt) < 1200 && pos.source !== 'state') {
+      // Giữ tạm tâm mục tiêu tối đa 1.2s nếu tên trên canvas chớp tắt 1 frame
       pos.hasTarget = true;
       pos.cx = O.lastTargetCx;
       pos.cy = O.lastTargetCy;
     }
 
-    // Phát hiện vừa lên tầng hoặc state xác nhận vừa tiêu diệt hết quái của tầng -> chạy ngay về trung tâm map
+    // Phát hiện vừa lên tầng hoặc mục tiêu biến mất hoàn toàn (hết quái) -> chạy về trung tâm map chờ mục tiêu mới
     if (floorChanged) {
       O.returningToCenter = true;
       O.returnStartedAt = now;
@@ -4172,29 +4184,6 @@ class GameAutoPilot(
       O.returnStartedAt = now;
       O.hadTargetInFloor = false;
       O.lastTargetAt = 0;
-    }
-
-    // 1b. Liên tục quét thanh máu: nếu mất >= 15% HP lập tức di chuyển né đòn ngay
-    var hpRatio = readCharacterHpRatio();
-    if (hpRatio >= 0) {
-      if (O.lastHpRatio > 0 && (O.lastHpRatio - hpRatio) >= 0.15 && now >= (O.hpDropCooldownUntil || 0)) {
-        O.hpDropCooldownUntil = now + 900;
-        O.lastHpRatio = hpRatio;
-        O.theta = (O.theta + params.stepRad * 2) % (Math.PI * 2);
-        var dodgeVec = (pos.hasMapPos && Math.hypot(pos.mapPx, pos.mapPy) >= 0.30)
-          ? { vx: -pos.mapPx / Math.hypot(pos.mapPx, pos.mapPy), vy: -pos.mapPy / Math.hypot(pos.mapPx, pos.mapPy) }
-          : computeOrbitSteeringVector(pos, params, O.theta);
-        clickCanvasMove(stage, dodgeVec.vx, dodgeVec.vy, params.isMelee ? 0.18 : 0.24);
-        // Reset chu kỳ để sau khi né đòn sẽ tiếp tục 3 nhịp đánh
-        O.phaseStart = now;
-        O.lastBeatIdx = 0;
-        O.lastAt = now;
-        ensureGameAutoOn(true);
-        return;
-      }
-      if (O.lastHpRatio < 0 || hpRatio > O.lastHpRatio) {
-        O.lastHpRatio = hpRatio;
-      }
     }
 
     // 1c. Phát hiện bị dồn vào góc vuông hoặc 4 cạnh tường chéo của bản đồ tháp hình thoi (isometric)
@@ -4301,9 +4290,16 @@ class GameAutoPilot(
       }
     }
 
-    // Luôn thực hiện nhịp di chuyển vòng tròn 20 độ (PI/9) quanh mục tiêu (hoặc quanh tâm sàn đấu nếu game không lộ tọa độ quái)
+    // Tính bước di chuyển tiếp theo trên đường tròn chuẩn bán kính R (90: 12 nhịp/vòng, 400: 18 nhịp/vòng)
     O.theta = (O.theta + params.stepRad) % (Math.PI * 2);
     var steer = computeOrbitSteeringVector(pos, params, O.theta);
+    if (steer.blocked && pos.hasMapPos) {
+      // Không thể tiếp tục xoay vòng tròn do chạm giới hạn bản đồ -> lập tức về trung tâm map
+      O.returningToCenter = true;
+      O.returnStartedAt = now;
+      O.stuckBeats = 0;
+      return;
+    }
     O.lastMoveVx = steer.vx;
     O.lastMoveVy = steer.vy;
     O.moveStartedAt = now;
