@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-25"
+        const val SCRIPT_VER = "vlmauto-26"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3225,7 +3225,7 @@ class GameAutoPilot(
       if (!isFinite(nx) || !isFinite(ny) || nx < 0.05 || nx > 0.95 || ny < 0.08 || ny > 0.90) return;
 
       var now = Date.now();
-      var charName = (A.st && A.st.ten) ? noAccent(String(A.st.ten)) : '';
+      var charName = (A.st && A.st.ten) ? noAccent(String(A.st.ten)) : ((A.info && (A.info.ten || A.info.name)) ? noAccent(String(A.info.ten || A.info.name)) : '');
       var tNA = noAccent(txt);
       if (charName && (tNA === charName || (charName.length >= 3 && tNA.indexOf(charName) >= 0))) {
         O.obsPlayer = { nx: nx, ny: ny, at: now };
@@ -3890,22 +3890,42 @@ class GameAutoPilot(
     };
   }
 
+  // Bản đồ Thông Thiên Tháp là hình thoi (isometric) với 4 cạnh tường ở |x| + |y| = 0.50.
+  // Vùng an toàn tránh tuyệt đối 4 góc map là hình thoi bên trong |x| + |y| <= 0.32.
+  var SAFE_DIAMOND_LIMIT = 0.32;
+  var WALL_TRIGGER_LIMIT = 0.36;
+
   function isPointOutOfMapBounds(nx, ny) {
-    // Chỉ coi là vượt biên khi thực sự chạm sát mép ngoài bản đồ (không chặn nhầm vòng tròn đánh xa)
-    return (Math.abs(nx) + Math.abs(ny)) >= 0.62 || Math.abs(nx) >= 0.44 || Math.abs(ny) >= 0.44;
+    return (Math.abs(nx) + Math.abs(ny)) >= WALL_TRIGGER_LIMIT || Math.abs(nx) >= 0.33 || Math.abs(ny) >= 0.33;
+  }
+
+  function clampInsideSafeDiamond(gx, gy) {
+    var m = Math.abs(gx) + Math.abs(gy);
+    if (m > SAFE_DIAMOND_LIMIT && m > 0.0001) {
+      var scale = SAFE_DIAMOND_LIMIT / m;
+      return { x: gx * scale, y: gy * scale, clamped: true };
+    }
+    return { x: gx, y: gy, clamped: false };
   }
 
   function computeOrbitSteeringVector(pos, params, fallbackTheta) {
     var rUse = pos.rNorm || params.rTarget;
 
-    // Luôn xoay đều theo góc fallbackTheta nếu chưa có tọa độ tương đối
+    // Nếu chưa có tọa độ mục tiêu: xoay tròn quanh tâm map (0, 0) và luôn giữ trong vùng an toàn
     if (pos.source === 'center_anchor' || !pos.hasTarget) {
-      return {
-        vx: -Math.sin(fallbackTheta),
-        vy: Math.cos(fallbackTheta),
-        blocked: false,
-        stepScale: params.clickStep
-      };
+      var tx0 = -Math.sin(fallbackTheta);
+      var ty0 = Math.cos(fallbackTheta);
+      if (pos.hasMapPos) {
+        // Kéo nhẹ về tâm nếu đang lệch xa tâm map
+        var d0 = Math.hypot(pos.mapPx, pos.mapPy);
+        if (d0 > 0.22) {
+          tx0 = tx0 * 0.55 - (pos.mapPx / d0) * 0.45;
+          ty0 = ty0 * 0.55 - (pos.mapPy / d0) * 0.45;
+          var l0 = Math.hypot(tx0, ty0) || 1;
+          tx0 /= l0; ty0 /= l0;
+        }
+      }
+      return { vx: tx0, vy: ty0, blocked: false, stepScale: params.clickStep };
     }
 
     var rx = pos.px - pos.cx;
@@ -3929,14 +3949,11 @@ class GameAutoPilot(
     var goalX = pos.cx + rUse * Math.cos(nextAngle);
     var goalY = pos.cy + rUse * Math.sin(nextAngle);
 
-    // Chỉ báo kẹt biên khi CẢ vị trí hiện tại đang sát tường VÀ điểm đích tiếp theo vẫn đâm ra ngoài biên
-    if (pos.hasMapPos && isPointOutOfMapBounds(pos.mapPx, pos.mapPy) && isPointOutOfMapBounds(goalX, goalY)) {
-      return {
-        vx: -pos.mapPx,
-        vy: -pos.mapPy,
-        blocked: true,
-        stepScale: 0.30
-      };
+    // Ép điểm đích luôn nằm gọn trong hình thoi an toàn -> nhân vật KHÔNG BAO GIỜ chạy vào 4 góc map
+    if (pos.hasMapPos) {
+      var safeGoal = clampInsideSafeDiamond(goalX, goalY);
+      goalX = safeGoal.x;
+      goalY = safeGoal.y;
     }
 
     var errX = goalX - pos.px;
@@ -4184,13 +4201,12 @@ class GameAutoPilot(
       O.lastTargetAt = 0;
     }
 
-    // 1c. Phát hiện bị dồn sát góc vuông hoặc tường ngoài cùng của bản đồ tháp
+    // 1c. Tránh tuyệt đối 4 góc map & 4 cạnh tường chéo của hình thoi (|x| + |y| >= 0.36)
     var manhattanDist = pos.hasMapPos ? (Math.abs(pos.mapPx) + Math.abs(pos.mapPy)) : 0;
     var inCornerOrWall = pos.hasMapPos && (
-      manhattanDist >= 0.56 ||
-      Math.abs(pos.mapPx) >= 0.42 ||
-      Math.abs(pos.mapPy) >= 0.42 ||
-      Math.hypot(pos.mapPx, pos.mapPy) >= 0.44
+      manhattanDist >= WALL_TRIGGER_LIMIT ||
+      Math.abs(pos.mapPx) >= 0.33 ||
+      Math.abs(pos.mapPy) >= 0.33
     );
     if (inCornerOrWall && !O.returningToCenter) {
       O.returningToCenter = true;
@@ -4363,9 +4379,13 @@ class GameAutoPilot(
     setTimeout(function () { tick().catch(function () {}); }, 250);
   }
   setInterval(function () { tick().catch(function () {}); }, 15000);
+  installArenaCanvasSpy();
+  if (A.cfg.on && (A.cfg.thap || A.cfg.thapNeDon)) {
+    window.__vlmOrbitSpyActive = true;
+  }
   window.__vlmOrbitTimer = setInterval(function () {
     try { orbitTick(); } catch (eOrb) {}
-  }, 90);
+  }, 70);
   setInterval(function () {
     try {
       if (A.cfg.on && !O.moving && !isUserControlling(2500)) {
