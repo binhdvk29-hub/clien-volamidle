@@ -299,7 +299,7 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-26"
+        const val SCRIPT_VER = "vlmauto-27"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3128,8 +3128,10 @@ class GameAutoPilot(
     style: '',
     skillName: '',
     theta: 0,
+    orbitDir: 1, // +1 thuận chiều kim đồng hồ, -1 ngược chiều (tự đổi chiều để tránh 4 góc map)
     lastAt: 0,
     moveStartedAt: 0,
+    lastClickAt: 0,
     lastBeatIdx: -1,
     phaseStart: 0,
     towerEnteredAt: 0,
@@ -3139,31 +3141,26 @@ class GameAutoPilot(
     returningToCenter: false,
     returnStartedAt: 0,
     hadTargetInFloor: false,
-    prevPx: 0,
-    prevPy: 0,
+    prevMapX: 0,
+    prevMapY: 0,
     stuckBeats: 0,
-    lastTargetCx: 0,
-    lastTargetCy: 0,
+    lastTargetScreenX: 0,
+    lastTargetScreenY: 0,
     lastTargetAt: 0,
-    lastHpRatio: -1,
-    hpDropCooldownUntil: 0,
     lastRetClickAt: 0,
-    estX: 0,
-    estY: 0,
-    lastMoveVx: 0,
-    lastMoveVy: 0,
-    lastEstDecayAt: 0,
-    obsPlayer: null,
-    obsTarget: null,
-    obsMiniPlayer: null,
-    obsMiniTarget: null,
+    lastMiniScanAt: 0,
+    obsPlayer: null,      // { nx, ny, at } từ chữ tên nhân vật trên canvas chính
+    obsTargetRing: null,  // { nx, ny, at } từ vòng tròn đỏ dưới chân mục tiêu ĐANG CHỌN
+    obsEnemies: [],       // [{ nx, ny, name, at }] tất cả quái đang hiển thị trên canvas chính
+    obsMiniPlayer: null,  // { nx, ny, at } chấm nhân vật trên Minimap
+    obsMiniEnemies: [],   // [{ nx, ny, at }] các chấm đỏ quái trên Minimap
+    miniCanvas: null,
     autoSawOn: false,
     autoPreMoveSig: '',
     lastAutoRestoreAt: 0,
     autoPauseUntil: 0,
     moveEndTimer: 0,
     lastNoteAt: 0,
-    lastNeedSkillNoteAt: 0,
     joyPtrActive: false,
     held: { up: false, down: false, left: false, right: false },
     targetEl: null
@@ -3199,16 +3196,155 @@ class GameAutoPilot(
     { key: 'huyen am tram', label: 'Huyền Âm Trảm' }
   ];
 
+  function parseCssRgb(fs) {
+    if (!fs || typeof fs !== 'string') return null;
+    var s = fs.toLowerCase().trim();
+    if (s === 'white') return { r: 255, g: 255, b: 255 };
+    if (s === 'red') return { r: 255, g: 0, b: 0 };
+    if (s === 'lime' || s === 'green') return { r: 0, g: 255, b: 0 };
+    if (s === 'yellow') return { r: 255, g: 255, b: 0 };
+    if (s === 'cyan') return { r: 0, g: 255, b: 255 };
+    if (s === 'orange') return { r: 255, g: 165, b: 0 };
+    if (s.charAt(0) === '#') {
+      var hex = s.slice(1);
+      if (hex.length === 3) {
+        return {
+          r: parseInt(hex.charAt(0) + hex.charAt(0), 16),
+          g: parseInt(hex.charAt(1) + hex.charAt(1), 16),
+          b: parseInt(hex.charAt(2) + hex.charAt(2), 16)
+        };
+      }
+      if (hex.length >= 6) {
+        return {
+          r: parseInt(hex.slice(0, 2), 16),
+          g: parseInt(hex.slice(2, 4), 16),
+          b: parseInt(hex.slice(4, 6), 16)
+        };
+      }
+    }
+    var m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
+    if (m) return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) };
+    return null;
+  }
+
+  function isMinimapCanvasEl(cv) {
+    if (!cv || cv === O.targetEl) return false;
+    var idCls = ((cv.id || '') + ' ' + (typeof cv.className === 'string' ? cv.className : '')).toLowerCase();
+    if (idCls.indexOf('minimap') >= 0 || idCls.indexOf('radar') >= 0 || idCls === 'mm ' || idCls.indexOf('mm-') >= 0) return true;
+    try {
+      var r = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
+      if (!r || r.width < 42 || r.width > 240 || r.height < 36 || r.height > 220) return false;
+      var inTopRight = r.right > (window.innerWidth || 800) * 0.55 && r.top < (window.innerHeight || 480) * 0.45;
+      return inTopRight;
+    } catch (e) { return false; }
+  }
+
+  function findMinimapCanvas() {
+    if (O.miniCanvas && O.miniCanvas.isConnected && isVis(O.miniCanvas)) return O.miniCanvas;
+    try {
+      var cvs = document.querySelectorAll('canvas');
+      for (var i = 0; i < cvs.length; i++) {
+        if (isVis(cvs[i]) && isMinimapCanvasEl(cvs[i])) {
+          O.miniCanvas = cvs[i];
+          return cvs[i];
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  // Tính khoảng cách tương đối tới tường hình thoi (isometric 2:1) của Thông Thiên Tháp:
+  // 0 = chính giữa map, 1.0 = bắt đầu sát tường/góc cần né (tường thật ở khoảng |dx|/0.42 + |dy|/0.28 = 1)
+  function diamondWallMetric(mapPx, mapPy) {
+    return (Math.abs(mapPx) / 0.34) + (Math.abs(mapPy) / 0.22);
+  }
+
+  function isInsideMinimapDiamond(nx, ny) {
+    var dx = nx - 0.5;
+    var dy = ny - 0.5;
+    return (Math.abs(dx) / 0.44) + (Math.abs(dy) / 0.31) <= 1.02;
+  }
+
+  function classifyMinimapRgb(rgb) {
+    if (!rgb) return '';
+    var r = rgb.r, g = rgb.g, b = rgb.b;
+    // Chấm đỏ / cam = quái / boss trên minimap
+    if (r >= 185 && g <= 110 && b <= 105 && (r - g) >= 85) return 'enemy';
+    // Chấm trắng sáng / vàng sáng / xanh lá / xanh ngọc = nhân vật trên minimap
+    if (r >= 215 && g >= 215 && b >= 165) return 'player';
+    if (g >= 185 && r <= 145 && b <= 255) return 'player';
+    if (r >= 220 && g >= 180 && b <= 115) return 'player';
+    return '';
+  }
+
+  // Quét pixel trực tiếp từ canvas Minimap (độc lập với DPR và cách vẽ) -> luôn bắt đúng vị trí nhân vật & quái tức thì
+  function scanMinimapPixels(now) {
+    if (now - O.lastMiniScanAt < 110) return;
+    O.lastMiniScanAt = now;
+    var cv = findMinimapCanvas();
+    if (!cv || cv.width < 20 || cv.height < 20) return;
+    try {
+      var ctx = cv.getContext('2d');
+      if (!ctx) return;
+      var w = cv.width, h = cv.height;
+      var img = ctx.getImageData(0, 0, w, h);
+      var data = img.data;
+      var step = Math.max(1, Math.floor(Math.min(w, h) / 70));
+
+      var pSumX = 0, pSumY = 0, pWeight = 0;
+      var eSumX = 0, eSumY = 0, eCount = 0;
+      var enemies = [];
+
+      for (var y = Math.floor(h * 0.16); y < Math.floor(h * 0.84); y += step) {
+        var ny = y / h;
+        for (var x = Math.floor(w * 0.06); x < Math.floor(w * 0.94); x += step) {
+          var nx = x / w;
+          if (!isInsideMinimapDiamond(nx, ny)) continue;
+          var idx = (y * w + x) * 4;
+          var a = data[idx + 3];
+          if (a < 140) continue;
+          var r = data[idx], g = data[idx + 1], b = data[idx + 2];
+
+          // Chấm nhân vật: điểm sáng nổi bật nhất trên nền tối minimap
+          if ((r >= 215 && g >= 215 && b >= 175) || (g >= 195 && r <= 140 && b <= 220)) {
+            var lum = r + g + b;
+            pSumX += nx * lum;
+            pSumY += ny * lum;
+            pWeight += lum;
+          } else if (r >= 185 && g <= 100 && b <= 100 && (r - g) >= 90) {
+            eSumX += nx;
+            eSumY += ny;
+            eCount++;
+            if (enemies.length < 24) enemies.push({ nx: nx, ny: ny, at: now });
+          }
+        }
+      }
+
+      if (pWeight > 0) {
+        O.obsMiniPlayer = { nx: pSumX / pWeight, ny: pSumY / pWeight, at: now };
+      }
+      if (eCount > 0) {
+        O.obsMiniEnemies = enemies;
+      }
+    } catch (ePix) {
+      // Nếu canvas bị tainted thì tự dựa vào hook vector bên dưới
+    }
+  }
+
   function handleCanvasSpyText(ctx, text, rawX, rawY) {
     try {
       if (!ctx || !ctx.canvas) return;
       var cv = ctx.canvas;
-      if (!cv || cv.width < 120 || cv.height < 120) return;
-      var idCls = ((cv.id || '') + ' ' + (typeof cv.className === 'string' ? cv.className : '')).toLowerCase();
-      if (idCls.indexOf('minimap') >= 0 || idCls.indexOf('radar') >= 0) return;
+      if (!cv || cv.width < 160 || cv.height < 160) return;
+      if (isMinimapCanvasEl(cv)) return;
       var txt = String(text || '').replace(/\s+/g, ' ').trim();
-      if (!txt || txt.length > 42) return;
+      if (!txt || txt.length < 3 || txt.length > 40) return;
+      // Bỏ qua số sát thương, HP dạng 113/113, chữ hệ thống/chat
       if (/^[\d.,+\-%/\s]+$/.test(txt)) return;
+      var tNA = noAccent(txt);
+      if (tNA.indexOf('ban ') === 0 || tNA.indexOf('luong') >= 0 || tNA.indexOf('to doi') >= 0 ||
+          tNA.indexOf('thong thien') >= 0 || tNA.indexOf('che do') >= 0 || tNA.indexOf('len ngua') >= 0 ||
+          tNA.indexOf('xoay chieu') >= 0 || tNA.indexOf('auto') === 0 || tNA.indexOf('knb') >= 0) return;
 
       var sx = Number(rawX) || 0, sy = Number(rawY) || 0;
       if (typeof ctx.getTransform === 'function') {
@@ -3222,57 +3358,58 @@ class GameAutoPilot(
       }
       var nx = sx / cv.width;
       var ny = sy / cv.height;
-      if (!isFinite(nx) || !isFinite(ny) || nx < 0.05 || nx > 0.95 || ny < 0.08 || ny > 0.90) return;
+      // Bỏ qua vùng HUD trên và dưới màn hình
+      if (!isFinite(nx) || !isFinite(ny) || nx < 0.06 || nx > 0.94 || ny < 0.14 || ny > 0.82) return;
 
       var now = Date.now();
       var charName = (A.st && A.st.ten) ? noAccent(String(A.st.ten)) : ((A.info && (A.info.ten || A.info.name)) ? noAccent(String(A.info.ten || A.info.name)) : '');
-      var tNA = noAccent(txt);
       if (charName && (tNA === charName || (charName.length >= 3 && tNA.indexOf(charName) >= 0))) {
         O.obsPlayer = { nx: nx, ny: ny, at: now };
         return;
       }
-      if (tNA.indexOf('boss') >= 0 || tNA.indexOf('hoang kim') >= 0 || tNA.indexOf('thu linh') >= 0 ||
-          tNA.indexOf('ho phap') >= 0 || tNA.indexOf('tang ') >= 0 || /^\[.*boss.*\]/i.test(tNA)) {
-        O.obsTarget = { nx: nx, ny: ny, at: now };
+
+      // Nhận diện tên quái/boss trong Thông Thiên Tháp (bắt tất cả tên quái theo màu chữ hoặc từ khóa)
+      var rgb = parseCssRgb(ctx.fillStyle);
+      var isEnemyColor = !!(rgb && (
+        (rgb.r >= 195 && rgb.g <= 155 && rgb.b <= 130) || // đỏ / cam / hồng cam
+        (rgb.r >= 220 && rgb.g >= 180 && rgb.b <= 120) || // vàng đậm
+        (rgb.r >= 180 && rgb.b >= 180 && rgb.g <= 140)    // tím boss
+      ));
+      var isEnemyKeyword = (
+        tNA.indexOf('tang ') >= 0 || tNA.indexOf('boss') >= 0 || tNA.indexOf('thu linh') >= 0 ||
+        tNA.indexOf('cao thu') >= 0 || tNA.indexOf('sat thu') >= 0 || tNA.indexOf('de tu') >= 0 ||
+        tNA.indexOf('vu tang') >= 0 || tNA.indexOf('ho phap') >= 0 || tNA.indexOf('kim ho') >= 0 ||
+        tNA.indexOf('tu la') >= 0 || txt.indexOf('☆') >= 0 || txt.indexOf('★') >= 0
+      );
+
+      if (isEnemyColor || isEnemyKeyword) {
+        // Không nhận nhầm tên nhân vật nếu chưa đọc được charName (nhân vật thường màu xanh lá/trắng ở đúng giữa màn hình)
+        if (!charName && Math.abs(nx - 0.5) < 0.08 && Math.abs(ny - 0.42) < 0.07 && rgb && rgb.g >= 180 && rgb.r <= 170) {
+          O.obsPlayer = { nx: nx, ny: ny, at: now };
+          return;
+        }
+        // Cập nhật danh sách quái đang thấy trên màn hình
+        var foundIdx = -1;
+        for (var i = 0; i < O.obsEnemies.length; i++) {
+          if (O.obsEnemies[i].name === tNA && Math.hypot(O.obsEnemies[i].nx - nx, O.obsEnemies[i].ny - ny) < 0.14) {
+            foundIdx = i;
+            break;
+          }
+        }
+        var entry = { nx: nx, ny: ny, name: tNA, at: now };
+        if (foundIdx >= 0) O.obsEnemies[foundIdx] = entry;
+        else {
+          O.obsEnemies.push(entry);
+          if (O.obsEnemies.length > 16) O.obsEnemies.shift();
+        }
       }
     } catch (eSpy) {}
   }
 
-  function classifyMinimapFillColor(fs) {
-    if (!fs || typeof fs !== 'string') return '';
-    var s = fs.toLowerCase().trim();
-    if (s.indexOf('#ef4444') >= 0 || s.indexOf('#dc2626') >= 0 || s.indexOf('#ff0000') >= 0 ||
-        s.indexOf('#f87171') >= 0 || s.indexOf('#f97316') >= 0 || /^#f[0-4][0-4]$/.test(s)) {
-      return 'target';
-    }
-    if (s.indexOf('#22c55e') >= 0 || s.indexOf('#10b981') >= 0 || s.indexOf('#38bdf8') >= 0 ||
-        s.indexOf('#00ff') >= 0 || s.indexOf('#4ade80') >= 0 || s.indexOf('#facc15') >= 0 ||
-        s === '#ffffff' || s === '#fff' || s === 'lime' || s === 'cyan' || s === 'white') {
-      return 'player';
-    }
-    var m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(s);
-    if (m) {
-      var r = Number(m[1]), g = Number(m[2]), b = Number(m[3]);
-      if (r >= 200 && g <= 95 && b <= 95) return 'target';
-      if ((g >= 185 && r <= 120) || (b >= 200 && g >= 160 && r <= 100) || (r >= 235 && g >= 235 && b >= 235)) return 'player';
-    }
-    return '';
-  }
-
-  function handleCanvasSpyDot(ctx, rawX, rawY, sizeW, sizeH) {
+  function handleCanvasSpyShape(ctx, rawX, rawY, radW, radH, isStroke) {
     try {
       if (!ctx || !ctx.canvas) return;
       var cv = ctx.canvas;
-      var idCls = ((cv.id || '') + ' ' + (typeof cv.className === 'string' ? cv.className : '')).toLowerCase();
-      var miniRect = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
-      var inTopRight = !!(miniRect && miniRect.right > (window.innerWidth || 800) * 0.65 && miniRect.top < (window.innerHeight || 480) * 0.45);
-      var isMini = (idCls.indexOf('minimap') >= 0 || idCls.indexOf('radar') >= 0) ||
-        (cv !== O.targetEl && cv.width >= 40 && cv.width <= 280 && cv.height >= 40 && cv.height <= 280 && (inTopRight || cv.width <= 240));
-      if (!isMini) return;
-      if ((sizeW || 0) > 16 || (sizeH || 0) > 16) return;
-      var role = classifyMinimapFillColor(ctx.fillStyle);
-      if (!role) return;
-
       var sx = Number(rawX) || 0, sy = Number(rawY) || 0;
       if (typeof ctx.getTransform === 'function') {
         try {
@@ -3287,15 +3424,39 @@ class GameAutoPilot(
       var ny = sy / cv.height;
       if (!isFinite(nx) || !isFinite(ny) || nx < 0.02 || nx > 0.98 || ny < 0.02 || ny > 0.98) return;
       var now = Date.now();
-      if (role === 'player') O.obsMiniPlayer = { nx: nx, ny: ny, at: now };
-      else if (role === 'target') O.obsMiniTarget = { nx: nx, ny: ny, at: now };
-    } catch (eDot) {}
+
+      // 1. Trên Minimap: bắt chấm trắng (nhân vật) & chấm đỏ (quái) tại đúng thời điểm fill()
+      if (isMinimapCanvasEl(cv)) {
+        if (isStroke) return;
+        if ((radW || 0) > 20 || (radH || 0) > 20) return;
+        if (!isInsideMinimapDiamond(nx, ny)) return;
+        var role = classifyMinimapRgb(parseCssRgb(ctx.fillStyle));
+        if (role === 'player') {
+          O.obsMiniPlayer = { nx: nx, ny: ny, at: now };
+        } else if (role === 'enemy') {
+          O.obsMiniEnemies.push({ nx: nx, ny: ny, at: now });
+          if (O.obsMiniEnemies.length > 24) O.obsMiniEnemies.shift();
+        }
+        return;
+      }
+
+      // 2. Trên Canvas chính: bắt VÒNG TRÒN ĐỎ dưới chân mục tiêu ĐANG ĐƯỢC CHỌN
+      if (isStroke && cv.width >= 160 && cv.height >= 160 && ny >= 0.16 && ny <= 0.84) {
+        var rMax = Math.max(radW || 0, radH || 0);
+        if (rMax >= 8 && rMax <= 75) {
+          var sRgb = parseCssRgb(ctx.strokeStyle);
+          if (sRgb && sRgb.r >= 190 && sRgb.g <= 95 && sRgb.b <= 95) {
+            O.obsTargetRing = { nx: nx, ny: ny, at: now };
+          }
+        }
+      }
+    } catch (eShp) {}
   }
 
   function installArenaCanvasSpy() {
     window.__vlmOrbitSpyCb = {
       text: handleCanvasSpyText,
-      dot: handleCanvasSpyDot
+      shape: handleCanvasSpyShape
     };
     if (window.__vlmOrbitCanvasSpyInstalled) return;
     window.__vlmOrbitCanvasSpyInstalled = true;
@@ -3306,7 +3467,17 @@ class GameAutoPilot(
       var origStrokeText = proto.strokeText;
       var origFillRect = proto.fillRect;
       var origArc = proto.arc;
+      var origEllipse = proto.ellipse;
+      var origFill = proto.fill;
+      var origStroke = proto.stroke;
+      var origBeginPath = proto.beginPath;
 
+      if (origBeginPath) {
+        proto.beginPath = function () {
+          this.__vlmShape = null;
+          return origBeginPath.apply(this, arguments);
+        };
+      }
       if (origFillText) {
         proto.fillText = function (text, x, y) {
           if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.text) {
@@ -3325,18 +3496,44 @@ class GameAutoPilot(
       }
       if (origFillRect) {
         proto.fillRect = function (x, y, w, h) {
-          if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.dot) {
-            window.__vlmOrbitSpyCb.dot(this, x + (w || 0) * 0.5, y + (h || 0) * 0.5, w, h);
+          if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.shape) {
+            window.__vlmOrbitSpyCb.shape(this, x + (w || 0) * 0.5, y + (h || 0) * 0.5, Math.abs(w || 0), Math.abs(h || 0), false);
           }
           return origFillRect.apply(this, arguments);
         };
       }
       if (origArc) {
         proto.arc = function (x, y, r) {
-          if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.dot) {
-            window.__vlmOrbitSpyCb.dot(this, x, y, (r || 0) * 2, (r || 0) * 2);
+          if (window.__vlmOrbitSpyActive) {
+            this.__vlmShape = { x: x, y: y, rw: r || 0, rh: r || 0 };
           }
           return origArc.apply(this, arguments);
+        };
+      }
+      if (origEllipse) {
+        proto.ellipse = function (x, y, rx, ry) {
+          if (window.__vlmOrbitSpyActive) {
+            this.__vlmShape = { x: x, y: y, rw: rx || 0, rh: ry || 0 };
+          }
+          return origEllipse.apply(this, arguments);
+        };
+      }
+      if (origFill) {
+        proto.fill = function () {
+          if (window.__vlmOrbitSpyActive && this.__vlmShape && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.shape) {
+            var sh = this.__vlmShape;
+            window.__vlmOrbitSpyCb.shape(this, sh.x, sh.y, sh.rw * 2, sh.rh * 2, false);
+          }
+          return origFill.apply(this, arguments);
+        };
+      }
+      if (origStroke) {
+        proto.stroke = function () {
+          if (window.__vlmOrbitSpyActive && this.__vlmShape && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.shape) {
+            var sh = this.__vlmShape;
+            window.__vlmOrbitSpyCb.shape(this, sh.x, sh.y, sh.rw, sh.rh, true);
+          }
+          return origStroke.apply(this, arguments);
         };
       }
     } catch (eHook) {}
@@ -3463,7 +3660,6 @@ class GameAutoPilot(
 
   function ensureGameAutoOn(afterMovePulse) {
     try {
-      if (O.moving) return false;
       if (isUserControlling(2500)) return false;
       var now = Date.now();
       if (!afterMovePulse && now - O.lastAutoRestoreAt < 250) return false;
@@ -3479,17 +3675,16 @@ class GameAutoPilot(
 
       if (btn && state === 'off') {
         O.lastAutoRestoreAt = now;
-        O.autoPauseUntil = now + 90;
+        O.autoPauseUntil = now + 80;
         try { btn.click(); } catch (eClk) {}
         return true;
       }
 
-      // Nếu state là 'unknown' nhưng chữ ký nút Auto đã thay đổi sau xung di chuyển -> bật lại ngay
       if (afterMovePulse && btn && O.autoSawOn && O.autoPreMoveSig) {
         var sigNow = autoBtnVisualSignature(btn);
         if (sigNow && sigNow !== O.autoPreMoveSig) {
           O.lastAutoRestoreAt = now;
-          O.autoPauseUntil = now + 90;
+          O.autoPauseUntil = now + 80;
           try { btn.click(); } catch (eClk2) {}
           return true;
         }
@@ -3498,55 +3693,10 @@ class GameAutoPilot(
     return false;
   }
 
-  function dispatchOrbitKey(type, kDef, target) {
-    try {
-      var ev = new KeyboardEvent(type, {
-        key: kDef.key,
-        code: kDef.code,
-        keyCode: kDef.keyCode,
-        which: kDef.keyCode,
-        bubbles: true,
-        cancelable: true
-      });
-      var dest = (target && target.isConnected) ? target : (document.body || document);
-      dest.dispatchEvent(ev);
-    } catch (e) {}
-  }
-
-  function syncOrbitKeys(nextState, keyTarget) {
-    var dirs = ['up', 'down', 'left', 'right'];
-    for (var i = 0; i < dirs.length; i++) {
-      var d = dirs[i];
-      var want = !!(nextState && nextState[d]);
-      if (O.held[d] !== want) {
-        O.held[d] = want;
-        var grp = ORBIT_KEY_GROUPS[d];
-        for (var j = 0; j < grp.length; j++) {
-          dispatchOrbitKey(want ? 'keydown' : 'keyup', grp[j], keyTarget);
-        }
-      }
-    }
-  }
-
   function pauseOrbitMovement() {
     if (O.moveEndTimer) {
       clearTimeout(O.moveEndTimer);
       O.moveEndTimer = 0;
-    }
-    var tgt = (O.targetEl && O.targetEl.isConnected) ? O.targetEl : (document.body || document);
-    syncOrbitKeys({ up: false, down: false, left: false, right: false }, tgt);
-    if (O.joyPtrActive) {
-      O.joyPtrActive = false;
-      try {
-        var joyEl = findVisibleJoystick();
-        if (joyEl) {
-          var jr = joyEl.getBoundingClientRect();
-          var jx = jr.left + jr.width * 0.5;
-          var jy = jr.top + jr.height * 0.5;
-          dispatchOrbitPointer(joyEl, 'pointerup', jx, jy);
-          dispatchOrbitPointer(joyEl, 'mouseup', jx, jy);
-        }
-      } catch (eJoy) {}
     }
     O.moving = false;
     O.moveStartedAt = 0;
@@ -3563,22 +3713,21 @@ class GameAutoPilot(
     O.returningToCenter = false;
     O.returnStartedAt = 0;
     O.hadTargetInFloor = false;
-    O.prevPx = 0;
-    O.prevPy = 0;
+    O.prevMapX = 0;
+    O.prevMapY = 0;
     O.stuckBeats = 0;
-    O.lastTargetCx = 0;
-    O.lastTargetCy = 0;
+    O.lastTargetScreenX = 0;
+    O.lastTargetScreenY = 0;
     O.lastTargetAt = 0;
-    O.lastHpRatio = -1;
-    O.hpDropCooldownUntil = 0;
     O.lastRetClickAt = 0;
+    O.lastClickAt = 0;
     O.lastAt = 0;
     O.phaseStart = 0;
     O.lastBeatIdx = -1;
-    O.estX = 0;
-    O.estY = 0;
-    O.lastMoveVx = 0;
-    O.lastMoveVy = 0;
+    O.orbitDir = 1;
+    O.obsEnemies = [];
+    O.obsMiniEnemies = [];
+    O.obsTargetRing = null;
     O.autoSawOn = false;
     O.autoPreMoveSig = '';
     O.autoPauseUntil = 0;
@@ -3611,7 +3760,6 @@ class GameAutoPilot(
       return { style: 'ranged', skill: (mChosen || rChosen) ? (mChosen || rChosen).label : '' };
     }
 
-    // Chỉ xác định cách di chuyển theo TÊN CHIÊU CHÍNH 9x người chơi đã chọn
     if (mChosen) return { style: 'melee', skill: mChosen.label };
     if (rChosen) return { style: 'ranged', skill: rChosen.label };
     return { style: '', skill: '' };
@@ -3677,8 +3825,9 @@ class GameAutoPilot(
         var c = canvases[i];
         if (!isVis(c)) continue;
         if (c.closest && c.closest('#modal, #minimap, .minimap')) continue;
+        if (isMinimapCanvasEl(c)) continue;
         var rect = c.getBoundingClientRect ? c.getBoundingClientRect() : null;
-        if (!rect || rect.width < 80 || rect.height < 80) continue;
+        if (!rect || rect.width < 120 || rect.height < 120) continue;
         var area = rect.width * rect.height;
         if (area > bestArea) {
           bestArea = area;
@@ -3689,87 +3838,28 @@ class GameAutoPilot(
     return best;
   }
 
-  function findVisibleJoystick() {
-    try {
-      var sels = ['#joy', '#joystick', '#vpad', '.joystick', '.virtual-joystick', '[data-joystick]'];
-      for (var i = 0; i < sels.length; i++) {
-        var el = document.querySelector(sels[i]);
-        if (el && isVis(el) && el.getBoundingClientRect) {
-          var r = el.getBoundingClientRect();
-          if (r && r.width >= 36 && r.height >= 36) return el;
-        }
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  var ORBIT_STEP_RAD = Math.PI / 9; // Bước 20 độ (20° = PI / 9) cố định mỗi nhịp
-
-  function computeOrbitParams(style) {
-    // Di chuyển vòng tròn nhanh ngang tốc độ xuất chiêu (~520ms-580ms/nhịp click chuột trái):
-    // - Đánh gần (MELEE): R = 90, N = 12 nhịp/vòng (góc 30°), click sát quanh mục tiêu
-    // - Đánh xa (RANGED): R = 400, N = 18 nhịp/vòng (góc 20°), click vòng tròn rộng quanh mục tiêu
+  function computeOrbitParams(style, stageRect) {
+    var minDim = stageRect ? Math.min(stageRect.width, stageRect.height) : 360;
     if (style === 'melee') {
+      // Đánh gần: bán kính chuẩn 90 (trên màn hình ~13% minDim ≈ 45-58px), 12 nhịp/vòng (30°), tốc độ ngang xuất chiêu 460ms
       return {
         stepsPerCircle: 12,
-        stepRad: Math.PI / 6, // 30° -> 12 nhịp/vòng
+        stepRad: Math.PI / 6, // 30°
         worldRadius: 90,
-        cycleMs: 520,
-        moveMs: 140,
-        rTarget: 0.09,
-        rMax: 0.44,
-        clickStep: 0.14,
-        estSpeed: 0.44,
+        radiusPx: Math.max(40, Math.min(62, minDim * 0.135)),
+        cycleMs: 460,
         isMelee: true
       };
     }
+    // Đánh xa: bán kính chuẩn 400 (trên màn hình ~36% minDim ≈ 125-175px), 18 nhịp/vòng (20°), tốc độ ngang xuất chiêu 500ms
     return {
       stepsPerCircle: 18,
-      stepRad: Math.PI / 9, // 20° -> 18 nhịp/vòng
+      stepRad: Math.PI / 9, // 20°
       worldRadius: 400,
-      cycleMs: 580,
-      moveMs: 160,
-      rTarget: 0.26,
-      rMax: 0.44,
-      clickStep: 0.22,
-      estSpeed: 0.48,
+      radiusPx: Math.max(115, Math.min(180, minDim * 0.36)),
+      cycleMs: 500,
       isMelee: false
     };
-  }
-
-  // Quét tỷ lệ máu (HP) hiện tại của nhân vật (0..1) từ state hoặc thanh máu trên HUD
-  function readCharacterHpRatio() {
-    try {
-      if (A.st && Date.now() - A.stT < 15000) {
-        if (typeof A.st.hp === 'number' && typeof A.st.maxHp === 'number' && A.st.maxHp > 0) {
-          return Math.max(0, Math.min(1, A.st.hp / A.st.maxHp));
-        }
-        if (typeof A.st.hpPct === 'number' && isFinite(A.st.hpPct)) {
-          return Math.max(0, Math.min(1, A.st.hpPct > 1 ? A.st.hpPct / 100 : A.st.hpPct));
-        }
-      }
-      if (A.info) {
-        if (typeof A.info.hp === 'number' && typeof A.info.maxHp === 'number' && A.info.maxHp > 0) {
-          return Math.max(0, Math.min(1, A.info.hp / A.info.maxHp));
-        }
-      }
-      var hpEls = document.querySelectorAll('#hpBar, #hpText, #hpVal, .hp-bar, .hp-fill, [data-hp]');
-      for (var i = 0; i < hpEls.length; i++) {
-        var el = hpEls[i];
-        if (!el || !isVis(el)) continue;
-        var m = /(\d+)\s*\/\s*(\d+)/.exec(el.textContent || '');
-        if (m) {
-          var cur = Number(m[1]), mx = Number(m[2]);
-          if (mx > 0 && cur >= 0 && cur <= mx) return cur / mx;
-        }
-        var wStr = el.style && el.style.width;
-        if (wStr && wStr.indexOf('%') > 0) {
-          var wp = parseFloat(wStr);
-          if (isFinite(wp) && wp >= 0 && wp <= 100) return wp / 100;
-        }
-      }
-    } catch (eHp) {}
-    return -1;
   }
 
   function readCurrentTowerFloor() {
@@ -3794,9 +3884,10 @@ class GameAutoPilot(
     return -1;
   }
 
-  function readStateCoords(worldRadius) {
+  // Đọc vị trí thật của nhân vật trên bản đồ (đã chuẩn hóa tâm map = (0, 0)) từ state hoặc Minimap
+  function readTrueMapPosition(now) {
     var srcs = [];
-    if (A.st && Date.now() - A.stT < 15000) srcs.push(A.st);
+    if (A.st && now - A.stT < 15000) srcs.push(A.st);
     if (A.info) srcs.push(A.info);
     for (var i = 0; i < srcs.length; i++) {
       var s = srcs[i];
@@ -3806,172 +3897,133 @@ class GameAutoPilot(
       var mw = typeof s.mapW === 'number' ? s.mapW : (typeof s.w === 'number' ? s.w : null);
       var mh = typeof s.mapH === 'number' ? s.mapH : (typeof s.h === 'number' ? s.h : null);
       if (px !== null && py !== null && mw && mh && mw > 0 && mh > 0) {
-        // Định vị rõ trung tâm hình học của bản đồ (mapCx, mapCy), mặc định là (mapW/2, mapH/2)
-        var mapCx = typeof s.mapCx === 'number' ? s.mapCx : (typeof s.cx === 'number' ? s.cx : (mw * 0.5));
-        var mapCy = typeof s.mapCy === 'number' ? s.mapCy : (typeof s.cy === 'number' ? s.cy : (mh * 0.5));
-        var mapPx = (px - mapCx) / mw;
-        var mapPy = (py - mapCy) / mh;
-
-        var tx = typeof s.targetX === 'number' ? s.targetX : (typeof s.bossX === 'number' ? s.bossX : null);
-        var ty = typeof s.targetY === 'number' ? s.targetY : (typeof s.bossY === 'number' ? s.bossY : null);
-        var alive = s.targetAlive !== false && (s.targetHp == null || Number(s.targetHp) > 0);
-        var hasTarget = (tx !== null && ty !== null && alive);
-        var normR = Math.min(0.40, Math.max(0.06, worldRadius / Math.max(mw, mh)));
+        var mapCx = typeof s.mapCx === 'number' ? s.mapCx : (mw * 0.5);
+        var mapCy = typeof s.mapCy === 'number' ? s.mapCy : (mh * 0.5);
         return {
-          px: mapPx,
-          py: mapPy,
-          mapPx: mapPx,
-          mapPy: mapPy,
           hasMapPos: true,
-          cx: hasTarget ? ((tx - mapCx) / mw) : 0,
-          cy: hasTarget ? ((ty - mapCy) / mh) : 0,
-          hasTarget: hasTarget,
-          rNorm: normR,
+          mapPx: (px - mapCx) / mw,
+          mapPy: (py - mapCy) / mh,
           source: 'state'
         };
       }
     }
-    return null;
-  }
 
-  function resolveArenaPosition(now, params) {
-    var stPos = readStateCoords(params.worldRadius);
-    if (stPos) return stPos;
-
-    // Ưu tiên thứ 2: Tọa độ chấm trên Minimap (trung tâm minimap (0.5, 0.5) chính là trung tâm map thật)
-    var hasMiniPlayer = !!(O.obsMiniPlayer && now - O.obsMiniPlayer.at < 4000);
-    if (hasMiniPlayer) {
-      var hasMiniTarget = !!(O.obsMiniTarget && now - O.obsMiniTarget.at < 4000);
-      var mPx = O.obsMiniPlayer.nx - 0.5;
-      var mPy = O.obsMiniPlayer.ny - 0.5;
-      var mcx = hasMiniTarget ? (O.obsMiniTarget.nx - 0.5) : 0;
-      var mcy = hasMiniTarget ? (O.obsMiniTarget.ny - 0.5) : 0;
+    if (O.obsMiniPlayer && now - O.obsMiniPlayer.at < 2500) {
       return {
-        px: mPx,
-        py: mPy,
-        mapPx: mPx,
-        mapPy: mPy,
         hasMapPos: true,
-        cx: mcx,
-        cy: mcy,
-        hasTarget: hasMiniTarget,
-        rNorm: params.rTarget,
+        mapPx: O.obsMiniPlayer.nx - 0.5,
+        mapPy: O.obsMiniPlayer.ny - 0.5,
         source: 'minimap'
       };
     }
 
-    // Canvas chính chỉ dùng cho vị trí tương đối với mục tiêu (KHÔNG dùng để suy ra trung tâm map vì camera đi theo nhân vật)
-    if (O.obsPlayer && O.obsTarget && now - O.obsPlayer.at < 1200 && now - O.obsTarget.at < 1200) {
+    return { hasMapPos: false, mapPx: 0, mapPy: 0, source: 'none' };
+  }
+
+  // Tính chính xác tọa độ CHÂN nhân vật (Px, Py) và CHÂN mục tiêu đang chọn (Tx, Ty) trực tiếp theo CSS pixel trên màn hình
+  function resolveScreenEntities(now, stage) {
+    var r = stage.rect;
+    var isPortrait = r.height > r.width;
+    // Bù chiều cao từ chữ tên nổi trên đầu xuống đúng chân nhân vật/quái (~50px)
+    var nameToFeetPx = Math.min(56, Math.max(36, Math.min(r.width, r.height) * 0.135));
+
+    // 1. Vị trí CHÂN nhân vật trên màn hình (mặc định camera bám giữa màn hình)
+    var px = r.left + r.width * 0.50;
+    var py = r.top + r.height * (isPortrait ? 0.495 : 0.50);
+    if (O.obsPlayer && now - O.obsPlayer.at < 900) {
+      var estPx = r.left + O.obsPlayer.nx * r.width;
+      var estPy = r.top + O.obsPlayer.ny * r.height + nameToFeetPx;
+      // Chỉ dùng nếu hợp lý trong vùng đấu trường
+      if (estPx > r.left + r.width * 0.12 && estPx < r.left + r.width * 0.88 &&
+          estPy > r.top + r.height * 0.22 && estPy < r.top + r.height * 0.82) {
+        px = estPx;
+        py = estPy;
+      }
+    }
+
+    // 2. Vị trí CHÂN mục tiêu ĐANG CHỌN trên màn hình
+    // Ưu tiên #1: Vòng tròn đỏ vẽ dưới chân mục tiêu đang chọn (chính xác từng pixel, không lệch chân)
+    if (O.obsTargetRing && now - O.obsTargetRing.at < 600) {
+      var rx = r.left + O.obsTargetRing.nx * r.width;
+      var ry = r.top + O.obsTargetRing.ny * r.height;
       return {
-        px: O.obsPlayer.nx - O.obsTarget.nx,
-        py: O.obsPlayer.ny - O.obsTarget.ny,
-        mapPx: 0,
-        mapPy: 0,
-        hasMapPos: false,
-        cx: 0,
-        cy: 0,
+        px: px, py: py,
         hasTarget: true,
-        rNorm: params.rTarget,
-        source: 'canvas_target'
+        tx: rx, ty: ry,
+        targetSource: 'red_ring'
       };
     }
 
-    return {
-      px: O.estX,
-      py: O.estY,
-      mapPx: 0,
-      mapPy: 0,
-      hasMapPos: false,
-      cx: 0,
-      cy: 0,
-      hasTarget: false,
-      rNorm: params.rTarget,
-      source: 'center_anchor'
-    };
-  }
-
-  // Bản đồ Thông Thiên Tháp là hình thoi (isometric) với 4 cạnh tường ở |x| + |y| = 0.50.
-  // Vùng an toàn tránh tuyệt đối 4 góc map là hình thoi bên trong |x| + |y| <= 0.32.
-  var SAFE_DIAMOND_LIMIT = 0.32;
-  var WALL_TRIGGER_LIMIT = 0.36;
-
-  function isPointOutOfMapBounds(nx, ny) {
-    return (Math.abs(nx) + Math.abs(ny)) >= WALL_TRIGGER_LIMIT || Math.abs(nx) >= 0.33 || Math.abs(ny) >= 0.33;
-  }
-
-  function clampInsideSafeDiamond(gx, gy) {
-    var m = Math.abs(gx) + Math.abs(gy);
-    if (m > SAFE_DIAMOND_LIMIT && m > 0.0001) {
-      var scale = SAFE_DIAMOND_LIMIT / m;
-      return { x: gx * scale, y: gy * scale, clamped: true };
+    // Ưu tiên #2: Danh sách tên quái đang hiển thị trên canvas chính (bù xuống chân + giữ liên tục theo mục tiêu cũ)
+    var freshEnemies = [];
+    for (var i = 0; i < O.obsEnemies.length; i++) {
+      var e = O.obsEnemies[i];
+      if (now - e.at < 550) freshEnemies.push(e);
     }
-    return { x: gx, y: gy, clamped: false };
-  }
+    O.obsEnemies = freshEnemies;
 
-  function computeOrbitSteeringVector(pos, params, fallbackTheta) {
-    var rUse = pos.rNorm || params.rTarget;
-
-    // Nếu chưa có tọa độ mục tiêu: xoay tròn quanh tâm map (0, 0) và luôn giữ trong vùng an toàn
-    if (pos.source === 'center_anchor' || !pos.hasTarget) {
-      var tx0 = -Math.sin(fallbackTheta);
-      var ty0 = Math.cos(fallbackTheta);
-      if (pos.hasMapPos) {
-        // Kéo nhẹ về tâm nếu đang lệch xa tâm map
-        var d0 = Math.hypot(pos.mapPx, pos.mapPy);
-        if (d0 > 0.22) {
-          tx0 = tx0 * 0.55 - (pos.mapPx / d0) * 0.45;
-          ty0 = ty0 * 0.55 - (pos.mapPy / d0) * 0.45;
-          var l0 = Math.hypot(tx0, ty0) || 1;
-          tx0 /= l0; ty0 /= l0;
+    if (freshEnemies.length > 0) {
+      var best = null;
+      var bestScore = 1e9;
+      var hasPrev = (O.lastTargetAt > 0 && now - O.lastTargetAt < 1200);
+      for (var j = 0; j < freshEnemies.length; j++) {
+        var fe = freshEnemies[j];
+        var ex = r.left + fe.nx * r.width;
+        var ey = r.top + fe.ny * r.height + nameToFeetPx;
+        // Ưu tiên mục tiêu gần vị trí mục tiêu đang khóa trước đó để xoay mượt không nhảy loạn; nếu không có thì lấy quái gần nhất
+        var dPlayer = Math.hypot(ex - px, ey - py);
+        var dPrev = hasPrev ? Math.hypot(ex - O.lastTargetScreenX, ey - O.lastTargetScreenY) : dPlayer;
+        var score = hasPrev ? (dPrev * 0.65 + dPlayer * 0.35) : dPlayer;
+        if (score < bestScore) {
+          bestScore = score;
+          best = { tx: ex, ty: ey };
         }
       }
-      return { vx: tx0, vy: ty0, blocked: false, stepScale: params.clickStep };
+      if (best) {
+        return {
+          px: px, py: py,
+          hasTarget: true,
+          tx: best.tx, ty: best.ty,
+          targetSource: 'canvas_name'
+        };
+      }
     }
 
-    var rx = pos.px - pos.cx;
-    var ry = pos.py - pos.cy;
-    var curDist = Math.hypot(rx, ry);
-
-    if (curDist < 0.005) {
-      return {
-        vx: Math.cos(fallbackTheta),
-        vy: Math.sin(fallbackTheta),
-        blocked: false,
-        stepScale: params.clickStep
-      };
+    // Ưu tiên #3: Chấm đỏ quái gần nhất trên Minimap -> quy đổi hướng tương đối sang màn hình
+    var freshMiniE = [];
+    for (var k = 0; k < O.obsMiniEnemies.length; k++) {
+      if (now - O.obsMiniEnemies[k].at < 1000) freshMiniE.push(O.obsMiniEnemies[k]);
+    }
+    O.obsMiniEnemies = freshMiniE;
+    if (O.obsMiniPlayer && now - O.obsMiniPlayer.at < 1500 && freshMiniE.length > 0) {
+      var bestM = null, bestMD = 1e9;
+      for (var m = 0; m < freshMiniE.length; m++) {
+        var mdx = freshMiniE[m].nx - O.obsMiniPlayer.nx;
+        var mdy = freshMiniE[m].ny - O.obsMiniPlayer.ny;
+        var md = Math.hypot(mdx, mdy);
+        if (md > 0.004 && md < bestMD) {
+          bestMD = md;
+          bestM = { dx: mdx, dy: mdy };
+        }
+      }
+      if (bestM) {
+        // Ước lượng tỷ lệ minimap -> pixel màn hình
+        var scalePx = Math.min(r.width, r.height) * 2.2;
+        return {
+          px: px, py: py,
+          hasTarget: true,
+          tx: px + bestM.dx * scalePx,
+          ty: py + bestM.dy * scalePx,
+          targetSource: 'minimap_dot'
+        };
+      }
     }
 
-    var curAngle = Math.atan2(ry, rx);
-    var distRatio = curDist / rUse;
-    var advanceRad = (distRatio > 1.35 || distRatio < 0.65) ? (params.stepRad * 0.50) : params.stepRad;
-    var nextAngle = curAngle + advanceRad;
-
-    var goalX = pos.cx + rUse * Math.cos(nextAngle);
-    var goalY = pos.cy + rUse * Math.sin(nextAngle);
-
-    // Ép điểm đích luôn nằm gọn trong hình thoi an toàn -> nhân vật KHÔNG BAO GIỜ chạy vào 4 góc map
-    if (pos.hasMapPos) {
-      var safeGoal = clampInsideSafeDiamond(goalX, goalY);
-      goalX = safeGoal.x;
-      goalY = safeGoal.y;
-    }
-
-    var errX = goalX - pos.px;
-    var errY = goalY - pos.py;
-    var errLen = Math.hypot(errX, errY);
-    if (errLen < 0.0001) {
-      return {
-        vx: -Math.sin(curAngle),
-        vy: Math.cos(curAngle),
-        blocked: false,
-        stepScale: params.clickStep
-      };
-    }
     return {
-      vx: errX / errLen,
-      vy: errY / errLen,
-      blocked: false,
-      stepScale: params.clickStep
+      px: px, py: py,
+      hasTarget: false,
+      tx: px, ty: py,
+      targetSource: 'none'
     };
   }
 
@@ -3986,7 +4038,7 @@ class GameAutoPilot(
             button: 0,
             buttons: type === 'pointerup' || type === 'mouseup' ? 0 : 1,
             pointerId: 1,
-            pointerType: 'touch',
+            pointerType: 'mouse',
             isPrimary: true
           })
         : null;
@@ -4006,27 +4058,15 @@ class GameAutoPilot(
     } catch (e) {}
   }
 
-  // Giả lập chuột trái click trực tiếp lên nền canvas theo hướng (vx, vy)
-  // Thay thế phím mũi tên vì phím mũi tên thường làm game tự tắt Auto đánh.
-  function clickCanvasMove(stage, vx, vy, stepScale) {
+  // Click chuột trái trực tiếp tại tọa độ màn hình (rawX, rawY), tự kẹp vào vùng sàn đấu an toàn không đè HUD
+  function clickScreenPoint(stage, rawX, rawY) {
     if (!stage || !stage.canvas || !stage.rect) return false;
     var r = stage.rect;
-    var now = Date.now();
-    // Lấy vị trí nhân vật trên màn hình (mặc định giữa canvas)
-    var baseNx = (O.obsPlayer && now - O.obsPlayer.at < 1200) ? O.obsPlayer.nx : 0.5;
-    var baseNy = (O.obsPlayer && now - O.obsPlayer.at < 1200) ? O.obsPlayer.ny : 0.52;
-    var baseX = r.left + r.width * baseNx;
-    var baseY = r.top + r.height * baseNy;
-
-    var stepPx = Math.min(r.width, r.height) * (stepScale || 0.16);
-    var rawX = baseX + vx * stepPx;
-    var rawY = baseY + vy * stepPx;
-
-    // Giữ điểm click nằm gọn trong vùng giữa canvas, tuyệt đối không bấm trúng thanh HUD/chat/kỹ năng
-    var minX = r.left + r.width * 0.18;
-    var maxX = r.left + r.width * 0.82;
-    var minY = r.top + r.height * 0.18;
-    var maxY = r.top + r.height * 0.78;
+    var isPortrait = r.height > r.width;
+    var minX = r.left + r.width * 0.14;
+    var maxX = r.left + r.width * (isPortrait ? 0.86 : 0.82);
+    var minY = r.top + r.height * (isPortrait ? 0.27 : 0.18);
+    var maxY = r.top + r.height * (isPortrait ? 0.79 : 0.79);
     var cx = Math.max(minX, Math.min(maxX, rawX));
     var cy = Math.max(minY, Math.min(maxY, rawY));
 
@@ -4047,63 +4087,83 @@ class GameAutoPilot(
           });
           stage.canvas.dispatchEvent(cEv);
         } catch (eUp) {}
-      }, 35);
+      }, 28);
       return true;
     } catch (eClk) {
       return false;
     }
   }
 
-  function pulseJoystickOrbit(vx, vy, joyEl) {
-    var joy = joyEl || findVisibleJoystick();
-    if (!joy) return false;
-    var jr = joy.getBoundingClientRect();
-    var jcx = jr.left + jr.width * 0.5;
-    var jcy = jr.top + jr.height * 0.5;
-    var jRad = Math.min(jr.width, jr.height) * 0.35;
-    var jx = jcx + vx * jRad;
-    var jy = jcy + vy * jRad;
-    if (!O.joyPtrActive) {
-      O.joyPtrActive = true;
-      dispatchOrbitPointer(joy, 'pointerdown', jcx, jcy);
-      dispatchOrbitPointer(joy, 'mousedown', jcx, jcy);
-    }
-    dispatchOrbitPointer(joy, 'pointermove', jx, jy);
-    dispatchOrbitPointer(joy, 'mousemove', jx, jy);
-    return true;
-  }
+  // Tính tọa độ điểm click kế tiếp trên đường tròn quanh mục tiêu (Tx, Ty) với bán kính R_px,
+  // ĐỒNG THỜI kiểm tra 4 cạnh tường chéo của Minimap hình thoi để TUYỆT ĐỐI KHÔNG chạy vào góc map.
+  function computeNextCircularClick(ent, mapPos, params, stageRect) {
+    var px = ent.px, py = ent.py;
+    var R = params.radiusPx;
+    var minDim = Math.min(stageRect.width, stageRect.height);
+    var maxStride = Math.max(70, minDim * 0.34);
 
-  function finishOrbitMovePulse() {
-    if (!O.moving) return;
-    var now = Date.now();
-    var moveSec = O.moveStartedAt > 0 ? Math.min(0.35, Math.max(0.05, (now - O.moveStartedAt) / 1000)) : 0.2;
-    var params = computeOrbitParams(O.style || 'ranged');
-    O.estX += O.lastMoveVx * params.estSpeed * moveSec;
-    O.estY += O.lastMoveVy * params.estSpeed * moveSec;
-    pauseOrbitMovement();
-    O.lastAt = now;
-    // Kích hoạt lại Auto ingame NGAY LẬP TỨC khi vừa dừng di chuyển
-    ensureGameAutoOn(true);
-    setTimeout(function () {
-      try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA1) {}
-    }, 50);
-    setTimeout(function () {
-      try { if (!O.moving && A.cfg.on) ensureGameAutoOn(true); } catch (eA2) {}
-    }, 180);
+    // Tính 1 điểm ứng viên trên đường tròn bán kính R quanh mục tiêu theo chiều dir (+1 hoặc -1)
+    var calcCandidate = function (dir) {
+      var dx = px - ent.tx;
+      var dy = py - ent.ty;
+      var dist = Math.hypot(dx, dy);
+      var curAng = (dist > 6) ? Math.atan2(dy, dx) : O.theta;
+
+      // CHỐNG LÙI THẲNG VÀO GÓC:
+      // Nếu quái áp sát quá gần (< 75% bán kính đánh xa), xoay NGANG (55°) quanh quái thay vì lùi thẳng về sau!
+      var stepAng = params.stepRad;
+      if (!params.isMelee && dist < R * 0.75) {
+        stepAng = Math.PI * 0.30; // 54° tiếp tuyến ngang để vòng qua quái, không lùi thẳng vào góc
+      }
+      var nextAng = curAng + dir * stepAng;
+      var gx = ent.tx + R * Math.cos(nextAng);
+      var gy = ent.ty + R * Math.sin(nextAng);
+
+      var mvx = gx - px;
+      var mvy = gy - py;
+      var mvLen = Math.hypot(mvx, mvy);
+      if (mvLen < 28) {
+        // Đảm bảo mỗi cú click đủ xa để nhân vật thực sự bước đi mượt
+        var tangAng = curAng + dir * (Math.PI * 0.5);
+        mvx = Math.cos(tangAng) * 52;
+        mvy = Math.sin(tangAng) * 52;
+        mvLen = 52;
+      } else if (mvLen > maxStride) {
+        mvx = (mvx / mvLen) * maxStride;
+        mvy = (mvy / mvLen) * maxStride;
+        mvLen = maxStride;
+      }
+
+      var ux = mvx / (mvLen || 1);
+      var uy = mvy / (mvLen || 1);
+      var predWall = 0;
+      if (mapPos.hasMapPos) {
+        // Dự đoán vị trí trên minimap sau bước click này
+        predWall = diamondWallMetric(mapPos.mapPx + ux * 0.085, mapPos.mapPy + uy * 0.065);
+      }
+      return { x: px + mvx, y: py + mvy, ang: nextAng, predWall: predWall, dir: dir };
+    };
+
+    var primary = calcCandidate(O.orbitDir);
+    if (mapPos.hasMapPos && primary.predWall >= 0.90) {
+      // Nếu xoay tiếp theo chiều hiện tại sẽ đâm vào tường/góc -> thử đảo chiều vòng ngược lại vào lòng bản đồ
+      var flipped = calcCandidate(-O.orbitDir);
+      if (flipped.predWall < primary.predWall - 0.04 && flipped.predWall < 0.96) {
+        O.orbitDir = -O.orbitDir;
+        O.theta = flipped.ang;
+        return { x: flipped.x, y: flipped.y, mustReturnCenter: false };
+      }
+      // Cả 2 chiều đều bị tường/góc chặn -> về ngay trung tâm map
+      return { x: px, y: py, mustReturnCenter: true };
+    }
+
+    O.theta = primary.ang;
+    return { x: primary.x, y: primary.y, mustReturnCenter: false };
   }
 
   function orbitTick() {
-    if (!isTowerOrbitEnabled()) {
-      if (O.active || O.moving || O.wasInTower || O.held.up || O.held.down || O.held.left || O.held.right || O.joyPtrActive) {
-        releaseOrbitKeys();
-      }
-      return;
-    }
-
-    if (!isOrbitEligible()) {
-      if (O.active || O.moving || O.wasInTower || O.held.up || O.held.down || O.held.left || O.held.right || O.joyPtrActive) {
-        releaseOrbitKeys();
-      }
+    if (!isTowerOrbitEnabled() || !isOrbitEligible()) {
+      if (O.active || O.moving || O.wasInTower) releaseOrbitKeys();
       return;
     }
 
@@ -4121,33 +4181,19 @@ class GameAutoPilot(
     if (!O.wasInTower) {
       O.wasInTower = true;
       O.towerEnteredAt = now;
-      O.estX = 0;
-      O.estY = 0;
-      O.lastEstDecayAt = now;
+      O.lastClickAt = 0;
     }
+
+    // Quét Minimap pixel trực tiếp để luôn có tọa độ thật của nhân vật trên bản đồ
+    scanMinimapPixels(now);
 
     var resolved = resolveOrbitStyle();
     var style = resolved.style || 'ranged';
-
-    // Ghi nhận trạng thái nút Auto ngay khi vào tầng, KHÔNG trì hoãn: có mục tiêu là di chuyển vòng tròn ngay (di chuyển trước, tung skill sau)
-    if (now - O.towerEnteredAt < 250) {
-      var preBtn = findGameAutoButton();
-      if (detectGameAutoState(preBtn) === 'on' && preBtn) {
-        O.autoSawOn = true;
-        O.autoPreMoveSig = autoBtnVisualSignature(preBtn);
-      }
-    }
-
-    if (!O.phaseStart) {
-      O.phaseStart = now;
-      O.lastBeatIdx = -1;
-    }
-
-    var params = computeOrbitParams(style);
+    var params = computeOrbitParams(style, stage.rect);
     O.style = style;
     O.skillName = resolved.skill || '';
 
-    // 1. Kiểm tra liên tục (mỗi 90ms) việc lên tầng, hết quái, hoặc bị dạt ra góc / sát cạnh bản đồ
+    // 1. Phát hiện lên tầng mới -> lập tức chạy về chính giữa bản đồ
     var curFloor = readCurrentTowerFloor();
     var stgEl = document.getElementById('stageLbl');
     var curStageText = stgEl ? noAccent(stgEl.textContent || '') : '';
@@ -4161,137 +4207,69 @@ class GameAutoPilot(
     }
     if (curStageText) O.lastStageText = curStageText;
 
-    var pos = resolveArenaPosition(now, params);
-    if (pos.source !== 'center_anchor') {
-      O.estX = pos.px - pos.cx;
-      O.estY = pos.py - pos.cy;
-    }
+    var mapPos = readTrueMapPosition(now);
+    var ent = resolveScreenEntities(now, stage);
 
-    // Ổn định mục tiêu & phát hiện đổi mục tiêu mới (khi mục tiêu cũ biến mất -> tự tạo vòng tròn quanh mục tiêu mới)
-    if (pos.hasTarget) {
-      var targetSwitched = O.hadTargetInFloor && (Math.hypot(pos.cx - O.lastTargetCx, pos.cy - O.lastTargetCy) > 0.08);
-      O.hadTargetInFloor = true;
-      O.lastTargetCx = pos.cx;
-      O.lastTargetCy = pos.cy;
-      O.lastTargetAt = now;
-      if (targetSwitched) {
-        // Cập nhật góc khởi đầu theo vị trí hiện tại so với mục tiêu mới để xoay mượt, không giật ngược
-        O.theta = Math.atan2(pos.py - pos.cy, pos.px - pos.cx);
-        O.stuckBeats = 0;
-      }
-    } else if (O.hadTargetInFloor && O.lastTargetAt > 0 && (now - O.lastTargetAt) < 1200 && pos.source !== 'state') {
-      // Giữ tạm tâm mục tiêu tối đa 1.2s nếu tên trên canvas chớp tắt 1 frame
-      pos.hasTarget = true;
-      pos.cx = O.lastTargetCx;
-      pos.cy = O.lastTargetCy;
-    }
-
-    // Phát hiện vừa lên tầng hoặc mục tiêu biến mất hoàn toàn (hết quái) -> chạy về trung tâm map chờ mục tiêu mới
     if (floorChanged) {
       O.returningToCenter = true;
       O.returnStartedAt = now;
       O.hadTargetInFloor = false;
       O.lastTargetAt = 0;
+      O.obsEnemies = [];
+      O.obsTargetRing = null;
       O.stuckBeats = 0;
-      O.theta = 0;
-    } else if (!pos.hasTarget && O.hadTargetInFloor && pos.source === 'state') {
-      O.returningToCenter = true;
-      O.returnStartedAt = now;
-      O.hadTargetInFloor = false;
-      O.lastTargetAt = 0;
     }
 
-    // 1c. Tránh tuyệt đối 4 góc map & 4 cạnh tường chéo của hình thoi (|x| + |y| >= 0.36)
-    var manhattanDist = pos.hasMapPos ? (Math.abs(pos.mapPx) + Math.abs(pos.mapPy)) : 0;
-    var inCornerOrWall = pos.hasMapPos && (
-      manhattanDist >= WALL_TRIGGER_LIMIT ||
-      Math.abs(pos.mapPx) >= 0.33 ||
-      Math.abs(pos.mapPy) >= 0.33
-    );
-    if (inCornerOrWall && !O.returningToCenter) {
+    // 2. Phát hiện sắp chạm 4 tường chéo hoặc 4 góc của hình thoi bản đồ -> lập tức quay về tâm map
+    var wallMetric = mapPos.hasMapPos ? diamondWallMetric(mapPos.mapPx, mapPos.mapPy) : 0;
+    if (mapPos.hasMapPos && wallMetric >= 0.96 && !O.returningToCenter) {
       O.returningToCenter = true;
       O.returnStartedAt = now;
       O.stuckBeats = 0;
     }
 
-    // 2. Nếu đang ở trạng thái chạy về trung tâm map (thoát góc vuông / sát tường / vừa lên tầng)
+    // 3. Trạng thái chạy thẳng về trung tâm bản đồ (thoát góc / sau khi vượt tầng)
     if (O.returningToCenter) {
-      if (!pos.hasMapPos) {
+      if (!mapPos.hasMapPos) {
         O.returningToCenter = false;
         O.returnStartedAt = 0;
-        pauseOrbitMovement();
         ensureGameAutoOn(true);
         return;
       }
-      var toCx = -pos.mapPx;
-      var toCy = -pos.mapPy;
-      var distToCenter = Math.hypot(toCx, toCy);
       var returnElapsed = now - (O.returnStartedAt || now);
-      if (distToCenter <= 0.10 || returnElapsed > 3500) {
+      if (wallMetric <= 0.28 || returnElapsed > 2800) {
         O.returningToCenter = false;
         O.returnStartedAt = 0;
-        O.phaseStart = now;
-        O.lastBeatIdx = -1;
-        pauseOrbitMovement();
+        O.lastClickAt = now;
         ensureGameAutoOn(true);
         return;
       }
-      var rvx = toCx / distToCenter;
-      var rvy = toCy / distToCenter;
-      O.lastMoveVx = rvx;
-      O.lastMoveVy = rvy;
-      O.moveStartedAt = now;
-      O.lastAt = now;
-      // Click bước dài (0.32) thẳng về tâm bản đồ mỗi 220ms để thoát góc vuông / tường chéo dứt khoát
-      if (!O.lastRetClickAt || (now - O.lastRetClickAt) >= 220) {
+      if (now - (O.lastRetClickAt || 0) >= 220) {
         O.lastRetClickAt = now;
-        clickCanvasMove(stage, rvx, rvy, 0.32);
-      }
-      O.moving = false;
-      O.active = true;
-      return;
-    }
-
-    var elapsedTotal = Math.max(0, now - O.phaseStart);
-    var beatIdx = Math.floor(elapsedTotal / params.cycleMs);
-    var elapsedInBeat = elapsedTotal % params.cycleMs;
-    var isMoveBeat = elapsedInBeat < params.moveMs;
-
-    if (!isMoveBeat) {
-      if (O.moving) {
-        finishOrbitMovePulse();
-      } else {
-        // Nhịp tấn công (Auto ingame): nhả hết phím di chuyển và đảm bảo Auto tự đánh luôn BẬT
+        var toCx = -mapPos.mapPx;
+        var toCy = -mapPos.mapPy;
+        var lenC = Math.hypot(toCx, toCy) || 1;
+        var strideC = Math.min(stage.rect.width, stage.rect.height) * 0.30;
+        clickScreenPoint(stage, ent.px + (toCx / lenC) * strideC, ent.py + (toCy / lenC) * strideC);
         ensureGameAutoOn(true);
       }
-      O.lastAt = now;
       O.active = true;
       return;
     }
 
-    if (now < O.autoPauseUntil) {
+    // 4. Kiểm tra nhịp thời gian giữa 2 lần click vòng tròn (460ms đánh gần / 500ms đánh xa)
+    if (now < O.autoPauseUntil) return;
+    if (now - O.lastClickAt < params.cycleMs) {
+      ensureGameAutoOn(false);
       return;
     }
 
-    if (O.moving && beatIdx === O.lastBeatIdx) {
-      if (O.moveStartedAt > 0 && now - O.moveStartedAt >= params.moveMs) {
-        finishOrbitMovePulse();
-      }
-      return;
-    }
-
-    if (beatIdx === O.lastBeatIdx) {
-      return;
-    }
-
-    O.lastBeatIdx = beatIdx;
-
-    // Kiểm tra kẹt góc trên tọa độ MAP THẬT (vị trí không đổi sau 2 nhịp di chuyển) -> chạy ngay về trung tâm map
-    if (pos.hasMapPos) {
-      var movedDist = Math.hypot(pos.mapPx - O.prevPx, pos.mapPy - O.prevPy);
-      O.prevPx = pos.mapPx;
-      O.prevPy = pos.mapPy;
-      if (movedDist < 0.008 && Math.hypot(pos.mapPx, pos.mapPy) > 0.20) {
+    // Kiểm tra kẹt không di chuyển được trên Minimap -> chạy về trung tâm map
+    if (mapPos.hasMapPos) {
+      var movedM = Math.hypot(mapPos.mapPx - O.prevMapX, mapPos.mapPy - O.prevMapY);
+      O.prevMapX = mapPos.mapPx;
+      O.prevMapY = mapPos.mapPy;
+      if (movedM < 0.008 && wallMetric > 0.55) {
         O.stuckBeats++;
         if (O.stuckBeats >= 2) {
           O.returningToCenter = true;
@@ -4304,47 +4282,53 @@ class GameAutoPilot(
       }
     }
 
-    // Tính bước di chuyển tiếp theo trên đường tròn chuẩn bán kính R (90: 12 nhịp/vòng, 400: 18 nhịp/vòng)
-    O.theta = (O.theta + params.stepRad) % (Math.PI * 2);
-    var steer = computeOrbitSteeringVector(pos, params, O.theta);
-    if (steer.blocked && pos.hasMapPos) {
-      // Không thể tiếp tục xoay vòng tròn do chạm giới hạn bản đồ -> lập tức về trung tâm map
-      O.returningToCenter = true;
-      O.returnStartedAt = now;
-      O.stuckBeats = 0;
+    // 5. Nếu chưa có mục tiêu (vừa diệt hết quái, đang chờ đợt sau): về giữa map nếu đang lệch tâm, tuyệt đối không đi ra góc
+    if (!ent.hasTarget) {
+      if (mapPos.hasMapPos && wallMetric > 0.30) {
+        O.returningToCenter = true;
+        O.returnStartedAt = now;
+        return;
+      }
+      ensureGameAutoOn(true);
       return;
     }
-    O.lastMoveVx = steer.vx;
-    O.lastMoveVy = steer.vy;
-    O.moveStartedAt = now;
-    O.lastAt = now;
 
-    // Ghi nhận chữ ký nút Auto trước khi gửi xung di chuyển (kể cả khi state='unknown' để phát hiện nếu phím di chuyển làm tắt Auto)
-    var autoBtnBefore = findGameAutoButton();
-    if (autoBtnBefore) {
-      var stBefore = detectGameAutoState(autoBtnBefore);
-      if (stBefore !== 'off') {
-        O.autoSawOn = true;
-        O.autoPreMoveSig = autoBtnVisualSignature(autoBtnBefore);
-      }
+    // Lưu vị trí mục tiêu để giữ liên tục & nhận diện đổi mục tiêu
+    O.hadTargetInFloor = true;
+    O.lastTargetScreenX = ent.tx;
+    O.lastTargetScreenY = ent.ty;
+    O.lastTargetAt = now;
+
+    // 6. Tính tọa độ click trên đường tròn quanh mục tiêu đã chọn
+    var plan = computeNextCircularClick(ent, mapPos, params, stage.rect);
+    if (plan.mustReturnCenter && mapPos.hasMapPos) {
+      O.returningToCenter = true;
+      O.returnStartedAt = now;
+      return;
     }
 
-    // Giả lập chuột trái click lên nền canvas theo hướng quỹ đạo 20° (KHÔNG dùng phím mũi tên để tránh tắt Auto)
-    syncOrbitKeys({ up: false, down: false, left: false, right: false }, stage.canvas);
-    clickCanvasMove(stage, steer.vx, steer.vy, params.clickStep || (style === 'melee' ? 0.13 : 0.21));
+    // Ghi nhận trạng thái nút Auto trước khi click
+    var autoBtnBefore = findGameAutoButton();
+    if (autoBtnBefore && detectGameAutoState(autoBtnBefore) !== 'off') {
+      O.autoSawOn = true;
+      O.autoPreMoveSig = autoBtnVisualSignature(autoBtnBefore);
+    }
 
-    O.moving = true;
-    if (O.moveEndTimer) clearTimeout(O.moveEndTimer);
-    O.moveEndTimer = setTimeout(function () {
-      try { finishOrbitMovePulse(); } catch (eFin) {}
-    }, params.moveMs);
+    O.lastClickAt = now;
+    O.lastAt = now;
+    clickScreenPoint(stage, plan.x, plan.y);
+
+    // Đảm bảo Auto ingame luôn bật sau click
+    setTimeout(function () {
+      try { if (A.cfg.on) ensureGameAutoOn(true); } catch (eA) {}
+    }, 80);
 
     if (!O.active) {
       O.active = true;
       if (now - O.lastNoteAt > 20000) {
         O.lastNoteAt = now;
         var skInfo = O.skillName ? (' · ' + O.skillName) : '';
-        note('🌀 Leo Tháp: neo trung tâm map + giữ Auto đánh (' + (style === 'melee' ? 'Đánh gần' : 'Đánh xa') + skInfo + ')');
+        note('🌀 Leo Tháp: xoay vòng tròn quanh mục tiêu (' + (style === 'melee' ? 'Đánh gần R90' : 'Đánh xa R400') + skInfo + ')');
       }
     }
   }
@@ -4364,9 +4348,10 @@ class GameAutoPilot(
         style: O.style,
         skill: O.skillName,
         theta: O.theta,
-        estX: O.estX,
-        estY: O.estY,
-        held: Object.assign({}, O.held)
+        orbitDir: O.orbitDir,
+        miniPlayer: O.obsMiniPlayer,
+        targetRing: O.obsTargetRing,
+        enemies: O.obsEnemies.length
       };
     },
     trangThai: function () {
