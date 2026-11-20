@@ -998,41 +998,21 @@ class GameTabManager(
     fun syncAutoMode(modeText: String) {
         mainHandler.post {
             val script = GameScriptInjector.buildSyncAutoModeScript(modeText)
-            val leavingTower = !modeText.contains("Tháp", ignoreCase = true)
-            val releaseJs = if (leavingTower) {
-                "(function(){try{if(window.__vlmOrbitRelease)window.__vlmOrbitRelease();}catch(e){}})();"
-            } else {
-                null
-            }
-            val staggerMs = if (isConstrainedMemory || isLowRam) 140L else 80L
             for (i in 0 until tabCount) {
-                val runTab = Runnable {
-                    if (i >= tabCount) return@Runnable
-                    val wv = webViews[i] ?: return@Runnable
-                    val url = wv.url ?: return@Runnable
-                    if (url == "about:blank") return@Runnable
-                    if (releaseJs != null) {
-                        runCatching { wv.evaluateJavascript(releaseJs, null) }
-                    }
-                    if (isTabActive[i]) {
-                        wv.evaluateJavascript(script) { result ->
-                            val cleaned = result?.trim('"') ?: ""
-                            if (cleaned.startsWith("SELECTED_OPTION:") ||
-                                cleaned.startsWith("CLICKED_DIRECT:") ||
-                                cleaned.startsWith("ALREADY_IN_MODE:") ||
-                                cleaned.startsWith("OPENED_TRIGGER_AND_SELECTING:")
-                            ) {
-                                updateStatus(i, "⚡ Chế độ: $modeText")
-                            }
+                val wv = webViews[i]
+                if (wv != null && isTabActive[i]) {
+                    wv.evaluateJavascript(script) { result ->
+                        val cleaned = result?.trim('"') ?: ""
+                        if (cleaned.startsWith("SELECTED_OPTION:") ||
+                            cleaned.startsWith("CLICKED_DIRECT:") ||
+                            cleaned.startsWith("ALREADY_IN_MODE:") ||
+                            cleaned.startsWith("OPENED_TRIGGER_AND_SELECTING:")
+                        ) {
+                            updateStatus(i, "⚡ Chế độ: $modeText")
                         }
-                    } else {
-                        wv.evaluateJavascript(script, null)
                     }
-                }
-                if (i == 0) {
-                    runTab.run()
                 } else {
-                    mainHandler.postDelayed(runTab, staggerMs * i)
+                    wv?.evaluateJavascript(script, null)
                 }
             }
         }
