@@ -460,6 +460,76 @@ class ExampleRobolectricTest {
   }
 
   @Test
+  fun `control sheet update row shows version column and working check download install actions`() {
+    var checkClicks = 0
+    var downloadClicks = 0
+    var installClicks = 0
+    val stateHolder = androidx.compose.runtime.mutableStateOf<com.example.update.UpdateUiState>(
+      com.example.update.UpdateUiState.Idle
+    )
+
+    composeTestRule.setContent {
+      MyApplicationTheme(darkTheme = true) {
+        com.example.ui.components.ControlSheet(
+          isOpen = true,
+          tabIndex = 0,
+          tabLabel = "NhanVat",
+          layoutMode = com.example.model.ViewLayoutMode.FOUR_COLUMNS,
+          fps = 30,
+          networkData = com.example.model.NetworkDataInfo(),
+          onOpenTab = {},
+          onReloadTab = {},
+          onStopTab = {},
+          onChangeLayoutMode = {},
+          onToggleFps = {},
+          onActivateSleepMode = {},
+          onOpenSidebar = {},
+          onResetNetworkStats = {},
+          onSyncAutoMode = {},
+          isAutoPilotOn = false,
+          onOpenAutoConfig = {},
+          tabCount = 2,
+          maxTabCount = 8,
+          isLowRam = false,
+          tabCountWarnShown = true,
+          hasBusyTabsInRange = { _, _ -> false },
+          onSetTabCount = {},
+          onMarkTabCountWarned = {},
+          appVersionName = "5.4.0",
+          updateState = stateHolder.value,
+          onCheckUpdate = { checkClicks++ },
+          onStartDownload = { downloadClicks++ },
+          onInstallUpdate = { installClicks++ },
+          onOpenReleases = {},
+          onDismiss = {},
+          onInteract = {}
+        )
+      }
+    }
+    composeTestRule.waitForIdle()
+
+    // Left column displays version; right column shows "Kiểm tra"
+    composeTestRule.onNodeWithTag("sheet_update_row").performScrollTo().assertIsDisplayed()
+    composeTestRule.onNodeWithText("📦 Phiên bản 5.4.0").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("sheet_update_action").assertIsDisplayed().assertTextEquals("Kiểm tra").performClick()
+    assertEquals(1, checkClicks)
+
+    // Available state -> "Tải về"
+    stateHolder.value = com.example.update.UpdateUiState.Available("5.4.1", 12L * 1024L * 1024L, "notes")
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("sheet_update_action").assertTextEquals("Tải về").performClick()
+    assertEquals(1, downloadClicks)
+
+    // ReadyToInstall state -> "Cài đặt" opens confirmation dialog -> triggers install
+    stateHolder.value = com.example.update.UpdateUiState.ReadyToInstall("5.4.1", 12L * 1024L * 1024L)
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("sheet_update_action").assertTextEquals("Cài đặt").performClick()
+    composeTestRule.waitForIdle()
+    composeTestRule.onNodeWithTag("update_confirm_ok").assertIsDisplayed().performClick()
+    assertEquals(1, installClicks)
+  }
+
+  @Test
   fun `tabManager staggers render process recovery applies backoff cancels on stop and tiers renderer priority`() {
     val app = ApplicationProvider.getApplicationContext<android.app.Application>()
     val prefs = PreferencesManager(app)

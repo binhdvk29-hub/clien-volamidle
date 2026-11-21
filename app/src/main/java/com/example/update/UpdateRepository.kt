@@ -44,13 +44,25 @@ class UpdateRepository(
     init {
         restoreInstallResult()
         downloader.cleanupStale()
+        val cached = currentRelease
+        if (_state.value is UpdateUiState.Idle &&
+            cached != null &&
+            cached.versionCode > BuildConfig.VERSION_CODE
+        ) {
+            publishAvailability(cached)
+        }
     }
 
     suspend fun checkForUpdate(manual: Boolean) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         if (mutex.isLocked) return@withContext
         if (manual) {
-            if (now - prefs.getUpdateLastManualCheck() < MANUAL_CHECK_THROTTLE_MS) return@withContext
+            val canRetryImmediately = _state.value is UpdateUiState.NoNetwork ||
+                _state.value is UpdateUiState.Failed
+            if (!canRetryImmediately && now - prefs.getUpdateLastManualCheck() < MANUAL_CHECK_THROTTLE_MS) {
+                currentRelease?.let { publishAvailability(it) }
+                return@withContext
+            }
         } else {
             if (now - prefs.getUpdateLastAttempt() < AUTO_CHECK_INTERVAL_MS) return@withContext
         }
