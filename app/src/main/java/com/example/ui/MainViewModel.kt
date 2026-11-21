@@ -15,6 +15,8 @@ import com.example.model.ViewLayoutMode
 import com.example.network.TrafficMonitor
 import com.example.sleep.SleepWakeController
 import com.example.sleep.SleepWakePauseStatus
+import com.example.update.UpdateRepository
+import com.example.update.UpdateUiState
 import com.example.webview.AutoConfig
 import com.example.webview.GameTabManager
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +32,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val trafficMonitor = TrafficMonitor(application)
     val tabManager = GameTabManager(application, prefs, viewModelScope)
     val sleepWakeController = SleepWakeController(application, prefs)
+
+    private val updateRepository: UpdateRepository? =
+        (application as? VolamIdleApp)?.updateRepository
+
+    val updateState: StateFlow<UpdateUiState> =
+        updateRepository?.state ?: MutableStateFlow(UpdateUiState.Idle)
 
     val appVersionName: String = BuildConfig.VERSION_NAME
 
@@ -53,6 +61,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isSleepWakeSetupDialogOpen = MutableStateFlow(false)
     val isSleepWakeSetupDialogOpen: StateFlow<Boolean> = _isSleepWakeSetupDialogOpen.asStateFlow()
+
+    private val _foregroundTick = MutableStateFlow(0)
+    val foregroundTick: StateFlow<Int> = _foregroundTick.asStateFlow()
 
     private val _isSidebarVisible = MutableStateFlow(false)
     val isSidebarVisible: StateFlow<Boolean> = _isSidebarVisible.asStateFlow()
@@ -382,9 +393,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
-    fun onActivityResumed() {
-        refreshSleepWakePermissions()
+    fun checkForUpdate() {
+        viewModelScope.launch { updateRepository?.checkForUpdate(manual = true) }
     }
+
+    fun startUpdateDownload() {
+        viewModelScope.launch { updateRepository?.download() }
+    }
+
+    fun installUpdate() {
+        viewModelScope.launch { updateRepository?.install() }
+    }
+
+    fun onActivityResumed() {
+        updateRepository?.onAppResumed()
+        refreshSleepWakePermissions()
+        _foregroundTick.value += 1
+    }
+
+    fun takeUpdateNotice(): String? {
+        if (_isSleepMode.value) return null
+        val repository = updateRepository ?: return null
+        if (!repository.shouldShowUpdateDialog()) return null
+        val versionName = repository.newerReleaseName() ?: return null
+        repository.markUpdateDialogShown()
+        return versionName
+    }
+
+    fun onUpdateNoticeAccepted() {
+        openControlSheet(_selectedTabIndex.value)
+        val state = updateState.value
+        val inProgress = state is UpdateUiState.ReadyToInstall ||
+            state is UpdateUiState.Downloading ||
+            state is UpdateUiState.Verifying ||
+            state is UpdateUiState.Installing ||
+            state is UpdateUiState.NeedsPermission
+        if (inProgress) return
+
+        if (updateRepository?.hasNewerRelease() == true) {
+            viewModelScope.launch { updateRepository?.download() }
+        } else {
+            checkForUpdate()
+        }
+    }
+
+    fun releasesPageUrl(): String =
+        updateRepository?.releasesPageUrl() ?: "https://github.com/binhdvk29-hub/clien-volamidle/releases"
+
+    fun shouldShowUpdateBanner(): Boolean = updateRepository?.shouldShowBanner() ?: false
+
+    fun markUpdateBannerShown() {
+        updateRepository?.markBannerShown()
+    }
+
+    fun consumeLaunchMessage(): String? = updateRepository?.consumeLaunchMessage()
 
     override fun onCleared() {
         sleepWakeController.restoreAutoScreenWake()

@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,23 +23,37 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -54,6 +69,9 @@ import com.example.ui.components.SidebarView
 import com.example.ui.components.SleepWakeSetupDialog
 import com.example.ui.components.hasDownloadTraffic
 import com.example.ui.theme.MyApplicationTheme
+import com.example.update.AppVisibility
+import com.example.update.UpdateUiState
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -146,6 +164,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        AppVisibility.onActivityStarted()
+    }
+
     override fun onPause() {
         super.onPause()
         viewModel.tabManager.onAppBackgrounded()
@@ -153,6 +176,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        AppVisibility.onActivityStopped()
         viewModel.tabManager.onAppBackgrounded()
     }
 
@@ -203,7 +227,39 @@ fun MainScreen(
         com.example.model.CharacterStats(tabIndex = controlSheetTabIndex)
     }
 
+    val updateState by viewModel.updateState.collectAsState()
     val context = LocalContext.current
+    var updateBanner by remember { mutableStateOf<String?>(null) }
+    val foregroundTick by viewModel.foregroundTick.collectAsState()
+    var updateNoticeVersion by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(updateState, isSleepMode, updateNoticeVersion) {
+        if (isSleepMode || updateNoticeVersion != null) {
+            updateBanner = null
+            return@LaunchedEffect
+        }
+        val state = updateState
+        if (state is UpdateUiState.Available && viewModel.shouldShowUpdateBanner()) {
+            viewModel.markUpdateBannerShown()
+            updateBanner = context.getString(R.string.update_banner_available, state.versionName)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.consumeLaunchMessage()?.let { message -> updateBanner = message }
+    }
+
+    LaunchedEffect(foregroundTick, updateState is UpdateUiState.Available, isSleepMode) {
+        if (isSleepMode || updateNoticeVersion != null) return@LaunchedEffect
+        viewModel.takeUpdateNotice()?.let { version -> updateNoticeVersion = version }
+    }
+
+    LaunchedEffect(updateBanner) {
+        if (updateBanner != null) {
+            delay(8_000)
+            updateBanner = null
+        }
+    }
 
     LaunchedEffect(isSleepMode, isSleepWakeSetupDialogOpen) {
         onSetWindowBrightnessLow(isSleepMode && !isSleepWakeSetupDialogOpen)
@@ -366,6 +422,37 @@ fun MainScreen(
                 }
             }
 
+            updateBanner?.takeIf { !isSleepMode }?.let { text ->
+                val bannerShape = RoundedCornerShape(6.dp)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .clip(bannerShape)
+                        .background(Color(0xFF0F172A))
+                        .border(1.dp, Color(0xFF38BDF8), bannerShape)
+                        .clickable {
+                            viewModel.tabManager.markUiInteraction()
+                            updateBanner = null
+                            viewModel.openControlSheet(selectedTabIndex)
+                        }
+                        .padding(horizontal = 10.dp)
+                        .testTag("update_banner"),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = text,
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
             ControlSheet(
                 isOpen = isControlSheetOpen,
                 tabIndex = controlSheetTabIndex,
@@ -403,6 +490,17 @@ fun MainScreen(
                 onSetTabCount = { viewModel.setTabCount(it) },
                 onMarkTabCountWarned = { viewModel.markTabCountWarned() },
                 appVersionName = viewModel.appVersionName,
+                updateState = updateState,
+                onCheckUpdate = { viewModel.checkForUpdate() },
+                onStartDownload = { viewModel.startUpdateDownload() },
+                onInstallUpdate = { viewModel.installUpdate() },
+                onOpenReleases = {
+                    val open = android.content.Intent(
+                        android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(viewModel.releasesPageUrl())
+                    )
+                    runCatching { context.startActivity(open) }
+                },
                 onDismiss = { viewModel.dismissControlSheet() },
                 onInteract = { viewModel.tabManager.markUiInteraction() },
                 hasDndPolicyAccess = hasDndPolicyAccess,
@@ -470,6 +568,57 @@ fun MainScreen(
                     onSaveAll = { updated -> viewModel.saveAllAutoConfig(updated) },
                     onResetCounters = { tIdx -> viewModel.resetAutoDailyCounters(tIdx) },
                     onDismiss = { viewModel.dismissAutoConfigDialog() }
+                )
+            }
+
+            updateNoticeVersion?.let { version ->
+                AlertDialog(
+                    onDismissRequest = { updateNoticeVersion = null },
+                    containerColor = Color(0xFF1E293B),
+                    title = {
+                        Text(
+                            text = stringResource(R.string.update_notice_title, version),
+                            color = Color(0xFFE2E8F0),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(
+                                R.string.update_notice_body,
+                                viewModel.appVersionName
+                            ),
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 11.sp
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                updateNoticeVersion = null
+                                viewModel.onUpdateNoticeAccepted()
+                            },
+                            modifier = Modifier.testTag("update_notice_update")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.update_notice_update),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { updateNoticeVersion = null },
+                            modifier = Modifier.testTag("update_notice_later")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.update_notice_later),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                 )
             }
         }
