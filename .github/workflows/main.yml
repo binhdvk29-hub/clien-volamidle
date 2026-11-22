@@ -28,7 +28,15 @@ jobs:
         run: |
           if (-not [string]::IsNullOrWhiteSpace($env:KEYSTORE_BASE64)) {
             $bytes = [Convert]::FromBase64String($env:KEYSTORE_BASE64.Trim())
-            [IO.File]::WriteAllBytes("$PWD/my-upload-key.jks", $bytes)
+            $gradleFile = Get-ChildItem -Path $PWD -Filter "build.gradle.kts" -Recurse | Where-Object { $_.FullName -notlike "*\app\*" -and $_.FullName -notlike "*/app/*" } | Select-Object -First 1
+            if ($gradleFile) {
+              $targetDir = $gradleFile.Directory.FullName
+            } else {
+              $targetDir = $PWD
+            }
+            $outPath = Join-Path $targetDir "my-upload-key.jks"
+            [IO.File]::WriteAllBytes($outPath, $bytes)
+            Write-Host "Wrote keystore to $outPath"
           }
 
       - name: Setup Gradle
@@ -39,15 +47,20 @@ jobs:
       - name: Build signed Release APK
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-          KEYSTORE_PATH: my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          GW_PATH=$(find . -maxdepth 3 -name "gradlew" -type f | head -n 1)
+          GW_PATH=$(find . -maxdepth 4 -name "gradlew" -type f | head -n 1)
           if [ -n "$GW_PATH" ]; then
             chmod +x "$GW_PATH"
-            "$GW_PATH" assembleRelease --no-daemon
+            PROJ_DIR=$(dirname "$GW_PATH")
+            cd "$PROJ_DIR"
+            ./gradlew assembleRelease --no-daemon
           else
+            GRADLE_ROOT=$(find . -maxdepth 4 -name "settings.gradle.kts" -type f | head -n 1)
+            if [ -n "$GRADLE_ROOT" ]; then
+              cd "$(dirname "$GRADLE_ROOT")"
+            fi
             gradle assembleRelease --no-daemon
           fi
 
