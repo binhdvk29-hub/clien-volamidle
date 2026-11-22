@@ -15,9 +15,12 @@ import com.example.model.ViewLayoutMode
 import com.example.network.TrafficMonitor
 import com.example.sleep.SleepWakeController
 import com.example.sleep.SleepWakePauseStatus
-import com.example.update.UpdateRepository
-import com.example.update.UpdateUiState
 import com.example.webview.AutoConfig
+import com.example.update.AppReleaseInfo
+import com.example.update.AppUpdateManager
+import android.widget.Toast
+import com.example.backup.AccountBackupManager
+import com.example.update.UpdateCheckState
 import com.example.webview.GameTabManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -33,13 +36,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val tabManager = GameTabManager(application, prefs, viewModelScope)
     val sleepWakeController = SleepWakeController(application, prefs)
 
-    private val updateRepository: UpdateRepository? =
-        (application as? VolamIdleApp)?.updateRepository
-
-    val updateState: StateFlow<UpdateUiState> =
-        updateRepository?.state ?: MutableStateFlow(UpdateUiState.Idle)
-
+    val updateManager = AppUpdateManager(application)
+    val backupManager = AccountBackupManager(application)
     val appVersionName: String = BuildConfig.VERSION_NAME
+    val isTestChannel: Boolean = BuildConfig.IS_TEST_CHANNEL
+    val updateRepoName: String = BuildConfig.UPDATE_REPO
+
+    private val _updateState = MutableStateFlow<UpdateCheckState>(UpdateCheckState.Idle)
+    val updateState: StateFlow<UpdateCheckState> = _updateState.asStateFlow()
 
     private val _networkData = MutableStateFlow(NetworkDataInfo())
     val networkData: StateFlow<NetworkDataInfo> = _networkData.asStateFlow()
@@ -61,9 +65,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isSleepWakeSetupDialogOpen = MutableStateFlow(false)
     val isSleepWakeSetupDialogOpen: StateFlow<Boolean> = _isSleepWakeSetupDialogOpen.asStateFlow()
-
-    private val _foregroundTick = MutableStateFlow(0)
-    val foregroundTick: StateFlow<Int> = _foregroundTick.asStateFlow()
 
     private val _isSidebarVisible = MutableStateFlow(false)
     val isSidebarVisible: StateFlow<Boolean> = _isSidebarVisible.asStateFlow()
@@ -128,6 +129,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _networkData.value = sampled
                 delay(if (_isSleepMode.value) 6000L else 3000L)
             }
+        }
+
+        // Tự động kiểm tra bản cập nhật mới theo đúng kênh repo riêng (tool-test hoặc clien-volamidle)
+        checkAppUpdate(silent = true)
+    }
+
+    fun checkAppUpdate(silent: Boolean = false) {
+        if (_updateState.value is UpdateCheckState.Checking || _updateState.value is UpdateCheckState.Downloading) return
+        viewModelScope.launch {
+            if (!silent) _updateState.value = UpdateCheckState.Checking
+            val res = updateManager.checkLatestRelease()
+            res.onSuccess { rel ->
+                if (rel != null) {
+                    _updateState.value = UpdateCheckState.Available(rel)
+                } else if (!silent) {
+                    _updateState.value = UpdateCheckState.UpToDate(updateRepoName)
+                }
+            }.onFailure { err ->
+                if (!silent) {
+                    _updateState.value = UpdateCheckState.Error(err.message ?: "Không thể kiểm tra cập nhật")
+                }
+            }
+        }
+    }
+
+    fun startUpdateDownload(release: AppReleaseInfo) {
+        if (_updateState.value is UpdateCheckState.Downloading) return
+        viewModelScope.launch {
+            _updateState.value = UpdateCheckState.Downloading(release, 0)
+            val res = updateManager.downloadAndInstall(release) { pct ->
+                _updateState.value = UpdateCheckState.Downloading(release, pct)
+            }
+            res.onSuccess {
+                _updateState.value = UpdateCheckState.Idle
+            }.onFailure { err ->
+                _updateState.value = UpdateCheckState.Error(err.message ?: "Lỗi tải bản cập nhật")
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        if (_updateState.value !is UpdateCheckState.Downloading) {
+            _updateState.value = UpdateCheckState.Idle
         }
     }
 
@@ -356,6 +400,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.saveAccount(config)
         _editingAccount.value = null
         tabManager.onAccountChanged(config.tabIndex)
+        autoBackupSilently()
+    }
+
+    private fun autoBackupSilently() {
+        viewModelScope.launch {
+            runCatching { backupManager.exportAll(prefs, tabManager.tabCountState.value) }
+        }
+    }
+
+    fun exportAccountsBackup() {
+        viewModelScope.launch {
+            val res = backupManager.exportAll(prefs, tabManager.tabCountState.value)
+            res.onSuccess { r ->
+                runCatching {
+                    Toast.makeText(getApplication(), "💾 ${r.message}", Toast.LENGTH_LONG).show()
+                }
+            }.onFailure { err ->
+                runCatching {
+                    Toast.makeText(getApplication(), "❌ Lỗi sao lưu: ${err.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun importAccountsBackup() {
+        viewModelScope.launch {
+            val res = backupManager.importAll(prefs)
+            res.onSuccess { r ->
+                val refreshed = (0 until TabLimits.SLOT_COUNT).map { i -> AutoConfig.fromJson(prefs.getAutoConfig(i)) }
+                _autoConfigs.value = refreshed
+                _cluster.value = prefs.getCluster()
+                val actualCount = tabManager.setTabCount(prefs.getTabCount())
+                for (idx in 0 until actualCount) {
+                    val cfgJson = prefs.getAutoConfig(idx)
+                    if (!cfgJson.isNullOrBlank()) {
+                        tabManager.saveAutoConfigOnly(idx, cfgJson)
+                    }
+                }
+                runCatching {
+                    Toast.makeText(getApplication(), "📥 ${r.message}", Toast.LENGTH_LONG).show()
+                }
+            }.onFailure { err ->
+                runCatching {
+                    Toast.makeText(getApplication(), "❌ Lỗi khôi phục: ${err.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     fun deleteAccount(tabIndex: Int) {
@@ -393,60 +484,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
-    fun checkForUpdate() {
-        viewModelScope.launch { updateRepository?.checkForUpdate(manual = true) }
-    }
-
-    fun startUpdateDownload() {
-        viewModelScope.launch { updateRepository?.download() }
-    }
-
-    fun installUpdate() {
-        viewModelScope.launch { updateRepository?.install() }
-    }
-
     fun onActivityResumed() {
-        updateRepository?.onAppResumed()
         refreshSleepWakePermissions()
-        _foregroundTick.value += 1
     }
-
-    fun takeUpdateNotice(): String? {
-        if (_isSleepMode.value) return null
-        val repository = updateRepository ?: return null
-        if (!repository.shouldShowUpdateDialog()) return null
-        val versionName = repository.newerReleaseName() ?: return null
-        repository.markUpdateDialogShown()
-        return versionName
-    }
-
-    fun onUpdateNoticeAccepted() {
-        openControlSheet(_selectedTabIndex.value)
-        val state = updateState.value
-        val inProgress = state is UpdateUiState.ReadyToInstall ||
-            state is UpdateUiState.Downloading ||
-            state is UpdateUiState.Verifying ||
-            state is UpdateUiState.Installing ||
-            state is UpdateUiState.NeedsPermission
-        if (inProgress) return
-
-        if (updateRepository?.hasNewerRelease() == true) {
-            viewModelScope.launch { updateRepository?.download() }
-        } else {
-            checkForUpdate()
-        }
-    }
-
-    fun releasesPageUrl(): String =
-        updateRepository?.releasesPageUrl() ?: "https://github.com/binhdvk29-hub/clien-volamidle/releases"
-
-    fun shouldShowUpdateBanner(): Boolean = updateRepository?.shouldShowBanner() ?: false
-
-    fun markUpdateBannerShown() {
-        updateRepository?.markBannerShown()
-    }
-
-    fun consumeLaunchMessage(): String? = updateRepository?.consumeLaunchMessage()
 
     override fun onCleared() {
         sleepWakeController.restoreAutoScreenWake()

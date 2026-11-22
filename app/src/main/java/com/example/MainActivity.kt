@@ -13,7 +13,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,14 +22,12 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -39,27 +36,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.example.sleep.SleepWakeController
 import com.example.ui.MainViewModel
+import com.example.update.UpdateCheckState
 import com.example.ui.components.AccountDialog
 import com.example.ui.components.AutoConfigDialog
 import com.example.ui.components.ControlSheet
@@ -69,9 +58,6 @@ import com.example.ui.components.SidebarView
 import com.example.ui.components.SleepWakeSetupDialog
 import com.example.ui.components.hasDownloadTraffic
 import com.example.ui.theme.MyApplicationTheme
-import com.example.update.AppVisibility
-import com.example.update.UpdateUiState
-import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -164,11 +150,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        AppVisibility.onActivityStarted()
-    }
-
     override fun onPause() {
         super.onPause()
         viewModel.tabManager.onAppBackgrounded()
@@ -176,7 +157,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        AppVisibility.onActivityStopped()
         viewModel.tabManager.onAppBackgrounded()
     }
 
@@ -220,6 +200,7 @@ fun MainScreen(
     val autoDialogTabIndex by viewModel.autoDialogTabIndex.collectAsState()
     val tabCount by viewModel.tabCount.collectAsState()
     val tabCountWarnShown by viewModel.tabCountWarnShown.collectAsState()
+    val updateState by viewModel.updateState.collectAsState()
 
     val isControlSheetOpen by viewModel.isControlSheetOpen.collectAsState()
     val controlSheetTabIndex by viewModel.controlSheetTabIndex.collectAsState()
@@ -227,39 +208,7 @@ fun MainScreen(
         com.example.model.CharacterStats(tabIndex = controlSheetTabIndex)
     }
 
-    val updateState by viewModel.updateState.collectAsState()
     val context = LocalContext.current
-    var updateBanner by remember { mutableStateOf<String?>(null) }
-    val foregroundTick by viewModel.foregroundTick.collectAsState()
-    var updateNoticeVersion by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(updateState, isSleepMode, updateNoticeVersion) {
-        if (isSleepMode || updateNoticeVersion != null) {
-            updateBanner = null
-            return@LaunchedEffect
-        }
-        val state = updateState
-        if (state is UpdateUiState.Available && viewModel.shouldShowUpdateBanner()) {
-            viewModel.markUpdateBannerShown()
-            updateBanner = context.getString(R.string.update_banner_available, state.versionName)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.consumeLaunchMessage()?.let { message -> updateBanner = message }
-    }
-
-    LaunchedEffect(foregroundTick, updateState is UpdateUiState.Available, isSleepMode) {
-        if (isSleepMode || updateNoticeVersion != null) return@LaunchedEffect
-        viewModel.takeUpdateNotice()?.let { version -> updateNoticeVersion = version }
-    }
-
-    LaunchedEffect(updateBanner) {
-        if (updateBanner != null) {
-            delay(8_000)
-            updateBanner = null
-        }
-    }
 
     LaunchedEffect(isSleepMode, isSleepWakeSetupDialogOpen) {
         onSetWindowBrightnessLow(isSleepMode && !isSleepWakeSetupDialogOpen)
@@ -358,6 +307,8 @@ fun MainScreen(
                                 isLandscape = !isPortrait,
                                 onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
                                 onSyncSellExcess = { viewModel.syncSellExcessItems() },
+                                onExportBackup = { viewModel.exportAccountsBackup() },
+                                onImportBackup = { viewModel.importAccountsBackup() },
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .width(320.dp)
@@ -393,6 +344,8 @@ fun MainScreen(
                                 isLandscape = !isPortrait,
                                 onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
                                 onSyncSellExcess = { viewModel.syncSellExcessItems() },
+                                onExportBackup = { viewModel.exportAccountsBackup() },
+                                onImportBackup = { viewModel.importAccountsBackup() },
                                 modifier = Modifier
                                     .width(265.dp)
                                     .windowInsetsPadding(
@@ -419,37 +372,6 @@ fun MainScreen(
                                 .fillMaxHeight()
                         )
                     }
-                }
-            }
-
-            updateBanner?.takeIf { !isSleepMode }?.let { text ->
-                val bannerShape = RoundedCornerShape(6.dp)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(start = 8.dp, end = 8.dp, top = 6.dp)
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .clip(bannerShape)
-                        .background(Color(0xFF0F172A))
-                        .border(1.dp, Color(0xFF38BDF8), bannerShape)
-                        .clickable {
-                            viewModel.tabManager.markUiInteraction()
-                            updateBanner = null
-                            viewModel.openControlSheet(selectedTabIndex)
-                        }
-                        .padding(horizontal = 10.dp)
-                        .testTag("update_banner"),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Text(
-                        text = text,
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
 
@@ -490,17 +412,6 @@ fun MainScreen(
                 onSetTabCount = { viewModel.setTabCount(it) },
                 onMarkTabCountWarned = { viewModel.markTabCountWarned() },
                 appVersionName = viewModel.appVersionName,
-                updateState = updateState,
-                onCheckUpdate = { viewModel.checkForUpdate() },
-                onStartDownload = { viewModel.startUpdateDownload() },
-                onInstallUpdate = { viewModel.installUpdate() },
-                onOpenReleases = {
-                    val open = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse(viewModel.releasesPageUrl())
-                    )
-                    runCatching { context.startActivity(open) }
-                },
                 onDismiss = { viewModel.dismissControlSheet() },
                 onInteract = { viewModel.tabManager.markUiInteraction() },
                 hasDndPolicyAccess = hasDndPolicyAccess,
@@ -510,7 +421,16 @@ fun MainScreen(
                 isHideGame = isHideGameSynced,
                 onToggleHideGame = { viewModel.syncHideGame(!isHideGameSynced) },
                 isPcMode = isPcMode,
-                onTogglePcMode = { viewModel.setPcMode(!isPcMode) }
+                onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
+                isTestChannel = viewModel.isTestChannel,
+                updateStatusLabel = when (val u = updateState) {
+                    is UpdateCheckState.Checking -> "⏳ Đang kiểm..."
+                    is UpdateCheckState.Downloading -> "⬇️ ${u.progressPercent}%"
+                    is UpdateCheckState.Available -> "⬆️ Có bản mới!"
+                    is UpdateCheckState.UpToDate -> "✅ Mới nhất"
+                    else -> "🔄 Cập nhật"
+                },
+                onCheckUpdate = { viewModel.checkAppUpdate(silent = false) }
             )
 
             if (isSleepMode) {
@@ -571,55 +491,57 @@ fun MainScreen(
                 )
             }
 
-            updateNoticeVersion?.let { version ->
-                AlertDialog(
-                    onDismissRequest = { updateNoticeVersion = null },
-                    containerColor = Color(0xFF1E293B),
-                    title = {
-                        Text(
-                            text = stringResource(R.string.update_notice_title, version),
-                            color = Color(0xFFE2E8F0),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = stringResource(
-                                R.string.update_notice_body,
-                                viewModel.appVersionName
-                            ),
-                            color = Color(0xFFCBD5E1),
-                            fontSize = 11.sp
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                updateNoticeVersion = null
-                                viewModel.onUpdateNoticeAccepted()
-                            },
-                            modifier = Modifier.testTag("update_notice_update")
-                        ) {
+            when (val uState = updateState) {
+                is UpdateCheckState.Available -> {
+                    val rel = uState.release
+                    val channelLabel = if (rel.isTestChannel) "Kênh TEST (${rel.repo})" else "Kênh CHÍNH (${rel.repo})"
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissUpdateDialog() },
+                        title = { Text("Cập nhật mới ${rel.tagName}") },
+                        text = {
                             Text(
-                                text = stringResource(R.string.update_notice_update),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
+                                buildString {
+                                    append("$channelLabel\n")
+                                    append("Hiện tại: v${viewModel.appVersionName} → Mới: v${rel.versionName}\n")
+                                    if (rel.releaseNotes.isNotBlank()) {
+                                        append("\n${rel.releaseNotes}")
+                                    }
+                                }
                             )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.startUpdateDownload(rel) }) {
+                                Text("Tải & Cài ngay")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                                Text("Để sau")
+                            }
                         }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = { updateNoticeVersion = null },
-                            modifier = Modifier.testTag("update_notice_later")
-                        ) {
-                            Text(
-                                text = stringResource(R.string.update_notice_later),
-                                fontSize = 11.sp
-                            )
+                    )
+                }
+                is UpdateCheckState.Downloading -> {
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text("Đang tải bản cập nhật...") },
+                        text = { Text("Đang tải ${uState.release.apkFileName}: ${uState.progressPercent}%") },
+                        confirmButton = {}
+                    )
+                }
+                is UpdateCheckState.Error -> {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissUpdateDialog() },
+                        title = { Text("Kiểm tra cập nhật") },
+                        text = { Text(uState.message) },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                                Text("Đóng")
+                            }
                         }
-                    }
-                )
+                    )
+                }
+                else -> Unit
             }
         }
     }

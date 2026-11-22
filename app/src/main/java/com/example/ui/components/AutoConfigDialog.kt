@@ -247,9 +247,54 @@ fun AutoConfigDialog(
                     AutoCheckRow("Tự chạy phó bản: Chế độ Phó Bản tới khi hết lượt, rồi Dã Tẩu, rồi về chế độ cũ", draft.pb) {
                         draft = draft.copy(pb = it)
                     }
-                    AutoCheckRow("Ưu tiên Leo Tháp khi hết lượt Phó Bản / Dã Tẩu", draft.thap) {
-                        draft = draft.copy(thap = it)
+                    AutoCheckRow(
+                        label = "Ưu tiên hành động khi hết lượt Dã Tẩu, Phó Bản",
+                        checked = draft.afterDailyEnabled,
+                        testTag = "auto_check_afterDailyEnabled"
+                    ) { enabled ->
+                        val hasSub = draft.afterDailyFarm || draft.thap
+                        draft = draft.copy(
+                            afterDailyEnabled = enabled,
+                            afterDailyFarm = if (enabled && !hasSub) true else draft.afterDailyFarm
+                        )
                     }
+                    AfterDailyActionSelector(
+                        enabled = draft.afterDailyEnabled,
+                        afterDailyFarm = draft.afterDailyFarm,
+                        farmMap = draft.farmMap,
+                        afterDailyThap = draft.thap,
+                        thapAfterMode = draft.thapAfterMode,
+                        onToggleFarm = { checked ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
+                                afterDailyFarm = checked,
+                                thap = if (checked) false else draft.thap
+                            )
+                        },
+                        onSelectMap = { mapName ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (mapName.isNotBlank()) true else draft.afterDailyEnabled,
+                                afterDailyFarm = if (mapName.isNotBlank()) true else draft.afterDailyFarm,
+                                thap = if (mapName.isNotBlank()) false else draft.thap,
+                                farmMap = mapName
+                            )
+                        },
+                        onToggleThap = { checked ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
+                                thap = checked,
+                                afterDailyFarm = if (checked) false else draft.afterDailyFarm
+                            )
+                        },
+                        onSelectThapMode = { mode ->
+                            draft = draft.copy(
+                                afterDailyEnabled = true,
+                                thap = true,
+                                afterDailyFarm = false,
+                                thapAfterMode = mode
+                            )
+                        }
+                    )
                     AutoCheckRow(
                         label = "Chỉ Leo Tháp",
                         checked = draft.thapNeDon,
@@ -350,7 +395,7 @@ fun AutoConfigDialog(
                         draft = draft.copy(qhtMua = it)
                     }
                     AutoCheckRow(
-                        label = "Mua Thẻ Giao Dịch lúc 00:00:00 (200 KNB khóa, ưu tiên trước khi mua KNB)",
+                        label = "Mua Thẻ Giao Dịch lúc 00:00:00 (200 KNB khóa)",
                         checked = draft.theGiaoDich,
                         testTag = "auto_check_theGiaoDich"
                     ) {
@@ -380,7 +425,7 @@ fun AutoConfigDialog(
                     AutoNumberRow(
                         label = "Mua Kim Nguyên Bảo ở Kỳ Trân Các",
                         value = knbMuaText,
-                        suffix = "KNB / ngày (tối đa 1000 KNB / ngày, 0 = không mua)",
+                        suffix = "KNB / ngày (đồng bộ 00:05 & quét 10p, tối đa 1000)",
                         max = AutoConfig.KNB_MUA_MAX,
                         testTag = "auto_num_knbMua"
                     ) { knbMuaText = it }
@@ -409,7 +454,7 @@ fun AutoConfigDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "• Ưu tiên Leo Tháp: chạy xong hoạt động trong ngày sẽ tự vào Tháp và áp dụng toàn bộ tính năng của Chỉ Leo Tháp.\n• Chỉ Leo Tháp: dù đang làm gì cũng lập tức chuyển sang Chế độ: Leo Tháp (tự vào lại khi Rớt Tháp / mất kết nối).",
+                                text = "• Ưu tiên hành động khi hết lượt: chọn Luyện Công + map để tự về map đã chọn, hoặc chọn Leo Tháp (Xa em ra = bật né đòn vòng tròn; Bình thường = chỉ auto ingame).\n• Chỉ Leo Tháp: dù đang làm gì cũng lập tức chuyển sang Chế độ: Leo Tháp (tự vào lại khi Rớt Tháp / mất kết nối).",
                                 color = Color(0xFFCBD5E1),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 3.dp)
@@ -513,6 +558,217 @@ fun AutoConfigDialog(
                             .testTag("auto_cancel_button")
                     ) {
                         Text("Đóng", fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AfterDailyActionSelector(
+    enabled: Boolean,
+    afterDailyFarm: Boolean,
+    farmMap: String,
+    afterDailyThap: Boolean,
+    thapAfterMode: String,
+    onToggleFarm: (Boolean) -> Unit,
+    onSelectMap: (String) -> Unit,
+    onToggleThap: (Boolean) -> Unit,
+    onSelectThapMode: (String) -> Unit
+) {
+    var mapExpanded by remember { mutableStateOf(false) }
+    val normalizedThapMode = AutoConfig.normalizeThapAfterMode(thapAfterMode)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 2.dp, bottom = 6.dp)
+            .testTag("auto_after_daily_section"),
+        shape = RoundedCornerShape(6.dp),
+        color = Color(0xFF0F172A),
+        border = BorderStroke(1.dp, if (enabled) Color(0xFF10B981) else Color(0xFF334155))
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Text(
+                text = if (enabled) {
+                    "Quét nhiệm vụ & Phó Bản còn lại — xong hết sẽ chạy mục đã chọn:"
+                } else {
+                    "Tích dòng trên để bật tự quét và chuyển sang hành động dưới:"
+                },
+                color = if (enabled) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Hàng 1: Luyện Công + Chọn map (2 ô cùng 1 hàng)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .heightIn(min = 44.dp)
+                        .clickable { onToggleFarm(!afterDailyFarm) }
+                        .testTag("auto_check_afterDailyFarm"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = afterDailyFarm,
+                        onCheckedChange = onToggleFarm,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF10B981),
+                            uncheckedColor = Color(0xFF64748B)
+                        )
+                    )
+                    Text(
+                        text = "Luyện Công",
+                        color = if (afterDailyFarm) Color.White else Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        fontWeight = if (afterDailyFarm) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+
+                Box(modifier = Modifier.weight(1f)) {
+                    val boxShape = RoundedCornerShape(6.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 40.dp)
+                            .clip(boxShape)
+                            .background(Color(0xFF1E293B))
+                            .border(
+                                1.dp,
+                                if (afterDailyFarm && farmMap.isNotBlank()) Color(0xFF10B981) else Color(0xFF475569),
+                                boxShape
+                            )
+                            .clickable { mapExpanded = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .testTag("auto_farm_map_dropdown"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = farmMap.ifBlank { "Chọn map" },
+                            color = if (farmMap.isNotBlank()) Color.White else Color(0xFF94A3B8),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.ArrowDropDown,
+                            contentDescription = "Chọn map",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = mapExpanded,
+                        onDismissRequest = { mapExpanded = false },
+                        modifier = Modifier
+                            .background(Color(0xFF0F172A))
+                            .heightIn(max = 320.dp)
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "-- Chưa chọn map --",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 10.5.sp
+                                )
+                            },
+                            onClick = {
+                                mapExpanded = false
+                                onSelectMap("")
+                            }
+                        )
+                        AutoConfig.ALL_TRAINING_MAPS.forEach { mapOpt ->
+                            val isSel = farmMap == mapOpt.name
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "[${mapOpt.levelRange}] ${mapOpt.name}",
+                                        color = if (isSel) Color(0xFF6EE7B7) else Color.White,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    mapExpanded = false
+                                    onSelectMap(mapOpt.name)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Hàng 2: Leo Tháp + Xa em ra + Bình thường
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .heightIn(min = 44.dp)
+                        .clickable { onToggleThap(!afterDailyThap) }
+                        .testTag("auto_check_afterDailyThap"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = afterDailyThap,
+                        onCheckedChange = onToggleThap,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF10B981),
+                            uncheckedColor = Color(0xFF64748B)
+                        )
+                    )
+                    Text(
+                        text = "Leo Tháp",
+                        color = if (afterDailyThap) Color.White else Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        fontWeight = if (afterDailyThap) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+
+                val thapModes = listOf(
+                    Triple(AutoConfig.THAP_MODE_ORBIT, "Xa em ra", "auto_thap_mode_orbit"),
+                    Triple(AutoConfig.THAP_MODE_NORMAL, "Bình thường", "auto_thap_mode_normal")
+                )
+                thapModes.forEach { (modeKey, modeLabel, tag) ->
+                    val isSel = afterDailyThap && normalizedThapMode == modeKey
+                    val shape = RoundedCornerShape(6.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 38.dp)
+                            .clip(shape)
+                            .background(if (isSel) Color(0xFF065F46) else Color(0xFF1E293B))
+                            .border(
+                                1.dp,
+                                if (isSel) Color(0xFF10B981) else Color(0xFF475569),
+                                shape
+                            )
+                            .clickable { onSelectThapMode(modeKey) }
+                            .testTag(tag),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = modeLabel,
+                            color = if (isSel) Color.White else Color(0xFF94A3B8),
+                            fontSize = 9.5.sp,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
+                        )
                     }
                 }
             }

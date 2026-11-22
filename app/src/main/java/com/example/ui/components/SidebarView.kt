@@ -68,7 +68,9 @@ fun SidebarView(
     isPcMode: Boolean = false,
     isLandscape: Boolean = false,
     onTogglePcMode: () -> Unit = {},
-    onSyncSellExcess: () -> Unit = {}
+    onSyncSellExcess: () -> Unit = {},
+    onExportBackup: () -> Unit = {},
+    onImportBackup: () -> Unit = {}
 ) {
     Surface(
         modifier = modifier
@@ -230,14 +232,16 @@ fun SidebarView(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    StatRow(label = "🧧 Đại hồng bao", value = activeStats.daiHongBao, valueColor = Color(0xFFF87171))
-                    StatRow(label = "🧧 Hồng bao", value = activeStats.hongBao, valueColor = Color(0xFFFCA5A5))
-                    StatRow(label = "🗼 Kỷ lục tháp", value = activeStats.thapRecord, valueColor = Color(0xFF67E8F9))
-                    StatRow(label = "👹 Boss HK hạ", value = activeStats.bossHoangKim, valueColor = Color(0xFFFDE047))
-                    StatRow(label = "📜 Dã Tẩu", value = activeStats.daTauQuest, valueColor = Color(0xFF86EFAC))
-                    if (activeStats.tasksCompleted.isNotBlank()) {
-                        StatRow(label = "✅ Hoàn thành", value = activeStats.tasksCompleted, valueColor = Color(0xFF10B981))
+                    val knbDisplay = if (activeStats.tasksCompleted.isNotBlank()) {
+                        activeStats.tasksCompleted
+                    } else {
+                        "0 / 1000"
                     }
+                    StatRow(label = "🧧 Đại Hồng Bao", value = activeStats.daiHongBao, valueColor = Color(0xFFF87171))
+                    StatRow(label = "🧧 Hồng Bao", value = activeStats.hongBao, valueColor = Color(0xFFFCA5A5))
+                    StatRow(label = "👹 Boss HK đã hạ", value = activeStats.bossHoangKim, valueColor = Color(0xFFFDE047))
+                    StatRow(label = "📜 Dã Tẩu", value = activeStats.daTauQuest, valueColor = Color(0xFF86EFAC))
+                    StatRow(label = "💎 KNB", value = knbDisplay, valueColor = Color(0xFF38BDF8))
                 }
             }
 
@@ -314,6 +318,57 @@ fun SidebarView(
                         color = Color(0xFF38BDF8),
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("account_backup_restore_row"),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = onExportBackup,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .testTag("export_accounts_backup_button"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1E3A5F),
+                        contentColor = Color(0xFF7DD3FC)
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = "💾 Lưu file TK",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+
+                Button(
+                    onClick = onImportBackup,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .testTag("import_accounts_backup_button"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF065F46),
+                        contentColor = Color(0xFF6EE7B7)
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                ) {
+                    Text(
+                        text = "📥 Nạp lại TK",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
                 }

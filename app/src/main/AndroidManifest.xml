@@ -49,17 +49,15 @@
                 android:value="24/7 background game idle manager and partial wakelock" />
         </service>
 
-        <receiver
-            android:name=".update.InstallResultReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".update.PackageReplacedReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <!-- androidx.profileinstaller khai báo ProfileInstallReceiver exported=true và bản thân
              thư viện KHÔNG kiểm tra quyền gọi. Gỡ hẳn khỏi manifest đã merge. -->

@@ -65,6 +65,12 @@ data class TowerMainSkill(
     val combatStyle: String
 )
 
+data class TrainingMapOption(
+    val name: String,
+    val levelRange: String,
+    val groupName: String
+)
+
 data class AutoConfig(
     val on: Boolean = false,
     val theGiaoDich: Boolean = false,
@@ -83,7 +89,11 @@ data class AutoConfig(
     val tt2: Boolean = true,
     val tt2Mua: Boolean = false,
     val pb: Boolean = true,
+    val afterDailyEnabled: Boolean = false,
+    val afterDailyFarm: Boolean = false,
+    val farmMap: String = "",
     val thap: Boolean = false,
+    val thapAfterMode: String = THAP_MODE_NORMAL,
     val thapNeDon: Boolean = false,
     val thapNeDonStyle: String = ORBIT_AUTO,
     val thapMainSkill: String = "",
@@ -110,7 +120,11 @@ data class AutoConfig(
         o.put("tt2", tt2)
         o.put("tt2Mua", tt2Mua)
         o.put("pb", pb)
+        o.put("afterDailyEnabled", afterDailyEnabled)
+        o.put("afterDailyFarm", afterDailyFarm)
+        o.put("farmMap", farmMap)
         o.put("thap", thap)
+        o.put("thapAfterMode", normalizeThapAfterMode(thapAfterMode))
         o.put("thapNeDon", thapNeDon)
         o.put("thapNeDonStyle", normalizeOrbitStyle(thapNeDonStyle))
         o.put("thapMainSkill", normalizeMainSkillId(thapMainSkill))
@@ -141,6 +155,67 @@ data class AutoConfig(
         const val ORBIT_AUTO = "AUTO"
         const val ORBIT_MELEE = "MELEE"
         const val ORBIT_RANGED = "RANGED"
+
+        const val THAP_MODE_ORBIT = "ORBIT"
+        const val THAP_MODE_NORMAL = "NORMAL"
+
+        fun normalizeThapAfterMode(raw: String?): String {
+            return when (raw?.trim()?.uppercase()) {
+                THAP_MODE_ORBIT -> THAP_MODE_ORBIT
+                else -> THAP_MODE_NORMAL
+            }
+        }
+
+        val ALL_TRAINING_MAPS: List<TrainingMapOption> = listOf(
+            // Cấp 1-10
+            TrainingMapOption("Ba Lăng huyện", "Cấp 1–10", ""),
+            // Cấp 10-20
+            TrainingMapOption("Hoa Sơn", "Cấp 10–20", "Hoa Sơn"),
+            TrainingMapOption("Nga My phái", "Cấp 10–20", "Hoa Sơn"),
+            TrainingMapOption("Thiên Nhẫn Giáo tầng 1", "Cấp 10–20", "Hoa Sơn"),
+            TrainingMapOption("Mê cung Đáy giếng", "Cấp 10–20", "Hoa Sơn"),
+            TrainingMapOption("Côn Lôn phái", "Cấp 10–20", "Hoa Sơn"),
+            TrainingMapOption("Ngũ Độc Giáo", "Cấp 10–20", "Hoa Sơn"),
+            // Cấp 20-30
+            TrainingMapOption("Kiếm Các Tây Bắc", "Cấp 20–30", "Kiếm Các Tây Bắc"),
+            TrainingMapOption("Mãnh Hổ động", "Cấp 20–30", "Kiếm Các Tây Bắc"),
+            TrainingMapOption("Hỏa Lang động", "Cấp 20–30", "Kiếm Các Tây Bắc"),
+            // Cấp 30-40
+            TrainingMapOption("Thục Cương sơn", "Cấp 30–40", "Thục Cương sơn"),
+            TrainingMapOption("Tuyết Báo động tầng 1", "Cấp 30–40", "Thục Cương sơn"),
+            TrainingMapOption("Yến Tử động", "Cấp 30–40", "Thục Cương sơn"),
+            TrainingMapOption("Mê cung nhập môn", "Cấp 30–40", "Thục Cương sơn"),
+            // Cấp 40-50
+            TrainingMapOption("Điểm Thương động tầng 1", "Cấp 40–50", "Điểm Thương động tầng 1"),
+            // Cấp 50-60
+            TrainingMapOption("Thiên Tâm động", "Cấp 50–60", "Thiên Tâm động"),
+            TrainingMapOption("Đáy Động Đình hồ tầng 2", "Cấp 50–60", "Thiên Tâm động"),
+            TrainingMapOption("Băng Huyệt động", "Cấp 50–60", "Thiên Tâm động"),
+            // Cấp 60-70
+            TrainingMapOption("Hoành Sơn Phái", "Cấp 60–70", "Hoành Sơn Phái"),
+            // Cấp 70-80
+            TrainingMapOption("Lâm Du Quan", "Cấp 70–80", "Lâm Du Quan"),
+            TrainingMapOption("Sơn Bảo động", "Cấp 70–80", "Lâm Du Quan"),
+            TrainingMapOption("Linh Cốc động", "Cấp 70–80", "Lâm Du Quan"),
+            // Cấp 80-90
+            TrainingMapOption("Chân núi Trường Bạch", "Cấp 80–90", "Chân núi Trường Bạch"),
+            TrainingMapOption("Vũ Lăng động", "Cấp 80–90", "Chân núi Trường Bạch"),
+            TrainingMapOption("Phi Thiên động", "Cấp 80–90", "Chân núi Trường Bạch"),
+            TrainingMapOption("Phù Dung động", "Cấp 80–90", "Chân núi Trường Bạch"),
+            TrainingMapOption("Nhạn Thạch động", "Cấp 80–90", "Chân núi Trường Bạch"),
+            // Cấp 90-100
+            TrainingMapOption("Sa mạc sơn động 1", "Cấp 90–100", "Sa mạc sơn động 1"),
+            TrainingMapOption("Cán Viên động", "Cấp 90–100", "Sa mạc sơn động 1"),
+            TrainingMapOption("Khoả Lang động", "Cấp 90–100", "Sa mạc sơn động 1"),
+            // Cấp 110-120
+            TrainingMapOption("Trường Bạch sơn Nam", "Cấp 110–120", "Trường Bạch sơn Nam"),
+            TrainingMapOption("Trường Bạch sơn Bắc", "Cấp 110–120", "Trường Bạch sơn Nam"),
+            // Cấp 120-130
+            TrainingMapOption("Phong Lăng độ", "Cấp 120–130", ""),
+            // Cấp 130-140
+            TrainingMapOption("Mạc Bắc Thảo Nguyên", "Cấp 130–140", "Vi sơn đảo"),
+            TrainingMapOption("Vi sơn đảo", "Cấp 130–140", "Vi sơn đảo")
+        )
 
         val ALL_9X_SKILLS: List<TowerMainSkill> = listOf(
             // Thiếu Lâm
@@ -274,7 +349,15 @@ data class AutoConfig(
                 tt2 = o.optBoolean("tt2", DEF.tt2),
                 tt2Mua = o.optBoolean("tt2Mua", DEF.tt2Mua),
                 pb = o.optBoolean("pb", DEF.pb),
-                thap = o.optBoolean("thap", DEF.thap),
+                afterDailyEnabled = if (o.has("afterDailyEnabled")) {
+                    o.optBoolean("afterDailyEnabled", DEF.afterDailyEnabled)
+                } else {
+                    o.optBoolean("afterDailyFarm", DEF.afterDailyFarm) || o.optBoolean("thap", DEF.thap)
+                },
+                afterDailyFarm = o.optBoolean("afterDailyFarm", DEF.afterDailyFarm),
+                farmMap = o.optString("farmMap", DEF.farmMap).trim(),
+                thap = if (o.optBoolean("afterDailyFarm", DEF.afterDailyFarm)) false else o.optBoolean("thap", DEF.thap),
+                thapAfterMode = normalizeThapAfterMode(o.optString("thapAfterMode", DEF.thapAfterMode)),
                 thapNeDon = o.optBoolean("thapNeDon", DEF.thapNeDon),
                 thapNeDonStyle = normalizeOrbitStyle(o.optString("thapNeDonStyle", DEF.thapNeDonStyle)),
                 thapMainSkill = normalizeMainSkillId(o.optString("thapMainSkill", DEF.thapMainSkill)),
@@ -299,7 +382,8 @@ class GameAutoPilot(
     companion object {
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
-        const val SCRIPT_VER = "vlmauto-29"
+        private const val SWEEP_7M_MS = 7L * 60L * 1000L
+        const val SCRIPT_VER = "vlmauto-40"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -323,6 +407,8 @@ class GameAutoPilot(
     private var job: Job? = null
     private var midnightResetJob: Job? = null
     private var midnightTradeCardJob: Job? = null
+    private var periodicKnbSweepJob: Job? = null
+    private var periodic7MinSweepJob: Job? = null
 
     fun isEnabled(tabIndex: Int): Boolean = cfgs.getOrNull(tabIndex)?.on == true
 
@@ -358,6 +444,114 @@ class GameAutoPilot(
         }
         startMidnightTradeCardScheduler()
         startMidnightResetScheduler()
+        startPeriodic10MinKnbSweep()
+        startPeriodic7MinSweep()
+    }
+
+    private fun startPeriodic7MinSweep() {
+        if (periodic7MinSweepJob?.isActive == true) return
+        periodic7MinSweepJob = scope.launch {
+            while (true) {
+                delay(SWEEP_7M_MS)
+                try {
+                    if (isSystemRunning() && isAnyEnabled()) {
+                        trigger7MinSweepOnAllTabs()
+                    }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    fun trigger7MinSweepOnAllTabs() {
+        mainHandler.post {
+            val total = tabCount().coerceAtMost(installedUrl.size)
+            var delayIdx = 0
+            for (i in 0 until total) {
+                if (!isTabActive(i)) continue
+                val tabCfg = cfgs[i]
+                if (!tabCfg.on) continue
+                val offsetMs = 300L * delayIdx
+                delayIdx++
+                mainHandler.postDelayed({
+                    if (!isTabActive(i)) return@postDelayed
+                    val wv = webViewAt(i) ?: return@postDelayed
+                    val url = wv.url ?: return@postDelayed
+                    if (url == "about:blank") return@postDelayed
+                    val cfgJson = cfgs[i].toJson().toString()
+                    if (installedUrl[i] != url) {
+                        installedUrl[i] = url
+                        runCatching {
+                            wv.evaluateJavascript(
+                                buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate = true),
+                                null
+                            )
+                        }
+                    }
+                    runCatching {
+                        wv.evaluateJavascript(
+                            "(function(){try{var a=window.__vlmAuto;if(a&&a.onSweep7Min)a.onSweep7Min(" + cfgJson + ");else if(a&&a.tick)a.tick();}catch(e){}})();",
+                            null
+                        )
+                    }
+                }, offsetMs)
+            }
+        }
+    }
+
+    private fun startPeriodic10MinKnbSweep() {
+        if (periodicKnbSweepJob?.isActive == true) return
+        periodicKnbSweepJob = scope.launch {
+            while (true) {
+                delay(10L * 60L * 1000L) // Quét đồng bộ 10 phút / lần
+                try {
+                    if (isSystemRunning() && isAnyEnabled()) {
+                        triggerKnbSyncWaveOnAllTabs()
+                    }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    fun triggerKnbSyncWaveOnAllTabs() {
+        mainHandler.post {
+            val total = tabCount().coerceAtMost(installedUrl.size)
+            var delayIdx = 0
+            for (i in 0 until total) {
+                if (!isTabActive(i)) continue
+                val tabCfg = cfgs[i]
+                if (!tabCfg.on || tabCfg.knbMua <= 0) continue
+                val offsetMs = 350L * delayIdx
+                delayIdx++
+                mainHandler.postDelayed({
+                    if (!isTabActive(i)) return@postDelayed
+                    val wv = webViewAt(i) ?: return@postDelayed
+                    val url = wv.url ?: return@postDelayed
+                    if (url == "about:blank") return@postDelayed
+                    val cfgJson = cfgs[i].toJson().toString()
+                    if (installedUrl[i] != url) {
+                        installedUrl[i] = url
+                        runCatching {
+                            wv.evaluateJavascript(
+                                buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate = true),
+                                null
+                            )
+                        }
+                    }
+                    runCatching {
+                        wv.evaluateJavascript(
+                            "(function(){try{var a=window.__vlmAuto;if(a&&a.syncKnbNow)a.syncKnbNow();}catch(e){}})();",
+                            null
+                        )
+                    }
+                }, offsetMs)
+            }
+        }
     }
 
     private fun startMidnightTradeCardScheduler() {
@@ -459,6 +653,10 @@ class GameAutoPilot(
         midnightResetJob = null
         midnightTradeCardJob?.cancel()
         midnightTradeCardJob = null
+        periodicKnbSweepJob?.cancel()
+        periodicKnbSweepJob = null
+        periodic7MinSweepJob?.cancel()
+        periodic7MinSweepJob = null
     }
 
     fun saveConfigOnly(tabIndex: Int, json: String?) {
@@ -521,6 +719,30 @@ class GameAutoPilot(
 
     fun onTabRestarted(tabIndex: Int) {
         if (tabIndex in installedUrl.indices) installedUrl[tabIndex] = null
+    }
+
+    fun onTabEnteredGame(tabIndex: Int) {
+        if (tabIndex !in cfgs.indices || tabIndex >= tabCount()) return
+        val tabCfg = cfgs[tabIndex]
+        if (!tabCfg.on || !isSystemRunning()) return
+        installedUrl[tabIndex] = null
+        mainHandler.postDelayed({
+            if (!isTabActive(tabIndex) || !cfgs[tabIndex].on || !isSystemRunning()) return@postDelayed
+            injectTab(
+                i = tabIndex,
+                forceFull = true,
+                cfgJson = cfgs[tabIndex].toJson().toString(),
+                immediate = true,
+                pushEvenIfOff = false
+            )
+            val wv = webViewAt(tabIndex) ?: return@postDelayed
+            runCatching {
+                wv.evaluateJavascript(
+                    "(function(){try{var a=window.__vlmAuto;if(a&&a.onEnteredGame)a.onEnteredGame();}catch(e){}})();",
+                    null
+                )
+            }
+        }, 1_500L)
     }
 
     fun onTabRemoved(tabIndex: Int) {
@@ -622,7 +844,9 @@ class GameAutoPilot(
       if (IMM0 && window.__vlmAuto.tick) window.__vlmAuto.tick();
       return 'ok';
     }
-    if (window.__vlmOrbitTimer) { clearInterval(window.__vlmOrbitTimer); window.__vlmOrbitTimer = 0; }
+    if (window.__vlmTickTimer) { clearInterval(window.__vlmTickTimer); window.__vlmTickTimer = 0; }
+    if (window.__vlmOrbitTimer) { clearTimeout(window.__vlmOrbitTimer); clearInterval(window.__vlmOrbitTimer); window.__vlmOrbitTimer = 0; }
+    if (window.__vlmAutoBtnTimer) { clearInterval(window.__vlmAutoBtnTimer); window.__vlmAutoBtnTimer = 0; }
     if (window.__vlmOrbitRelease) window.__vlmOrbitRelease();
   } catch (e0) {}
 
@@ -650,7 +874,7 @@ class GameAutoPilot(
 
   var DEF = { on: false, theGiaoDich: false, dt: true, ldtMua: true, k2k: 0, pd: true, st: true, lbMua: 0,
     knbMua: 0, knbGiu: 0, qua: true, evHb: false, evDhb: false, khan: true, ttl: true,
-    ttlMua: false, tt2: true, tt2Mua: false, pb: true, thap: false, thapNeDon: false, thapNeDonStyle: 'AUTO', thapMainSkill: '', qht: false, qhtMua: false };
+    ttlMua: false, tt2: true, tt2Mua: false, pb: true, afterDailyEnabled: false, afterDailyFarm: false, farmMap: '', thap: false, thapAfterMode: 'NORMAL', thapNeDon: false, thapNeDonStyle: 'AUTO', thapMainSkill: '', qht: false, qhtMua: false };
 
   var A = {
     cfg: Object.assign({}, DEF, CFG0 || {}),
@@ -669,18 +893,168 @@ class GameAutoPilot(
     lastAt: 0,
     pbOut: 0,
     pbSeen: 0,
+    pbStartedAt: 0,
+    dtLastProgressAt: 0,
+    dtLastToday: -1,
+    lastSweep10mAt: 0,
+    knb0005Day: '',
+    knbSyncUntil: 0,
+    lastMapSelected: '',
+    checkedQueue: [],
+    koWaitingRecovery: false,
+    koDetectedAt: 0,
+    towerMetric: {
+      floor: 0,
+      secPerFloor: 0,
+      floorsPer30m: 0,
+      prevFloor: 0,
+      prevSecPerFloor: 0,
+      leftTowerAt: 0,
+      floorEnteredAt: 0,
+      wasInTower: false
+    },
     info: null,
     gate: 0
   };
 
-  function note(m) {
-    A.last = String(m || '');
+  var LOG_STATE = {
+    lastRaw: '',
+    lastNormKey: '',
+    lastSentAt: 0,
+    dupCount: 0,
+    lastFlushTimer: 0
+  };
+
+  function isRareItemOrMilestone(txt) {
+    var s = String(txt || '');
+    var na = noAccent(s);
+    if (na.indexOf('do pho') >= 0) return true;
+    if (na.indexOf('hoang kim mon phai') >= 0 || /\bhkmp\b/.test(na)) return true;
+    if (na.indexOf('can khon') >= 0 || na.indexOf('vo danh') >= 0 || na.indexOf('than ma') >= 0) return true;
+    return false;
+  }
+
+  function buildCoalescedLogText(rawText, dupCount) {
+    var clean = String(rawText || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return '';
+    var prefix = isRareItemOrMilestone(clean) ? '🌟 [QUÝ] ' : '🤖 ';
+    var suffix = dupCount > 1 ? (' (x' + dupCount + ')') : '';
+    return prefix + clean + suffix;
+  }
+
+  function pushBridgeLog(formatted) {
+    if (!formatted) return;
+    A.last = formatted;
     A.lastAt = Date.now();
     try {
       if (window.AndroidBridge && window.AndroidBridge.onGameLog) {
-        window.AndroidBridge.onGameLog(TAB, '🤖 ' + A.last);
+        window.AndroidBridge.onGameLog(TAB, formatted);
       }
     } catch (e) {}
+  }
+
+  function normalizeLogGroupKey(txt) {
+    return noAccent(txt || '')
+      .replace(/\d+(?:[.,]\d+)?/g, '#')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function getBossHkKillCountToday() {
+    try {
+      var o = JSON.parse(localStorage.getItem(dayKey('bossHkKills')) || 'null');
+      if (o && o.d === vnDay() && isFinite(o.n)) return Math.max(0, Math.min(4, Math.floor(o.n)));
+    } catch (eB) {}
+    return 0;
+  }
+
+  function addBossHkKillCountToday() {
+    try {
+      var cur = getBossHkKillCountToday();
+      if (cur >= 4) return cur;
+      var next = cur + 1;
+      localStorage.setItem(dayKey('bossHkKills'), JSON.stringify({ d: vnDay(), n: next }));
+      return next;
+    } catch (eB2) { return 0; }
+  }
+
+  function publishLiveTelemetry(extraStatus) {
+    try {
+      if (!window.AndroidBridge || !window.AndroidBridge.onLiveTelemetry) return;
+      var I = A.info || {};
+      var dt = I.dt || {};
+      var dtToday = (dt.today !== undefined) ? (dt.today | 0) : 0;
+      var dtMax = (dt.max !== undefined && (dt.max | 0) > 0) ? (dt.max | 0) : 200;
+      var dtStr = dt.du ? (dtMax + '/' + dtMax + ' (Xong)') : (dtToday + '/' + dtMax);
+
+      var knbCap = Math.min(KNB_NGAY, Math.max(0, A.cfg.knbMua | 0));
+      var knbDone = demKnb();
+      var knbStr = knbCap > 0 ? (knbDone + '/' + knbCap) : (knbDone + '/0');
+
+      var dhbDone = dayGet('evDhb');
+      var hbDone = dayGet('evHb');
+      var bossHkDone = getBossHkKillCountToday();
+
+      var payload = {
+        daiHongBao: dhbDone + '/1',
+        hongBao: hbDone + '/3',
+        bossHoangKim: bossHkDone + '/4 lượt',
+        daTauQuest: dtStr,
+        knbSummary: knbStr,
+        actionStatus: extraStatus ? String(extraStatus) : ''
+      };
+      window.AndroidBridge.onLiveTelemetry(TAB, JSON.stringify(payload));
+    } catch (eTel) {}
+  }
+
+  function note(m) {
+    var raw = String(m || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return;
+    var na = noAccent(raw);
+    // Đếm Boss Hoàng Kim đã hạ (tối đa 4 lượt/ngày); KHÔNG tính Boss Sát Thủ
+    var isSatThuEvent = (na.indexOf('sat thu') >= 0 || (A.st && A.st.noi === 'satthu') || (A.info && A.info.sat));
+    if (!isSatThuEvent && (na.indexOf('ha boss hoang kim') >= 0 || na.indexOf('boss hoang kim') >= 0) &&
+        (na.indexOf('ha ') >= 0 || na.indexOf('xong') >= 0 || na.indexOf('tieu diet') >= 0 || na.indexOf('da ha') >= 0)) {
+      addBossHkKillCountToday();
+    }
+
+    var now = Date.now();
+    var gKey = normalizeLogGroupKey(raw);
+    var isRare = isRareItemOrMilestone(raw);
+    var windowMs = isRare ? 3500 : 6500;
+
+    if (LOG_STATE.lastFlushTimer) {
+      clearTimeout(LOG_STATE.lastFlushTimer);
+      LOG_STATE.lastFlushTimer = 0;
+    }
+
+    if (gKey && gKey === LOG_STATE.lastNormKey && (now - LOG_STATE.lastSentAt) < windowMs) {
+      LOG_STATE.dupCount = (LOG_STATE.dupCount || 1) + 1;
+      var mergedNow = buildCoalescedLogText(raw, LOG_STATE.dupCount);
+      if ((now - LOG_STATE.lastSentAt) >= 1200) {
+        LOG_STATE.lastSentAt = now;
+        LOG_STATE.lastRaw = raw;
+        pushBridgeLog(mergedNow);
+        publishLiveTelemetry('🤖 ' + raw + ' (x' + LOG_STATE.dupCount + ')');
+      } else {
+        LOG_STATE.lastRaw = raw;
+        LOG_STATE.lastFlushTimer = setTimeout(function () {
+          LOG_STATE.lastFlushTimer = 0;
+          LOG_STATE.lastSentAt = Date.now();
+          pushBridgeLog(buildCoalescedLogText(LOG_STATE.lastRaw, LOG_STATE.dupCount));
+          publishLiveTelemetry('🤖 ' + LOG_STATE.lastRaw + ' (x' + LOG_STATE.dupCount + ')');
+        }, 1250);
+      }
+      return;
+    }
+
+    LOG_STATE.lastRaw = raw;
+    LOG_STATE.lastNormKey = gKey;
+    LOG_STATE.lastSentAt = now;
+    LOG_STATE.dupCount = 1;
+    var singleText = buildCoalescedLogText(raw, 1);
+    pushBridgeLog(singleText);
+    publishLiveTelemetry(singleText);
   }
 
   var evList = ['mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown'];
@@ -761,12 +1135,17 @@ class GameAutoPilot(
     try {
       var c = (typeof j === 'string') ? JSON.parse(j) : (j || {});
       A.cfg = Object.assign({}, DEF, c || {});
+      A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
+      A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
+      A.cfg.farmMap = String(A.cfg.farmMap || '').trim();
+      if (A.cfg.afterDailyFarm) A.cfg.thap = false;
+      A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
       A.cfg.thapNeDon = !!A.cfg.thapNeDon;
       A.cfg.thapNeDonStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
       A.cfg.thapMainSkill = String(A.cfg.thapMainSkill || '').trim();
     } catch (e) {}
     if (typeof t === 'number' && t > A.touchK) A.touchK = t;
-    if (!A.cfg.on || (!A.cfg.thap && !A.cfg.thapNeDon)) {
+    if (!A.cfg.on || (!A.cfg.thapNeDon && !(A.cfg.afterDailyEnabled && A.cfg.thap && A.cfg.thapAfterMode === 'ORBIT'))) {
       try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eRel) {}
       try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl) {}
     }
@@ -786,6 +1165,16 @@ class GameAutoPilot(
       if (!prevTgd && A.cfg.theGiaoDich) {
         delete A.cool.theGd;
       }
+      var checkKeys = ['dt', 'ldtMua', 'pd', 'st', 'pb', 'afterDailyEnabled', 'afterDailyFarm', 'thap', 'thapNeDon', 'qua', 'khan', 'ttl', 'tt2', 'qht', 'theGiaoDich'];
+      for (var ck = 0; ck < checkKeys.length; ck++) {
+        var kName = checkKeys[ck];
+        if (A.cfg[kName] && A.checkedQueue.indexOf(kName) < 0) {
+          A.checkedQueue.push(kName);
+        }
+      }
+      A.immediate = true;
+      A.immUntil = Math.max(A.immUntil || 0, Date.now() + 90000);
+      publishLiveTelemetry('🔍 Quét tuần tự (' + A.checkedQueue.length + ' mục đã tích)...');
     }
   }
 
@@ -826,15 +1215,49 @@ class GameAutoPilot(
     setTimeout(function () { tick().catch(function () {}); }, 80);
   }
 
+  function onEnteredGame() {
+    if (!A.cfg.on) return;
+    A.immediate = true;
+    A.immUntil = Math.max(A.immUntil || 0, Date.now() + 180000);
+    A.started = Date.now() - 60000;
+    delete A.cool.mode_quest;
+    delete A.cool.mode_dg;
+    delete A.cool.mode_farm;
+    delete A.cool.mode_tower;
+    publishLiveTelemetry('🟢 Vào game: đang quét chế độ & hoạt động...');
+    setTimeout(function () { tick().catch(function () {}); }, 600);
+  }
+
   function onNewVnDay(c) {
     if (c) setCfg(c, A.touchK, true);
     A.lastDay = vnDay();
     resetDay(true);
     A.immediate = true;
-    A.immUntil = Date.now() + 120000;
+    A.immUntil = Date.now() + 180000;
     A.started = Date.now() - 60000;
-    note('00:00:01 (GMT+7): làm mới hoạt động ngày mới');
-    setTimeout(function () { tick().catch(function () {}); }, 400);
+    note('00:00:01 (GMT+7): làm mới ngày mới → quét Dã Tẩu, Phó Bản & hoạt động');
+    publishLiveTelemetry('🌅 Ngày mới: đang quét lại Dã Tẩu, Phó Bản & hoạt động...');
+    setTimeout(function () { tick().catch(function () {}); }, 1500);
+    setTimeout(function () { tick().catch(function () {}); }, 5000);
+  }
+
+  function onSweep7Min(c) {
+    if (!A.cfg.on) return;
+    if (c) setCfg(c, A.touchK, true);
+    A.lastSweep7mAt = Date.now();
+    A.immediate = true;
+    A.immUntil = Math.max(A.immUntil || 0, Date.now() + 120000);
+    // Xóa các cooldown kiểm tra chế độ / map / lượt hoạt động để đối chiếu lại tình trạng thực tế
+    delete A.cool.mode_quest;
+    delete A.cool.mode_dg;
+    delete A.cool.mode_farm;
+    delete A.cool.mode_tower;
+    delete A.cool.select_map;
+    delete A.cool.ldt;
+    delete A.cool.lb;
+    delete A.cool.qua;
+    publishLiveTelemetry('⏱️ Quét định kỳ 7p: đối chiếu nhân vật, lượt & chế độ...');
+    setTimeout(function () { tick().catch(function () {}); }, 120);
   }
 
   var ready = function (k, ms) {
@@ -844,7 +1267,7 @@ class GameAutoPilot(
   };
 
   var isUserControlling = function (graceMs) {
-    var g = graceMs || 5000;
+    var g = graceMs || 3500;
     if (window.__isUserTouching) return true;
     var now = Date.now();
     if (now - A.userAt <= g) return true;
@@ -853,12 +1276,15 @@ class GameAutoPilot(
   };
 
   var ranh = function () {
-    if (isUserControlling(6000)) return false;
-    if (A.immediate || A.immUntil > Date.now()) {
-      return !isUserControlling(6000);
+    if (A.knbSyncUntil > Date.now()) {
+      return !isUserControlling(2500);
     }
-    if (Date.now() - A.userAt <= 45000) return false;
-    return Date.now() - (A.touchK || 0) > 15000;
+    if (A.immediate || A.immUntil > Date.now()) {
+      return !isUserControlling(3500);
+    }
+    if (isUserControlling(4000)) return false;
+    if (Date.now() - A.userAt <= 8000) return false;
+    return Date.now() - (A.touchK || 0) > 6000;
   };
 
   // 4 mốc Boss Hoàng Kim theo giờ Việt Nam (GMT+7): 12:00, 15:30, 19:30, 22:00
@@ -1164,10 +1590,60 @@ class GameAutoPilot(
     }
   }
 
+  function readDomModeFallback() {
+    try {
+      var mBtn = document.getElementById('mswBtn');
+      var txt = mBtn ? noAccent(mBtn.textContent || '') : '';
+      if (!txt) {
+        var btns = document.querySelectorAll('button, [role="button"], .btn');
+        var cap = Math.min(btns.length, 160);
+        for (var i = 0; i < cap; i++) {
+          var bt = noAccent(btns[i].textContent || '');
+          if (bt.indexOf('che do:') === 0 || bt.indexOf('che do ') === 0) { txt = bt; break; }
+        }
+      }
+      if (txt.indexOf('nhiem vu') >= 0 || txt.indexOf('da tau') >= 0) return 'quest';
+      if (txt.indexOf('pho ban') >= 0) return 'dg';
+      if (txt.indexOf('leo thap') >= 0) return 'tower';
+      if (txt.indexOf('luyen cong') >= 0) return 'farm';
+    } catch (eM) {}
+    return '';
+  }
+
+  function buildFallbackInfoFromState() {
+    var domMode = readDomModeFallback();
+    var st = (A.st && Date.now() - A.stT < 30000) ? A.st : {};
+    var curMode = st.mode || domMode || (A.info && A.info.mode) || 'farm';
+    var lvl = (typeof st.lvl === 'number' && st.lvl > 0) ? st.lvl : ((A.info && A.info.lvl) || 100);
+    var dtObj = (st.dt && typeof st.dt === 'object') ? st.dt : ((A.info && A.info.dt) || { today: 0, max: 200, con: 200, du: false });
+    return {
+      ok: true,
+      _fallback: true,
+      lvl: lvl,
+      mode: curMode,
+      dt: dtObj,
+      ldt: (typeof st.ldt === 'number') ? st.ldt : ((A.info && A.info.ldt) || 0),
+      lb: (typeof st.lb === 'number') ? st.lb : ((A.info && A.info.lb) || 0),
+      dg: !!(st.dg || st.noi === 'phoban'),
+      tower: !!(st.tower || st.noi === 'thap' || isInTowerNow()),
+      sat: !!(st.sat || st.noi === 'satthu'),
+      dead: !!(st.dead || st.trongThuong)
+    };
+  }
+
   async function info() {
-    var i = await api('info', {}, 8000);
-    if (i && i.ok) { A.info = i; return i; }
-    return null;
+    var i = await api('info', {}, 6500);
+    if (i && i.ok) {
+      if (!i.mode) {
+        var dm = readDomModeFallback();
+        if (dm) i.mode = dm;
+      }
+      A.info = i;
+      return i;
+    }
+    var fb = buildFallbackInfoFromState();
+    A.info = fb;
+    return fb;
   }
 
   async function troThu(I) {
@@ -1548,8 +2024,7 @@ class GameAutoPilot(
   }
 
   async function scanAndUseOneFromHiddenBagDom(kind) {
-    // Tuyệt đối KHÔNG tự bấm mở tab Hành trang / Nhân vật / Võ công trên giao diện game.
-    // Chỉ sử dụng kênh API ẩn (dungTui) ở ensureOneConsumable để tránh bật tab chức năng.
+    // Chỉ sử dụng kênh API ẩn (dungTui / muaKtc) ở ensureOneConsumable để tránh bật tab làm đứng sân trên mobile.
     return { scanned: true, used: false };
     if (!canRunHiddenConsumable()) return { scanned: false, used: false };
 
@@ -1913,16 +2388,20 @@ class GameAutoPilot(
   }
 
   async function ensureOneConsumable(I, itemSpec) {
-    var tui = (I && I.tui) ? I.tui : {};
+    var tuiSources = [(I && I.tui) ? I.tui : {}, (A.st && A.st.tui) ? A.st.tui : {}, (A.info && A.info.tui) ? A.info.tui : {}];
     var used = false;
     var bagConfirmedEmpty = false;
 
-    // 1. Quét / dùng trong Hành trang trước tiên
-    for (var ki = 0; ki < itemSpec.tuiKeys.length; ki++) {
+    // 1. Dùng vật phẩm trong Hành trang trước tiên (thử lần lượt từng key ở các nguồn dữ liệu hiện có)
+    for (var ki = 0; ki < itemSpec.tuiKeys.length && !used; ki++) {
       var tk = itemSpec.tuiKeys[ki];
-      if ((tui[tk] | 0) > 0) {
+      var hasQty = false;
+      for (var ts = 0; ts < tuiSources.length; ts++) {
+        if ((tuiSources[ts][tk] | 0) > 0) { hasQty = true; break; }
+      }
+      if (hasQty || itemSpec.kind === 'qht') {
         var rTui = await api('dungTui', { k: tk, n: 1 });
-        if (rTui && rTui.ok && rTui.n) {
+        if (rTui && rTui.ok && (rTui.n | 0) > 0) {
           used = true;
           note('dùng 1 bình ' + itemSpec.label + ' (trong túi)');
           break;
@@ -1942,12 +2421,12 @@ class GameAutoPilot(
       }
     }
 
-    // 2. Chỉ khi đã quét Hành trang xác nhận hết VÀ người dùng tích "túi hết thì mua" mới mua ẩn
-    if (!used && bagConfirmedEmpty && itemSpec.allowBuy && canRunHiddenConsumable()) {
+    // 2. Khi túi hết (hoặc Quế Hoa Tửu chưa có buff) và người dùng bật mua -> mua qua KTC ẩn / API
+    if (!used && (bagConfirmedEmpty || itemSpec.kind === 'qht') && itemSpec.allowBuy && canRunHiddenConsumable()) {
       var bought = await buyOneBottleFromHiddenKtcDom(itemSpec.kind);
-      if (!bought && (itemSpec.ktcKey === 'tt' || itemSpec.ktcKey === 'ttsp')) {
+      if (!bought && itemSpec.ktcKey) {
         var ktcRes = await api('muaKtc', { k: itemSpec.ktcKey, n: 1 });
-        if (ktcRes && ktcRes.ok && ktcRes.n) {
+        if (ktcRes && ktcRes.ok && (ktcRes.n | 0) > 0) {
           bought = true;
           used = true;
         }
@@ -2147,7 +2626,7 @@ class GameAutoPilot(
       if (got) note('mua ' + got + ' Lệnh Bài Dã Tẩu (KNB khóa)');
     }
 
-    if (A.cfg.pd && need(I) > 0) {
+    if (A.cfg.pd) {
       var p = I.pdl || {};
       if (p && ((p.cho | 0) >= 10 || (p.l && p.l.some(function (n) { return n > 0; })))) {
         var r4 = await api('pdl');
@@ -2158,15 +2637,19 @@ class GameAutoPilot(
         if (I4) I = I4;
       }
       var mo = 0;
-      for (var j = 0; j < 10 && need(I) > 0 && (I.fd | 0) >= 10; j++) {
-        var r5 = await api('ruong', { n: Math.min(10, Math.floor((I.fd | 0) / 10)) });
-        if (!r5 || !r5.ok || !r5.n) break;
-        mo += r5.n;
+      var ruongTrongTui = (I.tui && (I.tui.ruongPd || I.tui.pdBox || I.tui.ruong)) ? (I.tui.ruongPd || I.tui.pdBox || I.tui.ruong | 0) : 0;
+      for (var j = 0; j < 25 && ((I.fd | 0) >= 10 || ruongTrongTui > 0); j++) {
+        var batchN = (I.fd | 0) >= 10 ? Math.min(20, Math.floor((I.fd | 0) / 10)) : Math.min(20, ruongTrongTui);
+        if (batchN <= 0) break;
+        var r5 = await api('ruong', { n: batchN });
+        if (!r5 || !r5.ok || !(r5.n > 0)) break;
+        mo += (r5.n | 0);
+        if (ruongTrongTui > 0) ruongTrongTui = Math.max(0, ruongTrongTui - (r5.n | 0));
         var I5 = await info();
         if (!I5) break;
         I = I5;
       }
-      if (mo) note('mở ' + mo + ' Rương Phúc Duyên (lấy Lệnh Bài Dã Tẩu)');
+      if (mo > 0) note('mở hết ' + mo + ' Rương Phúc Duyên');
     }
   }
 
@@ -2356,10 +2839,32 @@ class GameAutoPilot(
     return false;
   }
 
+  function isAfter0005Vn() {
+    var v = new Date(Date.now() + 7 * 3600e3);
+    return (v.getUTCHours() * 60 + v.getUTCMinutes()) >= 5;
+  }
+
   function viKnb(I) {
     var l = (A.st && typeof A.st.luong === 'number') ? A.st.luong :
       (I && typeof I.luong === 'number' ? I.luong : null);
-    return (typeof l === 'number' && isFinite(l) && l >= 0) ? Math.floor(l) * KNB_GIA : null;
+    if (typeof l === 'number' && isFinite(l) && l >= 0) return Math.floor(l) * KNB_GIA;
+    // Dự phòng đọc số vạn từ thanh HUD đỉnh màn hình (vd: "33.492 vạn")
+    try {
+      var nodes = document.querySelectorAll('span, div, b');
+      var cap = Math.min(nodes.length, 220);
+      for (var i = 0; i < cap; i++) {
+        var el = nodes[i];
+        if (!el || (el.children && el.children.length > 1)) continue;
+        var txt = (el.textContent || '').trim();
+        if (txt.length < 4 || txt.length > 24) continue;
+        var m = /([\d.,]+)\s*v[aạ]n/i.exec(txt);
+        if (m) {
+          var van = Number(m[1].replace(/[.,]/g, ''));
+          if (isFinite(van) && van >= 0) return Math.floor(van) * KNB_GIA;
+        }
+      }
+    } catch (eV) {}
+    return null;
   }
 
   async function moKtc() {
@@ -2840,12 +3345,7 @@ class GameAutoPilot(
   async function muaKnb(I) {
     var cap = A.cfg.knbMua | 0;
     if (knbGhiLoi || !A.cfg.on || cap <= 0 || (I.lvl | 0) < 20 || !ranh()) return;
-    if (A.cfg.theGiaoDich && dayGet('theGd') < 1) {
-      if (ready('knb_wait_thegd', 3 * 60000)) {
-        note('chờ hoàn tất mua Thẻ Giao Dịch trước khi mua KNB bằng tiền vạn');
-      }
-      return;
-    }
+    // Mua KNB độc lập (không phụ thuộc Thẻ Giao Dịch), thực hiện từ 00:05 GMT+7 trở đi
     if (I.dg || I.tower || I.sat || I.dead) return;
 
     var daMua = demKnb();
@@ -2874,9 +3374,8 @@ class GameAutoPilot(
       Math.floor((vi1 - sanKnb()) / KNB_GIA));
     if (typeof I1.knbCon === 'number' && isFinite(I1.knbCon)) n = Math.min(n, Math.max(0, I1.knbCon | 0));
     if (n <= 0 || !ranh() || isModalLocked()) return;
-    if (A.st && (A.st.o !== 'game' || Date.now() - A.stT >= 90000)) return;
+    if (A.st && A.st.o && A.st.o !== 'game' && (Date.now() - A.stT < 90000)) return;
     if (!A.cfg.on || (A.cfg.knbMua | 0) <= 0) return;
-    if (A.cfg.theGiaoDich && dayGet('theGd') < 1) return;
 
     lockModal(25000);
     stealthObj().enter();
@@ -2903,45 +3402,489 @@ class GameAutoPilot(
     }
   }
 
-  async function cheDo(I) {
-    var lv = I.lvl | 0, t = I.dt || {}, mode = I.mode || 'farm';
+  async function syncKnbNow() {
+    if (!A.cfg.on || (A.cfg.knbMua | 0) <= 0) return;
+    var cap = Math.min(A.cfg.knbMua | 0, KNB_NGAY);
+    if (demKnb() >= cap) return;
+    A.knbSyncUntil = Date.now() + 35000;
+    delete A.cool.knb;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      if (!A.cfg.on || demKnb() >= cap) break;
+      var I = await info();
+      if (!I || I.dg || I.tower || I.sat || I.dead) break;
+      delete A.cool.knb;
+      await muaKnb(I);
+      if (demKnb() >= cap) break;
+      await sleep(1500);
+    }
+  }
 
-    if (A.cfg.pb && !pbXong()) {
+  function getHpMpRatio(I) {
+    var hpRatio = 1.0, mpRatio = 1.0;
+    try {
+      var s = (A.st && Date.now() - A.stT < 15000) ? A.st : null;
+      var hp = (s && typeof s.hp === 'number') ? s.hp : (typeof I.hp === 'number' ? I.hp : null);
+      var maxHp = (s && typeof s.maxHp === 'number' && s.maxHp > 0) ? s.maxHp : ((I && typeof I.maxHp === 'number' && I.maxHp > 0) ? I.maxHp : null);
+      if (hp !== null && maxHp) hpRatio = Math.max(0, Math.min(1, hp / maxHp));
+      else if (s && typeof s.hpPct === 'number') hpRatio = Math.max(0, Math.min(1, s.hpPct > 1 ? s.hpPct / 100 : s.hpPct));
+
+      var mp = (s && typeof s.mp === 'number') ? s.mp : (typeof I.mp === 'number' ? I.mp : null);
+      var maxMp = (s && typeof s.maxMp === 'number' && s.maxMp > 0) ? s.maxMp : ((I && typeof I.maxMp === 'number' && I.maxMp > 0) ? I.maxMp : null);
+      if (mp !== null && maxMp) mpRatio = Math.max(0, Math.min(1, mp / maxMp));
+      else if (s && typeof s.mpPct === 'number') mpRatio = Math.max(0, Math.min(1, s.mpPct > 1 ? s.mpPct / 100 : s.mpPct));
+    } catch (eR) {}
+    return { hp: hpRatio, mp: mpRatio };
+  }
+
+  function hasHeavyInjury(I) {
+    try {
+      if (I && (I.dead || I.trongThuong || I.injured)) return true;
+      if (A.st && Date.now() - A.stT < 15000) {
+        if (A.st.dead || A.st.trongThuong || A.st.injured) return true;
+        if (typeof A.st.hp === 'number' && A.st.hp <= 0) return true;
+      }
+    } catch (eIn) {}
+    return false;
+  }
+
+  function updateTowerTelemetry(now, I, inTowerNow) {
+    var tm = A.towerMetric;
+    var curFloor = 0;
+    try {
+      var stg = document.getElementById('stageLbl');
+      var m = stg ? /(\d+)/.exec(stg.textContent || '') : null;
+      if (m) curFloor = Number(m[1]) || 0;
+      if (!curFloor && A.st && (A.st.thapFloor || A.st.floor || A.st.tang)) curFloor = Number(A.st.thapFloor || A.st.floor || A.st.tang) || 0;
+      if (!curFloor && I && (I.thapFloor || I.floor || I.tang)) curFloor = Number(I.thapFloor || I.floor || I.tang) || 0;
+    } catch (eT) {}
+
+    if (inTowerNow) {
+      if (!tm.wasInTower) {
+        tm.wasInTower = true;
+        var outMins = tm.leftTowerAt > 0 ? Math.max(0, Math.round((now - tm.leftTowerAt) / 60000)) : 0;
+        if (curFloor > 0 && tm.floor > 0 && curFloor < tm.floor) {
+          // Vào lại tầng thấp hơn -> đo lại từ đầu nhưng vẫn giữ mốc tham chiếu lần trước (prevFloor / prevSecPerFloor)
+          tm.prevFloor = tm.floor;
+          tm.prevSecPerFloor = tm.secPerFloor;
+          tm.floor = curFloor;
+          tm.floorEnteredAt = now;
+          note('đo lại Tháp từ tầng ' + curFloor + ' (lần trước: tầng ' + tm.prevFloor + ', ngoài Tháp ' + outMins + ' phút)');
+        } else {
+          tm.floorEnteredAt = now;
+          if (curFloor > 0) tm.floor = curFloor;
+        }
+        tm.leftTowerAt = 0;
+      } else if (curFloor > 0) {
+        if (tm.floor > 0 && curFloor > tm.floor) {
+          var elapsedSec = Math.max(1, Math.round((now - (tm.floorEnteredAt || now)) / 1000));
+          tm.secPerFloor = elapsedSec;
+          var runMins = Math.max(0.5, (now - (A.started || now - 60000)) / 60000);
+          tm.floorsPer30m = Math.round((curFloor / runMins) * 30 * 10) / 10;
+          tm.floorEnteredAt = now;
+        }
+        tm.floor = curFloor;
+      }
+    } else {
+      if (tm.wasInTower) {
+        tm.wasInTower = false;
+        tm.leftTowerAt = now;
+      }
+      if (tm.floor > 0 && tm.leftTowerAt > 0) {
+        var outsideMin = Math.max(0, Math.floor((now - tm.leftTowerAt) / 60000));
+        var prevTag = tm.prevFloor > 0 ? (' · lần trước T' + tm.prevFloor) : '';
+        var spdTag = tm.secPerFloor > 0 ? (tm.secPerFloor + 's/tầng · ') : '';
+        A.last = '🤖 Tháp T' + tm.floor + ' (' + spdTag + 'ngoài Tháp ' + outsideMin + ' phút' + prevTag + ')';
+      }
+    }
+  }
+
+  // Danh sách nhóm bản đồ luyện công (khớp chính xác từng tên trong game từ Cấp 1-10 đến Cấp 130-140)
+  var TRAINING_MAP_GROUPS = {
+    'ba lang huyen': '',
+    'hoa son': 'hoa son',
+    'nga my phai': 'hoa son',
+    'thien nhan giao tang 1': 'hoa son',
+    'me cung day gieng': 'hoa son',
+    'con lon phai': 'hoa son',
+    'ngu doc giao': 'hoa son',
+    'kiem cac tay bac': 'kiem cac tay bac',
+    'manh ho dong': 'kiem cac tay bac',
+    'hoa lang dong': 'kiem cac tay bac',
+    'thuc cuong son': 'thuc cuong son',
+    'tuyet bao dong tang 1': 'thuc cuong son',
+    'yen tu dong': 'thuc cuong son',
+    'me cung nhap mon': 'thuc cuong son',
+    'diem thuong dong tang 1': 'diem thuong dong tang 1',
+    'thien tam dong': 'thien tam dong',
+    'day dong dinh ho tang 2': 'thien tam dong',
+    'bang huyet dong': 'thien tam dong',
+    'hoanh son phai': 'hoanh son phai',
+    'lam du quan': 'lam du quan',
+    'son bao dong': 'lam du quan',
+    'linh coc dong': 'lam du quan',
+    'chan nui truong bach': 'chan nui truong bach',
+    'vu lang dong': 'chan nui truong bach',
+    'phi thien dong': 'chan nui truong bach',
+    'phu dung dong': 'chan nui truong bach',
+    'nhan thach dong': 'chan nui truong bach',
+    'sa mac son dong 1': 'sa mac son dong 1',
+    'can vien dong': 'sa mac son dong 1',
+    'khoa lang dong': 'sa mac son dong 1',
+    'truong bach son nam': 'truong bach son nam',
+    'truong bach son bac': 'truong bach son nam',
+    'phong lang do': '',
+    'mac bac thao nguyen': 'vi son dao',
+    'vi son dao': 'vi son dao'
+  };
+
+  var KNOWN_CITY_NAMES = [
+    'tuong duong', 'bien kinh', 'lam an', 'thanh do', 'duong chau',
+    'dai ly', 'phuong tuong', 'ba lang', 'thong thien', 'ban do'
+  ];
+
+  function normalizeMapCompareKey(raw) {
+    return noAccent(raw || '')
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/c[aấ]p\s*\d+[\s–-]*\d*/gi, ' ')
+      .replace(/^[+\-•·*>\s]+/, '')
+      .replace(/\.+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function findMapPickerButton() {
+    try {
+      var md = document.getElementById('modal');
+      var directIds = ['mapBtn', 'mMapBtn', 'btnMap', 'mapSelBtn', 'mapNameBtn', 'u20map', 'curMapBtn', 'mapLbl', 'curMap', 'mapSwitchBtn', 'bMap'];
+      for (var i = 0; i < directIds.length; i++) {
+        var el = document.getElementById(directIds[i]);
+        if (el && isVis(el) && !el.disabled && (!md || !md.contains(el))) return el;
+      }
+      var attrEls = document.querySelectorAll('[data-open="map"], [data-act="map"], [data-map], [onclick*="map" i], [title*="Bản đồ" i], [aria-label*="Bản đồ" i]');
+      for (var ai = 0; ai < attrEls.length; ai++) {
+        var ae = attrEls[ai];
+        if (ae && isVis(ae) && !ae.disabled && (!md || !md.contains(ae)) && ae.id !== 'vlmAuto') {
+          var at = noAccent(ae.textContent || '');
+          if (at.indexOf('hoa binh') < 0 && at.indexOf('che do') < 0) return ae;
+        }
+      }
+      // Quét nút/thẻ click ở vùng trên bên phải hoặc góc trên HUD
+      var winW = window.innerWidth || 800;
+      var winH = window.innerHeight || 480;
+      var els = document.querySelectorAll('button, [role="button"], .btn, a, div, span');
+      var best = null, bestScore = -1;
+      var cap = Math.min(els.length, 520);
+      for (var bi = 0; bi < cap; bi++) {
+        var b = els[bi];
+        if (!b || !isVis(b) || b.disabled || b.id === 'vlmAuto' || b.id === 'mswBtn') continue;
+        if (b.children && b.children.length > 3) continue;
+        if (md && md.contains(b)) continue;
+        if (b.closest && b.closest('#tabs, #chatLines, #u20lines, #logBox, #u20log, #modeSw, #mswMenu')) continue;
+        var rect = b.getBoundingClientRect ? b.getBoundingClientRect() : null;
+        if (!rect || rect.width < 24 || rect.height < 12 || rect.width > 280 || rect.height > 64) continue;
+        if (rect.right < winW * 0.45 || rect.top < 8 || rect.top > winH * 0.65) continue;
+        var rawText = (b.textContent || '').trim();
+        var t = normalizeMapCompareKey(rawText);
+        if (!t || t.length < 2 || t.length > 42) continue;
+        if (/^[\d.,\s/k%]+$/.test(t)) continue;
+        if (t.indexOf('hoa binh') >= 0 || t.indexOf('auto') >= 0 || t.indexOf('xuong ngua') >= 0 ||
+            t.indexOf('len ngua') >= 0 || t.indexOf('xoay chieu') >= 0 || t.indexOf('che do') >= 0 ||
+            t.indexOf('pk') === 0 || t.indexOf('do sat') >= 0 || t.indexOf('luc tay') >= 0 ||
+            t.indexOf('van') === t.length - 3) continue;
+
+        var score = 0;
+        for (var mk in TRAINING_MAP_GROUPS) {
+          if (mk === t || (t.length >= 3 && mk.indexOf(t) === 0)) { score = 250; break; }
+        }
+        if (score === 0) {
+          for (var ci = 0; ci < KNOWN_CITY_NAMES.length; ci++) {
+            if (t.indexOf(KNOWN_CITY_NAMES[ci]) >= 0) { score = 200; break; }
+          }
+        }
+        if (score === 0 && (b.tagName === 'BUTTON' || b.getAttribute('role') === 'button') && rawText.indexOf('...') >= 0) {
+          score = 135;
+        }
+        if (score > bestScore) { bestScore = score; best = b; }
+      }
+      return bestScore >= 120 ? best : null;
+    } catch (eMapBtn) {}
+    return null;
+  }
+
+  function findOpenMapListContainer() {
+    try {
+      var cands = document.querySelectorAll('#mapModal, #mapList, #mapPop, #mapMenu, #mBody, #modal, .popup, .modal, [role="dialog"], div');
+      var cap = Math.min(cands.length, 380);
+      for (var i = 0; i < cap; i++) {
+        var el = cands[i];
+        if (!el || !isVis(el)) continue;
+        var txt = noAccent(el.textContent || '');
+        var hasHeader = txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0 || txt.indexOf('luyen cong') >= 0;
+        var hasMaps = (txt.indexOf('ba lang huyen') >= 0 && (txt.indexOf('hoa son') >= 0 || txt.indexOf('cap 1') >= 0));
+        if ((hasHeader && (txt.indexOf('cap 1') >= 0 || txt.indexOf('ba lang') >= 0 || txt.indexOf('hoa son') >= 0)) || hasMaps) {
+          if (el.children && el.children.length > 0) return el;
+        }
+      }
+    } catch (eFindPop) {}
+    return null;
+  }
+
+  function isAlreadyOnTrainingMap(I, targetMapName) {
+    var want = normalizeMapCompareKey(targetMapName || '');
+    if (!want) return true;
+    try {
+      var curNames = [];
+      if (A.st && A.st.map) curNames.push(normalizeMapCompareKey(A.st.map));
+      if (A.st && A.st.mapName) curNames.push(normalizeMapCompareKey(A.st.mapName));
+      if (A.st && A.st.tenMap) curNames.push(normalizeMapCompareKey(A.st.tenMap));
+      if (I && I.map) curNames.push(normalizeMapCompareKey(I.map));
+      if (I && I.mapName) curNames.push(normalizeMapCompareKey(I.mapName));
+      var pickerBtn = findMapPickerButton();
+      if (pickerBtn) {
+        var btnTxt = normalizeMapCompareKey(pickerBtn.textContent || '');
+        if (btnTxt.length >= 3) curNames.push(btnTxt);
+      }
+      for (var i = 0; i < curNames.length; i++) {
+        var cn = curNames[i];
+        if (!cn || cn.length < 3) continue;
+        if (cn === want || (cn.length >= 4 && want.indexOf(cn) === 0) || (want.length >= 5 && cn.indexOf(want) >= 0)) {
+          return true;
+        }
+      }
+    } catch (eChk) {}
+    return false;
+  }
+
+  async function selectTrainingMap(I, targetMapName) {
+    var targetClean = String(targetMapName || '').trim();
+    if (!targetClean) return false;
+    if (isAlreadyOnTrainingMap(I, targetClean)) {
+      A.lastMapSelected = targetClean;
+      return true;
+    }
+    if (isUserControlling(4000) || isModalLocked()) return false;
+    if (!ready('select_map', 10000)) return false;
+
+    var pickerBtn = findMapPickerButton();
+    if (!pickerBtn) return false;
+
+    var wantNA = normalizeMapCompareKey(targetClean);
+    var groupNA = TRAINING_MAP_GROUPS[noAccent(targetClean)] || '';
+
+    try {
+      try { pickerBtn.click(); } catch (eOpen0) { return false; }
+      var popup = null;
+      var waitEnd = Date.now() + 2400;
+      while (Date.now() < waitEnd) {
+        popup = findOpenMapListContainer();
+        if (popup) break;
+        await sleep(90);
+      }
+      if (!popup) return false;
+      await sleep(160);
+
+      var findMapItemEl = function (root, wantKey, mode) {
+        var els = root.querySelectorAll('button, [role="button"], .btn, span, div, li, a');
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          if (!el || !isVis(el) || el.disabled) continue;
+          if (el.children && el.children.length > 3) continue;
+          var t = normalizeMapCompareKey(el.textContent || '');
+          if (!t || t.length > 52) continue;
+          if (mode === 'exact' && t === wantKey) return el;
+          if (mode === 'prefix' && t.indexOf(wantKey) === 0) return el;
+          if (mode === 'contains' && wantKey.length >= 4 && t.indexOf(wantKey) >= 0) return el;
+        }
+        return null;
+      };
+
+      var targetEl = findMapItemEl(popup, wantNA, 'exact');
+      if (!targetEl && groupNA) {
+        var rows = popup.querySelectorAll('div, li, button, span');
+        for (var r = 0; r < rows.length; r++) {
+          var row = rows[r];
+          if (!row || !isVis(row)) continue;
+          var rt = noAccent(row.textContent || '');
+          if (rt.indexOf(groupNA) >= 0 && rt.length < 110) {
+            var toggleBtn = row.querySelector('button, span, [role="button"]');
+            try { if (row.scrollIntoView) row.scrollIntoView({ block: 'center' }); } catch (eS1) {}
+            try { (toggleBtn || row).click(); } catch (eExp) {}
+            await sleep(260);
+            popup = findOpenMapListContainer() || popup;
+            break;
+          }
+        }
+        targetEl = findMapItemEl(popup, wantNA, 'exact');
+      }
+
+      if (!targetEl) targetEl = findMapItemEl(popup, wantNA, 'prefix');
+      if (!targetEl) targetEl = findMapItemEl(popup, wantNA, 'contains');
+
+      if (targetEl) {
+        try { if (targetEl.scrollIntoView) targetEl.scrollIntoView({ block: 'center' }); } catch (eS2) {}
+        await sleep(100);
+        try { targetEl.click(); } catch (eClkMap) {}
+        await sleep(380);
+        A.lastMapSelected = targetClean;
+        note('🗺️ Chuyển sang map Luyện Công: ' + targetClean);
+        var stillOpen = findOpenMapListContainer();
+        if (stillOpen) {
+          var closeBtn = stillOpen.querySelector('#mClose, .close, [data-close], button[aria-label*="Đóng" i], button[aria-label*="Close" i]');
+          if (closeBtn && isVis(closeBtn)) {
+            try { closeBtn.click(); } catch (eCloseX) {}
+          } else if (pickerBtn && isVis(pickerBtn) && findOpenMapListContainer()) {
+            try { pickerBtn.click(); } catch (eCloseM) {}
+          }
+        }
+        return true;
+      }
+      if (findOpenMapListContainer() && pickerBtn && isVis(pickerBtn)) {
+        try { pickerBtn.click(); } catch (eCloseM2) {}
+      }
+    } catch (eMapSel) {}
+    return false;
+  }
+
+  function isDungeonListExhaustedInDom() {
+    try {
+      var md = document.getElementById('modal');
+      if (!md || md.classList.contains('hidden')) return false;
+      var txt = noAccent(md.textContent || '');
+      if (txt.indexOf('pho ban') < 0 && txt.indexOf('to doi') < 0) return false;
+      var totalBadges = (txt.match(/het luot/g) || []).length;
+      var remainBadges = (txt.match(/con\s+\d+\s*\/\s*\d+/g) || []).length;
+      return totalBadges >= 2 && remainBadges === 0;
+    } catch (eDg) {}
+    return false;
+  }
+
+  async function cheDo(I) {
+    var now = Date.now();
+    var lv = (I.lvl | 0) > 0 ? (I.lvl | 0) : 100;
+    var t = I.dt || {};
+    var domMode = readDomModeFallback();
+    var mode = domMode || I.mode || 'farm';
+    var inTowerRightNow = !!(I.tower || (A.st && A.st.noi === 'thap') || isInTowerNow());
+    updateTowerTelemetry(now, I, inTowerRightNow);
+
+    // 1. Theo dõi tiến triển Dã Tẩu (chống kẹt 30p) & Phó Bản (chống kẹt 3h + nhận diện hết lượt nhanh 15s)
+    var dtToday = (t.today | 0);
+    if (dtToday !== A.dtLastToday) {
+      A.dtLastToday = dtToday;
+      A.dtLastProgressAt = now;
+    } else if (!A.dtLastProgressAt) {
+      A.dtLastProgressAt = now;
+    }
+    var dtStalled30m = !!(A.cfg.dt && !t.du && dtToday < (t.max | 0) && A.dtLastProgressAt > 0 && (now - A.dtLastProgressAt > 30 * 60000));
+
+    var inPbNow = !!(I.dg || (A.st && A.st.noi === 'phoban') || mode === 'dg');
+    if (inPbNow && !pbXong()) {
+      if (!A.pbStartedAt) A.pbStartedAt = now;
+    } else {
+      A.pbStartedAt = 0;
+    }
+    var pbOver3h = !!(A.pbStartedAt > 0 && (now - A.pbStartedAt > 3 * 3600000));
+
+    if (pbOver3h && !pbXong()) {
+      dayAdd('pbx', 1);
+      A.pbStartedAt = 0;
+      A.pbOut = 0;
+      note('Phó Bản quá 3 giờ không dứt → nhả về lịch bình thường (10p quét lại)');
+    } else if (A.cfg.pb && !pbXong()) {
       var pbHetApi = (typeof I.pbCon === 'number' && I.pbCon <= 0) ||
         (typeof I.dgCon === 'number' && I.dgCon <= 0) ||
         (typeof I.dgLeft === 'number' && I.dgLeft <= 0) ||
-        (I.pb && typeof I.pb.con === 'number' && I.pb.con <= 0);
+        (I.pb && typeof I.pb.con === 'number' && I.pb.con <= 0) ||
+        isDungeonListExhaustedInDom();
       if (pbHetApi) {
         dayAdd('pbx', 1);
         A.pbOut = 0;
-        note('xong phó bản hôm nay → chuyển Dã Tẩu tối đa');
+        A.pbStartedAt = 0;
+        note('xong phó bản hôm nay → chuyển tiếp hoạt động');
       } else {
-        var trong = I.dg || (A.st && A.st.noi === 'phoban'), now = Date.now();
+        var trong = !!(I.dg || (A.st && A.st.noi === 'phoban'));
         var ltOk = !A.st || !A.st.lt || A.st.lt === 'noi' || A.st.lt === 'khong';
         var lien = A.pbSeen && now - A.pbSeen < 60000;
         A.pbSeen = now;
-        if (mode !== 'dg' || trong || I.dead || I.sat || !ltOk || !lien) A.pbOut = 0;
-        else if (!A.pbOut) A.pbOut = Date.now();
-        else if (Date.now() - A.pbOut > 40000) {
+        if (mode !== 'dg' || trong || I.dead || I.sat || !ltOk || !lien) {
+          A.pbOut = 0;
+        } else if (!A.pbOut) {
+          A.pbOut = now;
+        } else if (now - A.pbOut > 15000) {
           dayAdd('pbx', 1);
           A.pbOut = 0;
-          note('xong phó bản hôm nay → chuyển tiếp Dã Tẩu tối đa');
+          A.pbStartedAt = 0;
+          note('xong phó bản hôm nay (hết lượt) → chuyển tiếp hoạt động');
         }
       }
     }
 
-    if (isUserControlling(6000)) return;
+    if (isUserControlling(3500)) return;
 
     var forceOnlyTower = !!A.cfg.thapNeDon;
-    var inTowerRightNow = !!(I.tower || (A.st && A.st.noi === 'thap') || isInTowerNow());
 
-    // Khi tích "Chỉ Leo Tháp": dù đang làm gì cũng lập tức khóa & chuyển sang Chế độ: Leo Tháp
+    // 2. Chờ hồi phục sau khi gục (hết trọng thương & HP/MP >= 95%) trước khi vào lại Tháp
+    if (hasHeavyInjury(I)) {
+      A.koWaitingRecovery = true;
+      if (!A.koDetectedAt) A.koDetectedAt = now;
+      return;
+    }
+    if (A.koWaitingRecovery) {
+      var ratios = getHpMpRatio(I);
+      var recoveredEnough = (ratios.hp >= 0.95 && ratios.mp >= 0.95) || (now - (A.koDetectedAt || now) > 25000);
+      if (!recoveredEnough) {
+        if (ready('ko_wait_note', 10000)) {
+          note('đang hồi phục sau gục (HP ' + Math.round(ratios.hp * 100) + '% · MP ' + Math.round(ratios.mp * 100) + '%) trước khi vào Tháp');
+        }
+        return;
+      }
+      A.koWaitingRecovery = false;
+      A.koDetectedAt = 0;
+    }
+
     if (forceOnlyTower) {
       towerLockSet(true);
     }
 
-    // ƯU TIÊN KHUNG GIỜ: 4 mốc Boss Hoàng Kim (12:00, 15:30, 19:30, 22:00)
-    // (Bỏ qua nếu người chơi đang bật "Chỉ Leo Tháp" để tuyệt đối giữ Chế độ Leo Tháp)
+    async function switchMode(targetMode) {
+      if (targetMode !== 'tower') {
+        try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eSwRel) {}
+      }
+      var r = await api('cheDo', { m: targetMode }, 12000);
+      if (r && r.ok && r.m === targetMode) {
+        ensureGameAutoOn(false);
+        return true;
+      }
+      var item = document.querySelector('#mswMenu [data-msw="' + targetMode + '"]');
+      if (item) {
+        try {
+          var mBtn = document.getElementById('mswBtn');
+          var menu = document.getElementById('mswMenu');
+          if (mBtn && menu && (menu.classList.contains('hidden') || !isVis(item))) {
+            mBtn.click();
+            await sleep(140);
+          }
+          item.click();
+          await sleep(240);
+          if (menu && !menu.classList.contains('hidden')) {
+            try { menu.classList.add('hidden'); } catch (eM) {}
+          }
+          await sleep(140);
+          if (readDomModeFallback() === targetMode) {
+            ensureGameAutoOn(false);
+            return true;
+          }
+          var Icheck = await info();
+          if (Icheck && Icheck.mode === targetMode) {
+            ensureGameAutoOn(false);
+            return true;
+          }
+        } catch (eDom) {}
+      }
+      return false;
+    }
+
+    // 3. ƯU TIÊN KHUNG GIỜ: 4 mốc Boss Hoàng Kim (12:00, 15:30, 19:30, 22:00)
     var activeBossSlot = forceOnlyTower ? null : getActiveBossHkSlot();
     var savedBossPrev = bossHkPrevGet();
     if (activeBossSlot) {
@@ -2949,9 +3892,8 @@ class GameAutoPilot(
         bossHkPrevSet(mode);
       }
       if (mode !== 'farm') {
-        if (I.dead || isUserControlling(6000) || !ready('mode_bosshk', 8000)) return;
+        if (I.dead || isUserControlling(3500) || !ready('mode_bosshk', 6000)) return;
         if (await switchMode('farm')) {
-          ensureGameAutoOn(false);
           note('👹 Đến giờ Boss Hoàng Kim → chuyển Luyện Công đánh Boss');
         }
       } else {
@@ -2961,7 +3903,7 @@ class GameAutoPilot(
     } else if (savedBossPrev) {
       if (forceOnlyTower) {
         bossHkPrevSet(null);
-      } else if (!I.dead && !isUserControlling(6000) && ready('mode_bosshk_restore', 8000)) {
+      } else if (!I.dead && !isUserControlling(3500) && ready('mode_bosshk_restore', 6000)) {
         if (mode !== savedBossPrev) {
           if (await switchMode(savedBossPrev)) {
             bossHkPrevSet(null);
@@ -2976,65 +3918,73 @@ class GameAutoPilot(
       }
     }
 
-    // THỨ TỰ HOẠT ĐỘNG TRONG NGÀY:
-    // 1. Dã Tẩu + Boss Sát Thủ + Đi thuyền (Phong Lăng Độ) -> 'quest'
-    // 2. Phó Bản -> 'dg'
-    // 3. Leo Tháp -> 'tower' (khi xong hết hoạt động & tích Ưu tiên Leo Tháp, sẽ tự bật các tính năng của Chỉ Leo Tháp)
-    var dtCon = !forceOnlyTower && A.cfg.dt && lv >= 20 && !t.du && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
+    // 4. Bộ quét việc sót 10 phút/lần: rà soát lại Dã Tẩu, Phó Bản và KNB
+    if (now - (A.lastSweep10mAt || 0) >= 10 * 60000) {
+      A.lastSweep10mAt = now;
+      var knbCap = A.cfg.knbMua | 0;
+      if (knbCap > 0 && demKnb() < Math.min(knbCap, KNB_NGAY) && !I.dg && !I.tower && !I.sat && !I.dead) {
+        delete A.cool.knb;
+        note('quét 10p: kiểm tra mua KNB (' + demKnb() + '/' + Math.min(knbCap, KNB_NGAY) + ')');
+        await muaKnb(I);
+      }
+      if (!forceOnlyTower) {
+        var hasMissedDt = !!(A.cfg.dt && lv >= 20 && !t.du && !dtStalled30m && ((t.today | 0) < (t.max | 0) || ((I.ldt | 0) > 0 && (t.con | 0) > 0)));
+        var hasMissedPb = !!(A.cfg.pb && !pbXong() && !pbOver3h);
+        if ((hasMissedDt || hasMissedPb) && (mode === 'tower' || mode === 'farm')) {
+          note('quét 10p: phát hiện còn lượt ' + (hasMissedDt ? 'Dã Tẩu' : 'Phó Bản') + ' → ưu tiên xử lý');
+        }
+      }
+    }
+
+    // 5. Máy trạng thái kịch bản theo lượt hoạt động:
+    //    (1) Nhiệm vụ (Dã Tẩu / Sát Thủ / Phong Lăng Độ) -> 'quest'
+    //    (2) Phó Bản -> 'dg'
+    //    (3) Ưu tiên hành động khi hết lượt -> 'farm' (+ Chọn map) hoặc 'tower' (Xa em ra / Bình thường)
+    var dtMax = (t.max | 0) > 0 ? (t.max | 0) : 200;
+    var dtCon = !forceOnlyTower && A.cfg.dt && lv >= 20 && !t.du && !dtStalled30m &&
+      ((t.today | 0) < dtMax || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
     var stCon = !forceOnlyTower && A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
     var pldCon = !forceOnlyTower && !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
-    var pbCon = !forceOnlyTower && A.cfg.pb && !pbXong();
-    var dailyDoneForTower = !dtCon && !stCon && !pldCon && !pbCon;
+    var pbCon = !forceOnlyTower && A.cfg.pb && !pbXong() && !pbOver3h;
+    var dailyDone = !dtCon && !stCon && !pldCon && !pbCon;
 
-    if (A.cfg.thap && dailyDoneForTower && (inTowerRightNow || mode === 'tower')) {
+    var hasFarmMapConfigured = !!(A.cfg.farmMap && A.cfg.farmMap.trim().length > 0);
+    var wantsAfterFarm = !!(A.cfg.afterDailyFarm || (A.cfg.afterDailyEnabled && !A.cfg.thap && (hasFarmMapConfigured || !A.cfg.thap)));
+    var afterEnabled = !forceOnlyTower && (!!A.cfg.afterDailyEnabled || (wantsAfterFarm && dailyDone));
+    var afterFarmActive = !forceOnlyTower && wantsAfterFarm && dailyDone;
+    var afterThapActive = afterEnabled && !wantsAfterFarm && !!A.cfg.thap && dailyDone;
+    var afterThapXaEmRa = afterThapActive && (A.cfg.thapAfterMode === 'ORBIT');
+
+    if (afterThapXaEmRa && (inTowerRightNow || mode === 'tower')) {
       towerLockSet(true);
+    } else if (!forceOnlyTower && !afterThapXaEmRa) {
+      towerLockSet(false);
     }
 
-    var towerLocked = forceOnlyTower || (!!A.cfg.thap && dailyDoneForTower && towerLockGet());
-    var thapCon = !!(A.cfg.thap || forceOnlyTower);
-    var want = towerLocked ? 'tower' : ((dtCon || stCon || pldCon) ? 'quest' : (pbCon ? 'dg' : (thapCon ? 'tower' : null)));
+    var towerLocked = forceOnlyTower || (afterThapXaEmRa && towerLockGet());
+    var want = towerLocked
+      ? 'tower'
+      : ((dtCon || stCon || pldCon)
+          ? 'quest'
+          : (pbCon
+              ? 'dg'
+              : (afterFarmActive
+                  ? 'farm'
+                  : (afterThapActive ? 'tower' : null))));
     var prev = prevGet();
 
-    async function switchMode(targetMode) {
-      var r = await api('cheDo', { m: targetMode });
-      if (r && r.ok && r.m === targetMode) return true;
-      var item = document.querySelector('#mswMenu [data-msw="' + targetMode + '"]');
-      if (item) {
-        try {
-          var mBtn = document.getElementById('mswBtn');
-          var menu = document.getElementById('mswMenu');
-          if (mBtn && menu && (menu.classList.contains('hidden') || !isVis(item))) {
-            mBtn.click();
-            await sleep(120);
-          }
-          item.click();
-          await sleep(220);
-          if (menu && !menu.classList.contains('hidden')) {
-            try { menu.classList.add('hidden'); } catch (eM) {}
-          }
-          await sleep(120);
-          var Icheck = await info();
-          if (Icheck && Icheck.mode === targetMode) return true;
-        } catch (eDom) {}
-      }
-      return false;
-    }
-
-    // Chế độ Chỉ Leo Tháp: khi đã vào Thông Thiên Tháp thì khóa cứng Chế độ Leo Tháp,
-    // tự động vào lại Tháp sau khi Rớt Tháp (chết) hoặc mất kết nối / tải lại game.
     if (towerLocked) {
       if (I.dead) return;
-      if (isUserControlling(6000)) return;
+      if (isUserControlling(3500)) return;
       if (mode !== 'tower') {
-        if (!ready('mode_tower_lock', 7000)) return;
+        if (!ready('mode_tower_lock', 5000)) return;
         if (await switchMode('tower')) {
           A.pbOut = 0;
-          note('🗼 Chỉ Leo Tháp: khôi phục Chế độ Leo Tháp');
+          note('🗼 Leo Tháp (Xa em ra): chuyển Chế độ Leo Tháp');
         }
         return;
       }
-      if (!inTowerRightNow && ready('tower_reenter', 8000)) {
-        // Đã ở chế độ Leo Tháp nhưng bị Rớt Tháp hoặc vừa kết nối lại ở ngoài tháp -> kích hoạt vào lại Tháp
+      if (!inTowerRightNow && ready('tower_reenter', 6000)) {
         var reOk = await api('cheDo', { m: 'tower' });
         if (!reOk || !reOk.ok) {
           await switchMode('tower');
@@ -3049,25 +3999,45 @@ class GameAutoPilot(
             break;
           }
         }
-        note('🗼 Chỉ Leo Tháp: phát hiện Rớt Tháp / kết nối lại → tự vào lại Tháp');
+        note('🗼 Leo Tháp: tự vào lại Tháp');
       }
       return;
     }
 
     if (want && mode !== want) {
-      if (I.dg || I.tower || I.sat || I.dead || I.st === true) return;
-      if (!ranh() || !ready('mode_' + want, 12000)) return;
+      // Chỉ giữ nguyên nếu đang gục hoặc đang đánh Boss Sát Thủ hoặc đang trong trận Phó Bản thực sự
+      if (I.dead || I.sat || I.dg) return;
+      // Nếu đang ở chế độ Leo Tháp nhưng kịch bản yêu cầu Luyện Công / Phó Bản / Nhiệm Vụ -> cho phép chuyển chế độ
+      if (!ranh() || !ready('mode_' + want, 3500)) return;
       var savedPrev = prev || mode;
       if (await switchMode(want)) {
-        if (!prev) prevSet(savedPrev);
+        if (!prev && !afterFarmActive && !afterThapActive) prevSet(savedPrev);
         A.pbOut = 0;
-        if (want === 'tower' && (forceOnlyTower || A.cfg.thap)) towerLockSet(true);
-        note(want === 'dg'
-          ? 'chuyển Tự chạy Phó Bản (còn lượt)'
-          : (want === 'quest' ? ('chuyển Dã Tẩu tối đa (' + (dtCon ? 'còn Dã Tẩu' : 'có Lệnh Bài Sát Thủ') + ')') : 'chuyển Leo Tháp'));
+        if (want === 'dg' && !A.pbStartedAt) A.pbStartedAt = now;
+        if (want === 'tower' && (forceOnlyTower || afterThapXaEmRa)) towerLockSet(true);
+        if (want === 'farm' && afterFarmActive) {
+          note('chuyển Chế độ: Luyện Công (hết lượt Dã Tẩu & Phó Bản)');
+          if (A.cfg.farmMap) {
+            await sleep(400);
+            await selectTrainingMap(I, A.cfg.farmMap);
+          }
+        } else {
+          note(want === 'dg'
+            ? 'chuyển Tự chạy Phó Bản (còn lượt)'
+            : (want === 'quest'
+                ? ('chuyển Nhiệm Vụ (' + (dtCon ? ('Dã Tẩu ' + dtToday + '/' + dtMax) : (stCon ? 'Sát Thủ' : 'Phong Lăng Độ')) + ')')
+                : ('chuyển Leo Tháp (' + (afterThapXaEmRa ? 'Xa em ra' : 'Bình thường') + ')')));
+        }
+      }
+    } else if (want && mode === want) {
+      ensureGameAutoOn(false);
+      if (afterFarmActive && mode === 'farm' && A.cfg.farmMap && !I.dg && !I.tower && !I.sat && !I.dead) {
+        if (!isAlreadyOnTrainingMap(I, A.cfg.farmMap)) {
+          await selectTrainingMap(I, A.cfg.farmMap);
+        }
       }
     } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
-      if (I.dg || I.st === true || I.sat || !ranh() || !ready('mode_restore', 10000)) return;
+      if (I.dg || I.sat || !ranh() || !ready('mode_restore', 8000)) return;
       if (await switchMode(prev)) {
         prevSet(null);
         note('hoàn tất tự động: trở về trạng thái ban đầu (' + MODE_VI[prev] + ')');
@@ -3079,20 +4049,22 @@ class GameAutoPilot(
 
   async function tick() {
     if (A.busy || !A.cfg.on) return;
+    if (isUserControlling(1500)) return;
     var curTradeDay = vnTradeDay();
     if (curTradeDay !== A.lastTradeDay) {
       A.lastTradeDay = curTradeDay;
       delete A.cool.theGd;
       A.immediate = true;
-      A.immUntil = Date.now() + 120000;
+      A.immUntil = Math.max(A.immUntil || 0, Date.now() + 180000);
     }
     var curDay = vnDay();
     if (curDay !== A.lastDay) {
       A.lastDay = curDay;
       resetDay(true);
       A.immediate = true;
-      A.immUntil = Date.now() + 120000;
+      A.immUntil = Date.now() + 180000;
       A.started = Date.now() - 60000;
+      note('00:00:01 (GMT+7): làm mới ngày mới → quét lại Dã Tẩu & Phó Bản');
     }
 
     var hasRecentSt = !!(A.st && A.st.o === 'game' && Date.now() - A.stT < 90000);
@@ -3114,18 +4086,39 @@ class GameAutoPilot(
     if (!ingame) { A.started = 0; return; }
 
     if (!A.started) A.started = Date.now();
-    if (!A.immediate && A.immUntil <= Date.now() && Date.now() - A.started < 8000) return;
+    if (!A.immediate && A.immUntil <= Date.now() && Date.now() - A.started < 2500) return;
 
     A.busy = true;
     try {
-      // Ưu tiên Mua Thẻ Giao Dịch đầu tiên (00:00:00), sau đó Điểm danh + Đổi nguyên liệu + Mua KNB (bị chặn nếu chưa xong Thẻ GD) + Vật phẩm tiêu hao
-      var fns = [muaTheGiaoDich, qua, doiNguyenLieuThua, muaKnb, troThu, khan, suDungVatPhamTieuHao, daTau, muaLb, cheDo];
-      for (var i = 0; i < fns.length; i++) {
+      // Bước 2 trước: kích hoạt Luyện Công / Phó Bản / Leo Tháp để nhân vật hoạt động rõ ràng
+      var I0 = await info();
+      if (!I0) return;
+      try { await cheDo(I0); } catch (eChe) {}
+      if (!A.cfg.on) return;
+      try {
+        var Iafter = (await info()) || I0;
+        var dtA = Iafter.dt || {};
+        var lvA = (Iafter.lvl | 0) > 0 ? (Iafter.lvl | 0) : 100;
+        var dtDoneA = !(A.cfg.dt && lvA >= 20 && !dtA.du && ((dtA.today | 0) < ((dtA.max | 0) > 0 ? (dtA.max | 0) : 200) || ((Iafter.ldt | 0) > 0 && (dtA.con | 0) > 0)));
+        var stDoneA = !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
+        var pbDoneA = !(A.cfg.pb && !pbXong());
+        var curM = readDomModeFallback() || Iafter.mode || 'farm';
+        if (!A.cfg.thapNeDon && (A.cfg.afterDailyFarm || A.cfg.afterDailyEnabled) &&
+            !A.cfg.thap && A.cfg.farmMap && dtDoneA && stDoneA && pbDoneA &&
+            curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
+            !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
+          await selectTrainingMap(Iafter, A.cfg.farmMap);
+        }
+      } catch (eMapForce) {}
+
+      // Bước 3: khi nhân vật đang hoạt động, thực hiện đổi KNB, điểm danh, mở Phúc Duyên, đổi nguyên liệu ẩn
+      var bgFns = [muaTheGiaoDich, qua, doiNguyenLieuThua, muaKnb, troThu, khan, suDungVatPhamTieuHao, daTau, muaLb];
+      for (var i = 0; i < bgFns.length; i++) {
         if (!A.cfg.on) break;
-        var I = await info();
-        if (!I) break;
-        await fns[i](I);
+        var Icur = (await info()) || I0;
+        try { await bgFns[i](Icur); } catch (eStep) {}
       }
+      publishLiveTelemetry('');
     } catch (e) {
     } finally {
       A.busy = false;
@@ -3408,8 +4401,7 @@ class GameAutoPilot(
     try {
       if (!ctx || !ctx.canvas) return;
       var cv = ctx.canvas;
-      if (!cv || cv.width < 160 || cv.height < 160) return;
-      if (isMinimapCanvasEl(cv)) return;
+      if (cv !== O.targetEl || cv.width < 160 || cv.height < 160) return;
       var txt = String(text || '').replace(/\s+/g, ' ').trim();
       if (!txt || txt.length < 3 || txt.length > 42) return;
       if (/^[\d.,+\-%/\s]+$/.test(txt)) return;
@@ -3489,8 +4481,13 @@ class GameAutoPilot(
 
   function handleCanvasSpyShape(ctx, rawX, rawY, radW, radH, isStroke) {
     try {
-      if (!ctx || !ctx.canvas) return;
+      if (!isStroke || !ctx || !ctx.canvas || ctx.canvas !== O.targetEl) return;
       var cv = ctx.canvas;
+      var rMax = Math.max(radW || 0, radH || 0);
+      if (rMax < 8 || rMax > 75) return;
+      var sRgb = parseCssRgb(ctx.strokeStyle);
+      if (!sRgb || sRgb.r < 190 || sRgb.g > 95 || sRgb.b > 95) return;
+
       var sx = Number(rawX) || 0, sy = Number(rawY) || 0;
       if (typeof ctx.getTransform === 'function') {
         try {
@@ -3503,127 +4500,102 @@ class GameAutoPilot(
       }
       var nx = sx / cv.width;
       var ny = sy / cv.height;
-      if (!isFinite(nx) || !isFinite(ny) || nx < 0.02 || nx > 0.98 || ny < 0.02 || ny > 0.98) return;
-      var now = Date.now();
-
-      // 1. Trên Minimap (fallback khi getImageData không khả dụng): dùng tâm thật O.miniDiamond hoặc mặc định (0.50, 0.60)
-      if (isMinimapCanvasEl(cv)) {
-        if (isStroke) return;
-        if ((radW || 0) > 20 || (radH || 0) > 20) return;
-        var cxN = O.miniDiamond ? (O.miniDiamond.cx / cv.width) : 0.50;
-        var cyN = O.miniDiamond ? (O.miniDiamond.cy / cv.height) : 0.60;
-        var rxN = O.miniDiamond ? (O.miniDiamond.rx / cv.width) : 0.31;
-        var ryN = O.miniDiamond ? (O.miniDiamond.ry / cv.height) : 0.19;
-        var ndx = (nx - cxN) / Math.max(0.10, rxN);
-        var ndy = (ny - cyN) / Math.max(0.08, ryN);
-        if (Math.abs(ndx) + Math.abs(ndy) > 1.15) return;
-        var role = classifyMinimapRgb(parseCssRgb(ctx.fillStyle));
-        if (role === 'player') {
-          O.obsMiniPlayer = { nx: nx, ny: ny, ndx: ndx, ndy: ndy, at: now };
-        } else if (role === 'enemy') {
-          O.obsMiniEnemies.push({ nx: nx, ny: ny, at: now });
-          if (O.obsMiniEnemies.length > 24) O.obsMiniEnemies.shift();
-        }
-        return;
-      }
-
-      // 2. Trên Canvas chính: bắt vòng tròn đỏ dưới chân mục tiêu ĐANG CHỌN
-      if (isStroke && cv.width >= 160 && cv.height >= 160 && ny >= 0.16 && ny <= 0.84) {
-        var rMax = Math.max(radW || 0, radH || 0);
-        if (rMax >= 8 && rMax <= 75) {
-          var sRgb = parseCssRgb(ctx.strokeStyle);
-          if (sRgb && sRgb.r >= 190 && sRgb.g <= 95 && sRgb.b <= 95) {
-            O.obsTargetRing = { nx: nx, ny: ny, at: now };
-          }
-        }
+      if (isFinite(nx) && isFinite(ny) && nx >= 0.04 && nx <= 0.96 && ny >= 0.16 && ny <= 0.84) {
+        O.obsTargetRing = { nx: nx, ny: ny, at: Date.now() };
       }
     } catch (eShp) {}
   }
 
+  // Chỉ cài Canvas2D hook tối giản (bỏ fillRect & fill để giảm >95% tải GPU/CPU) khi đang trong Tháp
   function installArenaCanvasSpy() {
     window.__vlmOrbitSpyCb = {
       text: handleCanvasSpyText,
       shape: handleCanvasSpyShape
     };
+    window.__vlmOrbitSpyActive = true;
     if (window.__vlmOrbitCanvasSpyInstalled) return;
-    window.__vlmOrbitCanvasSpyInstalled = true;
     try {
       if (typeof CanvasRenderingContext2D === 'undefined' || !CanvasRenderingContext2D.prototype) return;
       var proto = CanvasRenderingContext2D.prototype;
-      var origFillText = proto.fillText;
-      var origStrokeText = proto.strokeText;
-      var origFillRect = proto.fillRect;
-      var origArc = proto.arc;
-      var origEllipse = proto.ellipse;
-      var origFill = proto.fill;
-      var origStroke = proto.stroke;
-      var origBeginPath = proto.beginPath;
-
-      if (origBeginPath) {
-        proto.beginPath = function () {
-          this.__vlmShape = null;
-          return origBeginPath.apply(this, arguments);
+      if (!window.__vlmOrigCtx2D) {
+        window.__vlmOrigCtx2D = {
+          fillText: proto.fillText,
+          strokeText: proto.strokeText,
+          arc: proto.arc,
+          ellipse: proto.ellipse,
+          stroke: proto.stroke,
+          beginPath: proto.beginPath
         };
       }
-      if (origFillText) {
+      var orig = window.__vlmOrigCtx2D;
+      window.__vlmOrbitCanvasSpyInstalled = true;
+
+      if (orig.beginPath) {
+        proto.beginPath = function () {
+          this.__vlmShape = null;
+          return orig.beginPath.apply(this, arguments);
+        };
+      }
+      if (orig.fillText) {
         proto.fillText = function (text, x, y) {
           if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.text) {
             window.__vlmOrbitSpyCb.text(this, text, x, y);
           }
-          return origFillText.apply(this, arguments);
+          return orig.fillText.apply(this, arguments);
         };
       }
-      if (origStrokeText) {
+      if (orig.strokeText) {
         proto.strokeText = function (text, x, y) {
           if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.text) {
             window.__vlmOrbitSpyCb.text(this, text, x, y);
           }
-          return origStrokeText.apply(this, arguments);
+          return orig.strokeText.apply(this, arguments);
         };
       }
-      if (origFillRect) {
-        proto.fillRect = function (x, y, w, h) {
-          if (window.__vlmOrbitSpyActive && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.shape) {
-            window.__vlmOrbitSpyCb.shape(this, x + (w || 0) * 0.5, y + (h || 0) * 0.5, Math.abs(w || 0), Math.abs(h || 0), false);
-          }
-          return origFillRect.apply(this, arguments);
-        };
-      }
-      if (origArc) {
+      if (orig.arc) {
         proto.arc = function (x, y, r) {
           if (window.__vlmOrbitSpyActive) {
             this.__vlmShape = { x: x, y: y, rw: r || 0, rh: r || 0 };
           }
-          return origArc.apply(this, arguments);
+          return orig.arc.apply(this, arguments);
         };
       }
-      if (origEllipse) {
+      if (orig.ellipse) {
         proto.ellipse = function (x, y, rx, ry) {
           if (window.__vlmOrbitSpyActive) {
             this.__vlmShape = { x: x, y: y, rw: rx || 0, rh: ry || 0 };
           }
-          return origEllipse.apply(this, arguments);
+          return orig.ellipse.apply(this, arguments);
         };
       }
-      if (origFill) {
-        proto.fill = function () {
-          if (window.__vlmOrbitSpyActive && this.__vlmShape && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.shape) {
-            var sh = this.__vlmShape;
-            window.__vlmOrbitSpyCb.shape(this, sh.x, sh.y, sh.rw * 2, sh.rh * 2, false);
-          }
-          return origFill.apply(this, arguments);
-        };
-      }
-      if (origStroke) {
+      if (orig.stroke) {
         proto.stroke = function () {
           if (window.__vlmOrbitSpyActive && this.__vlmShape && window.__vlmOrbitSpyCb && window.__vlmOrbitSpyCb.shape) {
             var sh = this.__vlmShape;
             window.__vlmOrbitSpyCb.shape(this, sh.x, sh.y, sh.rw, sh.rh, true);
           }
-          return origStroke.apply(this, arguments);
+          return orig.stroke.apply(this, arguments);
         };
       }
     } catch (eHook) {}
+  }
+
+  // Gỡ trả nguyên bản 100% Canvas2D prototype khi rời Tháp / chuyển chế độ (0% lag trên Xiaomi & máy yếu)
+  function uninstallArenaCanvasSpy() {
+    window.__vlmOrbitSpyActive = false;
+    if (!window.__vlmOrbitCanvasSpyInstalled) return;
+    window.__vlmOrbitCanvasSpyInstalled = false;
+    try {
+      var orig = window.__vlmOrigCtx2D;
+      if (!orig || typeof CanvasRenderingContext2D === 'undefined' || !CanvasRenderingContext2D.prototype) return;
+      var proto = CanvasRenderingContext2D.prototype;
+      if (orig.fillText) proto.fillText = orig.fillText;
+      if (orig.strokeText) proto.strokeText = orig.strokeText;
+      if (orig.arc) proto.arc = orig.arc;
+      if (orig.ellipse) proto.ellipse = orig.ellipse;
+      if (orig.stroke) proto.stroke = orig.stroke;
+      if (orig.beginPath) proto.beginPath = orig.beginPath;
+    } catch (eUnhook) {}
   }
 
   function findGameAutoButton() {
@@ -3791,7 +4763,7 @@ class GameAutoPilot(
 
   function releaseOrbitKeys() {
     pauseOrbitMovement();
-    window.__vlmOrbitSpyActive = false;
+    uninstallArenaCanvasSpy();
     O.active = false;
     O.wasInTower = false;
     O.towerEnteredAt = 0;
@@ -3816,6 +4788,8 @@ class GameAutoPilot(
     O.lastBeatIdx = -1;
     O.orbitDir = 1;
     O.miniDiamond = null;
+    O.miniCanvas = null;
+    O.targetEl = null;
     O.obsEnemies = [];
     O.obsMiniEnemies = [];
     O.obsTargetRing = null;
@@ -3882,7 +4856,7 @@ class GameAutoPilot(
   }
 
   function isTowerOrbitEnabled() {
-    return !!(A.cfg.on && (A.cfg.thapNeDon || A.cfg.thap));
+    return !!(A.cfg.on && (A.cfg.thapNeDon || (A.cfg.afterDailyEnabled && A.cfg.thap && A.cfg.thapAfterMode === 'ORBIT')));
   }
 
   function isOrbitEligible() {
@@ -4299,14 +5273,16 @@ class GameAutoPilot(
 
   function orbitTick() {
     if (!isTowerOrbitEnabled() || !isOrbitEligible()) {
-      if (O.active || O.moving || O.wasInTower) releaseOrbitKeys();
-      return;
+      if (O.active || O.moving || O.wasInTower || window.__vlmOrbitCanvasSpyInstalled || window.__vlmOrbitSpyActive) {
+        releaseOrbitKeys();
+      }
+      return false;
     }
 
     var stage = findPrimaryGameCanvas();
     if (!stage) {
-      if (O.active || O.moving) releaseOrbitKeys();
-      return;
+      if (O.active || O.moving || window.__vlmOrbitCanvasSpyInstalled) releaseOrbitKeys();
+      return false;
     }
 
     installArenaCanvasSpy();
@@ -4380,7 +5356,7 @@ class GameAutoPilot(
         O.returnStartedAt = 0;
         O.returnLockUntil = 0;
         ensureGameAutoOn(true);
-        return;
+        return true;
       }
       var returnElapsed = now - (O.returnStartedAt || now);
       var reachedCenter = (centerDist <= 0.18);
@@ -4390,7 +5366,7 @@ class GameAutoPilot(
         O.returnLockUntil = 0;
         O.lastClickAt = 0; // Sẵn sàng bắt vòng tròn ngay khi có mục tiêu mới
         ensureGameAutoOn(true);
-        return;
+        return true;
       }
       if (now - (O.lastRetClickAt || 0) >= 170) {
         O.lastRetClickAt = now;
@@ -4403,20 +5379,20 @@ class GameAutoPilot(
         ensureGameAutoOn(true);
       }
       O.active = true;
-      return;
+      return true;
     }
 
     // 5. Nếu đang ở giữa map mà chưa có mục tiêu -> giữ yên ở giữa map chờ đợt quái mới
     if (!ent.hasTarget) {
       ensureGameAutoOn(true);
-      return;
+      return true;
     }
 
     // 6. Kiểm tra nhịp thời gian giữa 2 lần click vòng tròn (480ms đánh gần / 500ms đánh xa)
-    if (now < O.autoPauseUntil) return;
+    if (now < O.autoPauseUntil) return true;
     if (now - O.lastClickAt < params.cycleMs) {
       ensureGameAutoOn(false);
-      return;
+      return true;
     }
 
     // Kiểm tra kẹt đứng yên 2 nhịp khi lệch xa tâm map -> quay về trung tâm map ngay
@@ -4428,7 +5404,7 @@ class GameAutoPilot(
         O.stuckBeats++;
         if (O.stuckBeats >= 2) {
           startReturnToCenter(now, 800);
-          return;
+          return true;
         }
       } else {
         O.stuckBeats = 0;
@@ -4445,7 +5421,7 @@ class GameAutoPilot(
     var plan = computeNextCircularClick(ent, mapPos, params);
     if (plan.mustReturnCenter && mapPos.hasMapPos) {
       startReturnToCenter(now, 800);
-      return;
+      return true;
     }
 
     var autoBtnBefore = findGameAutoButton();
@@ -4470,15 +5446,19 @@ class GameAutoPilot(
         note('🌀 Leo Tháp: xoay vòng tròn tránh cạnh/góc (' + (style === 'melee' ? 'Đánh gần R90' : 'Đánh xa R400') + skInfo + ')');
       }
     }
+    return true;
   }
 
   window.__vlmAuto = {
     ver: VER,
     setCfg: setCfg,
     resetDay: resetDay,
+    onEnteredGame: onEnteredGame,
     onMidnight000000: onMidnight000000,
     onNewVnDay: onNewVnDay,
+    onSweep7Min: onSweep7Min,
     tick: tick,
+    syncKnbNow: syncKnbNow,
     orbitTick: orbitTick,
     orbitState: function () {
       return {
@@ -4502,21 +5482,20 @@ class GameAutoPilot(
   if (IMM0 && A.cfg.on) {
     setTimeout(function () { tick().catch(function () {}); }, 250);
   }
-  setInterval(function () { tick().catch(function () {}); }, 15000);
-  installArenaCanvasSpy();
-  if (A.cfg.on && (A.cfg.thap || A.cfg.thapNeDon)) {
-    window.__vlmOrbitSpyActive = true;
+  function scheduleNextOrbitTick() {
+    if (window.__vlmOrbitTimer) {
+      clearTimeout(window.__vlmOrbitTimer);
+      window.__vlmOrbitTimer = 0;
+    }
+    var inTower = false;
+    try { inTower = !!orbitTick(); } catch (eOrb) { inTower = false; }
+    // Tối ưu thiết bị yếu / Xiaomi: 90ms khi đang trong Tháp, nghỉ 900ms ngoài Tháp (không giữ Canvas2D hook ngoài Tháp)
+    var delayMs = inTower ? 90 : 900;
+    window.__vlmOrbitTimer = setTimeout(scheduleNextOrbitTick, delayMs);
   }
-  window.__vlmOrbitTimer = setInterval(function () {
-    try { orbitTick(); } catch (eOrb) {}
-  }, 70);
-  setInterval(function () {
-    try {
-      if (A.cfg.on && !O.moving && !isUserControlling(2500)) {
-        ensureGameAutoOn(true);
-      }
-    } catch (eAg) {}
-  }, 1000);
+
+  window.__vlmTickTimer = setInterval(function () { tick().catch(function () {}); }, 15000);
+  window.__vlmOrbitTimer = setTimeout(scheduleNextOrbitTick, 250);
   return 'installed';
 })();
     """.trimIndent()

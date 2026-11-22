@@ -998,21 +998,41 @@ class GameTabManager(
     fun syncAutoMode(modeText: String) {
         mainHandler.post {
             val script = GameScriptInjector.buildSyncAutoModeScript(modeText)
+            val leavingTower = !modeText.contains("Tháp", ignoreCase = true)
+            val releaseJs = if (leavingTower) {
+                "(function(){try{if(window.__vlmOrbitRelease)window.__vlmOrbitRelease();}catch(e){}})();"
+            } else {
+                null
+            }
+            val staggerMs = if (isConstrainedMemory || isLowRam) 140L else 80L
             for (i in 0 until tabCount) {
-                val wv = webViews[i]
-                if (wv != null && isTabActive[i]) {
-                    wv.evaluateJavascript(script) { result ->
-                        val cleaned = result?.trim('"') ?: ""
-                        if (cleaned.startsWith("SELECTED_OPTION:") ||
-                            cleaned.startsWith("CLICKED_DIRECT:") ||
-                            cleaned.startsWith("ALREADY_IN_MODE:") ||
-                            cleaned.startsWith("OPENED_TRIGGER_AND_SELECTING:")
-                        ) {
-                            updateStatus(i, "⚡ Chế độ: $modeText")
-                        }
+                val runTab = Runnable {
+                    if (i >= tabCount) return@Runnable
+                    val wv = webViews[i] ?: return@Runnable
+                    val url = wv.url ?: return@Runnable
+                    if (url == "about:blank") return@Runnable
+                    if (releaseJs != null) {
+                        runCatching { wv.evaluateJavascript(releaseJs, null) }
                     }
+                    if (isTabActive[i]) {
+                        wv.evaluateJavascript(script) { result ->
+                            val cleaned = result?.trim('"') ?: ""
+                            if (cleaned.startsWith("SELECTED_OPTION:") ||
+                                cleaned.startsWith("CLICKED_DIRECT:") ||
+                                cleaned.startsWith("ALREADY_IN_MODE:") ||
+                                cleaned.startsWith("OPENED_TRIGGER_AND_SELECTING:")
+                            ) {
+                                updateStatus(i, "⚡ Chế độ: $modeText")
+                            }
+                        }
+                    } else {
+                        wv.evaluateJavascript(script, null)
+                    }
+                }
+                if (i == 0) {
+                    runTab.run()
                 } else {
-                    wv?.evaluateJavascript(script, null)
+                    mainHandler.postDelayed(runTab, staggerMs * i)
                 }
             }
         }
@@ -1490,6 +1510,7 @@ class GameTabManager(
                 lastScanHeartbeatMs[tabIndex] = System.currentTimeMillis()
                 setTabState(tabIndex, TabLifecycleState.IN_GAME)
                 updateStatus(tabIndex, "🟢 Đã vào game")
+                autoPilot.onTabEnteredGame(tabIndex)
             }
         }
 
@@ -1608,6 +1629,54 @@ class GameTabManager(
                     lastUpdateEpoch = System.currentTimeMillis()
                 )
                 _characterStatsList.value = currentList
+            }
+        }
+
+        @JavascriptInterface
+        fun onLiveTelemetry(idx: Int, jsonStr: String) {
+            mainHandler.post {
+                try {
+                    if (tabIndex !in _characterStatsList.value.indices) return@post
+                    val now = System.currentTimeMillis()
+                    lastScanHeartbeatMs[tabIndex] = now
+                    val json = JSONObject(jsonStr)
+                    val currentList = _characterStatsList.value.toMutableList()
+                    val prev = currentList[tabIndex] ?: CharacterStats(tabIndex = tabIndex)
+
+                    val daiHb = json.optString("daiHongBao", "").trim()
+                    val hb = json.optString("hongBao", "").trim()
+                    val bossHk = json.optString("bossHoangKim", "").trim()
+                    val daTau = json.optString("daTauQuest", "").trim()
+                    val knbInfo = json.optString("knbSummary", "").trim()
+                    val actionStatus = json.optString("actionStatus", "").trim()
+
+                    val mergedDaTau = if (daTau.isNotBlank() && knbInfo.isNotBlank()) {
+                        "$daTau · KNB: $knbInfo"
+                    } else if (daTau.isNotBlank()) {
+                        daTau
+                    } else if (knbInfo.isNotBlank()) {
+                        "KNB: $knbInfo"
+                    } else {
+                        prev.daTauQuest
+                    }
+
+                    val nextStatus = if (actionStatus.isNotBlank()) {
+                        lastGameLogAtMs[tabIndex] = now
+                        actionStatus.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+                    } else {
+                        prev.lastStatus
+                    }
+
+                    currentList[tabIndex] = prev.copy(
+                        daiHongBao = if (daiHb.isNotBlank()) daiHb else prev.daiHongBao,
+                        hongBao = if (hb.isNotBlank()) hb else prev.hongBao,
+                        bossHoangKim = if (bossHk.isNotBlank()) bossHk else prev.bossHoangKim,
+                        daTauQuest = mergedDaTau,
+                        lastStatus = nextStatus,
+                        lastUpdateEpoch = now
+                    )
+                    _characterStatsList.value = currentList
+                } catch (_: Exception) {}
             }
         }
 

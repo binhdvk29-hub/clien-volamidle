@@ -71,8 +71,6 @@ import com.example.R
 import com.example.model.NetworkDataInfo
 import com.example.model.TabLimits
 import com.example.model.ViewLayoutMode
-import com.example.update.ByteSize
-import com.example.update.UpdateUiState
 import java.util.Locale
 
 private val SheetBg = Color(0xFF0F172A)
@@ -113,11 +111,6 @@ fun ControlSheet(
     onSetTabCount: (Int) -> Unit,
     onMarkTabCountWarned: () -> Unit,
     appVersionName: String,
-    updateState: UpdateUiState,
-    onCheckUpdate: () -> Unit,
-    onStartDownload: () -> Unit,
-    onInstallUpdate: () -> Unit,
-    onOpenReleases: () -> Unit,
     onDismiss: () -> Unit,
     onInteract: () -> Unit,
     hasDndPolicyAccess: Boolean = false,
@@ -128,6 +121,9 @@ fun ControlSheet(
     onToggleHideGame: () -> Unit = {},
     isPcMode: Boolean = false,
     onTogglePcMode: () -> Unit = {},
+    isTestChannel: Boolean = false,
+    updateStatusLabel: String = "🔄 Cập nhật",
+    onCheckUpdate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
@@ -137,7 +133,6 @@ fun ControlSheet(
     var lastSyncMode by remember { mutableStateOf<String?>(null) }
     var pendingGrow by remember { mutableStateOf<Int?>(null) }
     var pendingShrink by remember { mutableStateOf<Int?>(null) }
-    var installConfirm by remember { mutableStateOf<UpdateUiState.ReadyToInstall?>(null) }
 
     val dismissThresholdPx = with(LocalDensity.current) { 40.dp.toPx() }
     var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -703,69 +698,53 @@ fun ControlSheet(
                         }
                     )
 
-                    // Hàng 9: phiên bản + cập nhật
-                    UpdateRow(
-                        appVersionName = appVersionName,
-                        state = updateState,
-                        onCheck = {
-                            onInteract()
-                            onCheckUpdate()
-                        },
-                        onDownload = {
-                            onInteract()
-                            onStartDownload()
-                        },
-                        onInstall = {
-                            val ready = updateState as? UpdateUiState.ReadyToInstall
-                            if (ready != null) {
-                                installConfirm = ready
-                            } else {
-                                onInteract()
-                                onInstallUpdate()
-                            }
-                        },
-                        onOpenReleases = {
-                            onInteract()
-                            onOpenReleases()
+                    // Hàng 9: phiên bản + kênh cập nhật độc lập (TEST / CHÍNH)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .testTag("sheet_version_row"),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF0F172A))
+                                .border(1.dp, ChipIdleBorder, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            val chTag = if (isTestChannel) " [TEST]" else " [CHÍNH]"
+                            Text(
+                                text = "📦 v$appVersionName$chTag",
+                                color = if (isTestChannel) Color(0xFFFBBF24) else TextMuted,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
-                    )
+                        SheetButton(
+                            label = updateStatusLabel,
+                            fill = Color(0xFF1E3A5F),
+                            contentColor = Color(0xFF7DD3FC),
+                            borderColor = Color(0xFF0284C7),
+                            fontSize = 10.sp,
+                            modifier = Modifier
+                                .height(36.dp)
+                                .testTag("sheet_check_update_button"),
+                            onClick = {
+                                onInteract()
+                                onCheckUpdate()
+                            }
+                        )
+                    }
                 }
             }
         }
-    }
-
-    installConfirm?.let { ready ->
-        AlertDialog(
-            onDismissRequest = { installConfirm = null },
-            title = {
-                Text(text = stringResource(R.string.update_confirm_title, ready.versionName))
-            },
-            text = {
-                Text(
-                    text = stringResource(
-                        R.string.update_confirm_body,
-                        ByteSize.format(ready.sizeBytes)
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        installConfirm = null
-                        onInteract()
-                        onInstallUpdate()
-                    },
-                    modifier = Modifier.testTag("update_confirm_ok")
-                ) {
-                    Text(text = stringResource(R.string.update_confirm_ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { installConfirm = null }) {
-                    Text(text = stringResource(R.string.update_confirm_cancel))
-                }
-            }
-        )
     }
 
     pendingGrow?.let { next ->
@@ -1029,241 +1008,5 @@ private fun SegmentButton(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-private data class UpdateRowSpec(
-    val label: String,
-    val onClick: (() -> Unit)?,
-    val fill: Color,
-    val border: Color,
-    val content: Color,
-    val contentDescription: String?,
-    val detail: String?
-)
-
-@Composable
-private fun UpdateRow(
-    appVersionName: String,
-    state: UpdateUiState,
-    onCheck: () -> Unit,
-    onDownload: () -> Unit,
-    onInstall: () -> Unit,
-    onOpenReleases: () -> Unit
-) {
-    val spec = when (state) {
-        UpdateUiState.Idle -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = ChipSelectedFill,
-            border = ChipSelectedBorder,
-            content = Color.White,
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = null
-        )
-
-        UpdateUiState.Checking -> UpdateRowSpec(
-            label = stringResource(R.string.update_state_checking),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = ChipIdleText,
-            contentDescription = null,
-            detail = null
-        )
-
-        is UpdateUiState.UpToDate -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = stringResource(R.string.update_state_uptodate)
-        )
-
-        is UpdateUiState.Available -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_download),
-            onClick = onDownload,
-            fill = ChipSelectedFill,
-            border = ChipSelectedBorder,
-            content = Color.White,
-            contentDescription = stringResource(R.string.cd_update_download),
-            detail = stringResource(
-                R.string.update_state_available,
-                state.versionName,
-                ByteSize.format(state.sizeBytes)
-            )
-        )
-
-        is UpdateUiState.Downloading -> {
-            val percent = if (state.total > 0L) {
-                ((state.bytes * 100L) / state.total).toInt().coerceIn(0, 100)
-            } else {
-                0
-            }
-            UpdateRowSpec(
-                label = stringResource(R.string.update_state_downloading, percent),
-                onClick = null,
-                fill = ChipIdleFill,
-                border = ChipIdleBorder,
-                content = TextStrong,
-                contentDescription = null,
-                detail = null
-            )
-        }
-
-        UpdateUiState.Verifying -> UpdateRowSpec(
-            label = stringResource(R.string.update_state_verifying),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = null,
-            detail = null
-        )
-
-        is UpdateUiState.ReadyToInstall -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_install),
-            onClick = onInstall,
-            fill = Color(0xFF15803D),
-            border = Color(0xFF22C55E),
-            content = Color.White,
-            contentDescription = stringResource(R.string.cd_update_install),
-            detail = null
-        )
-
-        UpdateUiState.NeedsPermission -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_open_settings),
-            onClick = onInstall,
-            fill = Color(0xFF78350F),
-            border = Color(0xFFD97706),
-            content = Color(0xFFFFF7ED),
-            contentDescription = stringResource(R.string.update_btn_open_settings),
-            detail = stringResource(R.string.update_state_needs_permission)
-        )
-
-        UpdateUiState.Installing -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_install),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = ChipIdleText,
-            contentDescription = null,
-            detail = stringResource(R.string.update_state_installing)
-        )
-
-        UpdateUiState.NoNetwork -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = stringResource(R.string.update_state_nonetwork)
-        )
-
-        is UpdateUiState.RateLimited -> UpdateRowSpec(
-            label = stringResource(R.string.update_state_ratelimited),
-            onClick = null,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = ChipIdleText,
-            contentDescription = null,
-            detail = stringResource(R.string.update_state_ratelimited)
-        )
-
-        is UpdateUiState.Unparsable -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_open_releases),
-            onClick = onOpenReleases,
-            fill = ChipIdleFill,
-            border = ChipIdleBorder,
-            content = TextStrong,
-            contentDescription = stringResource(R.string.update_btn_open_releases),
-            detail = stringResource(R.string.update_state_unparsable)
-        )
-
-        is UpdateUiState.Failed -> UpdateRowSpec(
-            label = stringResource(R.string.update_btn_check),
-            onClick = onCheck,
-            fill = Color(0xFF7F1D1D),
-            border = Color(0xFFDC2626),
-            content = Color(0xFFFEE2E2),
-            contentDescription = stringResource(R.string.cd_update_check),
-            detail = state.reason
-        )
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)
-                .testTag("sheet_update_row"),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF0F172A))
-                    .border(1.dp, ChipIdleBorder, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    text = stringResource(R.string.update_version_row, appVersionName),
-                    color = TextStrong,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            val actionShape = RoundedCornerShape(6.dp)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .clip(actionShape)
-                    .background(spec.fill)
-                    .border(1.dp, spec.border, actionShape)
-                    .clickable(
-                        enabled = spec.onClick != null,
-                        role = Role.Button,
-                        onClick = { spec.onClick?.invoke() }
-                    )
-                    .semantics {
-                        spec.contentDescription?.let { contentDescription = it }
-                    }
-                    .padding(horizontal = 6.dp)
-                    .testTag("sheet_update_action"),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = spec.label,
-                    color = spec.content,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        spec.detail?.let { detail ->
-            Text(
-                text = detail,
-                color = TextMuted,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.testTag("sheet_update_detail")
-            )
-        }
     }
 }

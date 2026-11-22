@@ -13,11 +13,20 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
+    val githubRepo = (System.getenv("GITHUB_REPOSITORY") ?: "binhdvk29-hub/clien-volamidle").trim()
+    val isTestRepo = githubRepo.contains("test", ignoreCase = true)
+
     applicationId = "com.aistudio.volamidle.qkrvtp"
+    if (isTestRepo) {
+      applicationIdSuffix = ".test"
+    }
     minSdk = 24
     targetSdk = 36
-    versionCode = 50400
-    versionName = "5.4.0"
+    versionCode = 50409
+    versionName = if (isTestRepo) "5.4.9-test" else "5.4.9"
+
+    buildConfigField("String", "UPDATE_REPO", "\"$githubRepo\"")
+    buildConfigField("boolean", "IS_TEST_CHANNEL", isTestRepo.toString())
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
