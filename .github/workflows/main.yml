@@ -42,7 +42,14 @@ jobs:
           KEYSTORE_PATH: my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: |
+          GW_PATH=$(find . -maxdepth 3 -name "gradlew" -type f | head -n 1)
+          if [ -n "$GW_PATH" ]; then
+            chmod +x "$GW_PATH"
+            "$GW_PATH" assembleRelease --no-daemon
+          else
+            gradle assembleRelease --no-daemon
+          fi
 
       - name: Publish Release APK
         uses: softprops/action-gh-release@v2
