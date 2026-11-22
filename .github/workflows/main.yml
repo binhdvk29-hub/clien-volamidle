@@ -22,11 +22,14 @@ jobs:
           distribution: 'temurin'
 
       - name: Decode release keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
         shell: pwsh
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          $bytes = [Convert]::FromBase64String("${{ secrets.KEYSTORE_BASE64 }}")
-          [IO.File]::WriteAllBytes("$PWD/my-upload-key.jks", $bytes)
+          if (-not [string]::IsNullOrWhiteSpace($env:KEYSTORE_BASE64)) {
+            $bytes = [Convert]::FromBase64String($env:KEYSTORE_BASE64.Trim())
+            [IO.File]::WriteAllBytes("$PWD/my-upload-key.jks", $bytes)
+          }
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
