@@ -67,8 +67,8 @@ jobs:
       - name: Publish Release APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v5.4.27
-          name: "Vo Lam Idle v5.4.27"
+          tag_name: v5.4.28
+          name: "Vo Lam Idle v5.4.28"
           files: "**/app/build/outputs/apk/release/*.apk"
           make_latest: true
         env:

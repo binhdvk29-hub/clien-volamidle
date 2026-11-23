@@ -1,11 +1,4 @@
-﻿private fun normalize130MapName(raw: String?): String {
-    val norm = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
-        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
-        .replace('đ', 'd')
-    return if (norm.contains("vi son dao")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
-}
-
-package com.example.ui.components
+﻿package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -64,6 +57,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.webview.AutoConfig
+private fun normalize130MapName(raw: String?): String {
+    val norm = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        .replace('đ', 'd')
+    return if (norm.contains("vi son dao")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
+}
+
 
 @Composable
 fun AutoConfigDialog(
