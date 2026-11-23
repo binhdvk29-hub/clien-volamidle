@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-69"
+        const val SCRIPT_VER = "vlmauto-70"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1182,6 +1182,9 @@ class GameAutoPilot(
     var prevTtl = !!A.cfg.ttl;
     var prevTt2 = !!A.cfg.tt2;
     var prevQht = !!A.cfg.qht;
+    var prevTtlMua = !!A.cfg.ttlMua;
+    var prevTt2Mua = !!A.cfg.tt2Mua;
+    var prevQhtMua = !!A.cfg.qhtMua;
     var prevTgd = !!A.cfg.theGiaoDich;
     try {
       var c = (typeof j === 'string') ? JSON.parse(j) : (j || {});
@@ -1221,7 +1224,7 @@ class GameAutoPilot(
       A.started = Date.now() - 60000;
       A.cool = {};
     } else {
-      if ((!prevTtl && A.cfg.ttl) || (!prevTt2 && A.cfg.tt2) || (!prevQht && A.cfg.qht)) {
+      if ((!prevTtl && A.cfg.ttl) || (!prevTt2 && A.cfg.tt2) || (!prevQht && A.cfg.qht) || (!prevTtlMua && A.cfg.ttlMua) || (!prevTt2Mua && A.cfg.tt2Mua) || (!prevQhtMua && A.cfg.qhtMua)) {
         delete A.cool.buff_scan_15m;
       }
       if (!prevTgd && A.cfg.theGiaoDich) {
@@ -1420,7 +1423,7 @@ class GameAutoPilot(
         (document.head || document.documentElement).appendChild(st);
       }
       if (st.dataset) st.dataset.ver = '3';
-      st.textContent = false
+      st.textContent =
         'html.__vlm-stealth #modal, html.__vlm-stealth #modal *, ' +
         'html.__vlm-stealth #cModal, html.__vlm-stealth #cModal *, ' +
         'html.__vlm-stealth #cfModal, html.__vlm-stealth #cfModal *, ' +
@@ -1947,7 +1950,7 @@ class GameAutoPilot(
         var bEl = seen[si];
         var bTxt = (bEl.textContent || '').trim();
         if (isBuffTimerExpired(bTxt)) continue;
-        var allowShort = !!(bEl.getAttribute && (bEl.getAttribute('data-buff') || bEl.getAttribute('data-k') || bEl.getAttribute('data-key')));
+        var allowShort = !!(bEl.getAttribute && (bEl.getAttribute('data-buff') || bEl.getAttribute('data-k') || bEl.getAttribute('data-key'))) || !!(bEl.closest && bEl.closest('#buffs, #buffBar, #topBuffs, .buff, .buff-item, .buff-slot'));
         var kind = classifyBuffKind(extractNodeMeta(bEl), allowShort);
         if (kind) {
           var parsedMs = parseBuffDurationMs(bTxt);
@@ -2086,8 +2089,6 @@ class GameAutoPilot(
   }
 
   async function scanAndUseOneFromHiddenBagDom(kind) {
-    // Chỉ sử dụng kênh API ẩn (dungTui / muaKtc) ở ensureOneConsumable để tránh bật tab làm đứng sân trên mobile.
-    return { scanned: true, used: false };
     if (!canRunHiddenConsumable()) return { scanned: false, used: false };
 
     lockModal(18000);
@@ -2107,7 +2108,6 @@ class GameAutoPilot(
         await sleep(80);
       }
       if (!bagRendered) {
-        // Thử chờ thêm một nhịp ngắn nếu danh sách item vừa mới render text nhưng chưa có class
         var txtLen = (ctx.root.textContent || '').trim().length;
         if (txtLen > 24 && (ctx.root.querySelectorAll('button, tr, li').length > 0)) {
           bagRendered = true;
@@ -2125,12 +2125,16 @@ class GameAutoPilot(
       var findConfirmUseBtn = function (scopeEl) {
         var scopes = [
           scopeEl,
+          ctx ? ctx.root : null,
           document.getElementById('itemModal'),
           document.getElementById('detailModal'),
           document.getElementById('cfModal'),
           document.getElementById('confirmModal'),
           document.getElementById('cModal'),
           document.querySelector('[role="dialog"]'),
+          document.querySelector('[aria-modal="true"]'),
+          document.querySelector('.popup'),
+          document.getElementById('mBody'),
           document.getElementById('modal')
         ];
         for (var si = 0; si < scopes.length; si++) {
@@ -2154,7 +2158,7 @@ class GameAutoPilot(
           if (!tb) continue;
           if (!tb.classList.contains('active') && !tb.classList.contains('on') && tb.getAttribute('aria-selected') !== 'true') {
             tb.click();
-            await sleep(260);
+            await sleep(240);
           }
         }
         anyTabScanned = true;
@@ -2195,38 +2199,40 @@ class GameAutoPilot(
 
         if (useBtn && !useBtn.disabled) {
           useBtn.click();
-          var postClickEnd = Date.now() + 900;
-          var handledQtyPopup = false;
+          var postClickEnd = Date.now() + 1100;
+          var handledConfirm = false;
           while (Date.now() < postClickEnd) {
             await sleep(100);
             var inps = document.querySelectorAll(
               '#modal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), ' +
               '#cfModal input, #confirmModal input, #cModal input, .confirm input, [role="dialog"] input:not([type="hidden"])'
             );
+            var filledQty = false;
             for (var p = 0; p < inps.length; p++) {
               if (isVis(inps[p]) && !inps[p].disabled && !inps[p].readOnly) {
                 fillInp(inps[p], '1');
+                filledQty = true;
                 await sleep(100);
-                var okBtns = document.querySelectorAll(
-                  '#modal button, #modal [role="button"], #cfModal button, #confirmModal button, ' +
-                  '#cModal button, .confirm button, [role="dialog"] button'
-                );
-                for (var ob = 0; ob < okBtns.length; ob++) {
-                  if (!isVis(okBtns[ob]) || okBtns[ob].disabled) continue;
-                  var obt = noAccent(okBtns[ob].textContent || '');
-                  if (isUseBtnLabel(obt) || obt === 'xac nhan' || obt === 'dong y' || obt === 'doi' || obt === 'ok') {
-                    okBtns[ob].click();
-                    handledQtyPopup = true;
-                    await sleep(320);
-                    break;
-                  }
-                }
                 break;
               }
             }
-            if (handledQtyPopup) break;
+            var okBtns = document.querySelectorAll(
+              '#modal button, #modal [role="button"], #cfModal button, #confirmModal button, ' +
+              '#cModal button, .confirm button, [role="dialog"] button, [aria-modal="true"] button'
+            );
+            for (var ob = 0; ob < okBtns.length; ob++) {
+              if (!isVis(okBtns[ob]) || okBtns[ob].disabled || okBtns[ob] === useBtn) continue;
+              var obt = noAccent(okBtns[ob].textContent || '');
+              if ((filledQty && isUseBtnLabel(obt)) || obt === 'xac nhan' || obt === 'dong y' || obt === 'doi' || obt === 'ok') {
+                okBtns[ob].click();
+                handledConfirm = true;
+                await sleep(320);
+                break;
+              }
+            }
+            if (handledConfirm) break;
           }
-          await sleep(220);
+          await sleep(240);
           return { scanned: true, used: true };
         }
       }
@@ -2237,7 +2243,6 @@ class GameAutoPilot(
       unlockModal();
     }
   }
-
   async function useOneBottleFromHiddenBagDom(kind) {
     var r = await scanAndUseOneFromHiddenBagDom(kind);
     return !!(r && r.used);
@@ -2439,7 +2444,11 @@ class GameAutoPilot(
           }
         }
       } else {
-        await sleep(450);
+        var confirmNoInp = findKtcBuyConfirmButton(null, buyBtn);
+        if (confirmNoInp) {
+          confirmNoInp.click();
+        }
+        await sleep(500);
       }
       return true;
     } finally {
@@ -2454,15 +2463,15 @@ class GameAutoPilot(
     var used = false;
     var bagConfirmedEmpty = false;
 
-    // 1. Dùng vật phẩm trong Hành trang trước tiên (thử lần lượt từng key ở các nguồn dữ liệu hiện có)
+    // 1. Dung vat pham trong Hanh trang (tranh treo 45s neu kenh api khong ho tro key)
     for (var ki = 0; ki < itemSpec.tuiKeys.length && !used; ki++) {
       var tk = itemSpec.tuiKeys[ki];
       var hasQty = false;
       for (var ts = 0; ts < tuiSources.length; ts++) {
         if ((tuiSources[ts][tk] | 0) > 0) { hasQty = true; break; }
       }
-      if (hasQty || itemSpec.kind === 'qht') {
-        var rTui = await api('dungTui', { k: tk, n: 1 });
+      if (hasQty || (itemSpec.kind === 'qht' && tk === 'qht')) {
+        var rTui = await api('dungTui', { k: tk, n: 1 }, hasQty ? 4500 : 1800);
         if (rTui && rTui.ok && (rTui.n | 0) > 0) {
           used = true;
           note('dùng 1 bình ' + itemSpec.label + ' (trong túi)');
@@ -2483,11 +2492,11 @@ class GameAutoPilot(
       }
     }
 
-    // 2. Khi túi hết (hoặc Quế Hoa Tửu chưa có buff) và người dùng bật mua -> mua qua KTC ẩn / API
-    if (!used && (bagConfirmedEmpty || itemSpec.kind === 'qht') && itemSpec.allowBuy && canRunHiddenConsumable()) {
+    // 2. Khi tui het va nguoi dung bat mua -> mua qua KTC an (Bang KNB khoa) roi dung ngay
+    if (!used && bagConfirmedEmpty && itemSpec.allowBuy && canRunHiddenConsumable()) {
       var bought = await buyOneBottleFromHiddenKtcDom(itemSpec.kind);
       if (!bought && itemSpec.ktcKey) {
-        var ktcRes = await api('muaKtc', { k: itemSpec.ktcKey, n: 1 });
+        var ktcRes = await api('muaKtc', { k: itemSpec.ktcKey, n: 1 }, 2500);
         if (ktcRes && ktcRes.ok && (ktcRes.n | 0) > 0) {
           bought = true;
           used = true;
@@ -2500,10 +2509,12 @@ class GameAutoPilot(
         if (hud2[itemSpec.kind]) {
           used = true;
         } else {
-          for (var ki2 = 0; ki2 < itemSpec.tuiKeys.length; ki2++) {
-            var tk2 = itemSpec.tuiKeys[ki2];
-            var r2 = await api('dungTui', { k: tk2, n: 1 });
-            if (r2 && r2.ok && r2.n) { used = true; break; }
+          if (itemSpec.kind !== 'qht') {
+            for (var ki2 = 0; ki2 < itemSpec.tuiKeys.length; ki2++) {
+              var tk2 = itemSpec.tuiKeys[ki2];
+              var r2 = await api('dungTui', { k: tk2, n: 1 }, 3000);
+              if (r2 && r2.ok && r2.n) { used = true; break; }
+            }
           }
           if (!used) {
             var useAfterBuy = await scanAndUseOneFromHiddenBagDom(itemSpec.kind);
@@ -2523,7 +2534,6 @@ class GameAutoPilot(
     }
     return { done: used || (bagConfirmedEmpty && !itemSpec.allowBuy), used: used };
   }
-
   async function tienThao(I, hudOpt) {
     var hud = hudOpt || scanHudBuffs(I);
     var allDone = true;
