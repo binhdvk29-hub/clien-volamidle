@@ -696,25 +696,44 @@ private fun AfterDailyActionSelector(
                                 onSelectMap("Mạc Bắc Thảo Nguyên" )
                             }
                         )
+                        Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         listOf("Mạc Bắc Thảo Nguyên", "Vi sơn đảo").forEach { mName ->
-                        val isSel = normalize130MapName(farmMap) == mName
-                        DropdownMenuItem(
-                            text = {
+                            val isChecked = normalize130MapName(farmMap) == mName
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isChecked) Color(0xFF14532D) else Color(0xFF1E293B))
+                                    .clickable {
+                                        mapExpanded = false
+                                        onSelectMap(mName)
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = {
+                                        mapExpanded = false
+                                        onSelectMap(mName)
+                                    },
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "[Cấp 130–140] $mName",
-                                    color = if (isSel) Color(0xFF6EE7B7) else Color.White,
-                                    fontSize = 10.5.sp,
+                                    text = mName,
+                                    color = if (isChecked) Color(0xFF6EE7B7) else Color.White,
+                                    fontSize = 10.sp,
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis,
-                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal
                                 )
-                            },
-                            onClick = {
-                                mapExpanded = false
-                                onSelectMap(mName)
                             }
-                        )
+                        }
                     } }
                 }
             }

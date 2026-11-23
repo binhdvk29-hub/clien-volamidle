@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-65"
+        const val SCRIPT_VER = "vlmauto-66"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -4028,66 +4028,45 @@ class GameAutoPilot(
   }
 
   async function selectTrainingMap(I, targetMapName) {
-async function vlmRealSelectMap130(rawMap) {
-  function norm(s) {
-    return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+function vlmSilentJumpMap130(rawMap) {
+  function normPrefix(s) {
+    var clean = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (clean.indexOf('vi son') === 0 || clean.indexOf('vi son dao') >= 0) return 'vi son dao';
+    if (clean.indexOf('mac bac') === 0 || clean.indexOf('mac bac thao nguyen') >= 0) return 'mac bac thao nguyen';
+    return 'mac bac thao nguyen';
   }
-  var n = norm(rawMap);
-  var want = (n.indexOf('vi son dao') >= 0) ? 'vi son dao' : 'mac bac thao nguyen';
-  function tapEl(el) {
-    if (!el) return false;
-    var r = el.getBoundingClientRect();
-    var cx = r.left + r.width / 2;
-    var cy = r.top + r.height / 2;
-    var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, screenX: cx, screenY: cy, button: 0, buttons: 1};
-    try {
-      if (window.PointerEvent) {
-        el.dispatchEvent(new PointerEvent('pointerdown', Object.assign({}, opts, {pointerId: 1, pointerType: 'touch', isPrimary: true})));
-        el.dispatchEvent(new PointerEvent('pointerup', Object.assign({}, opts, {pointerId: 1, pointerType: 'touch', isPrimary: true, buttons: 0})));
+  var prefix = normPrefix(rawMap);
+  var targetLabel = (prefix === 'vi son dao') ? 'Vi sơn đảo' : 'Mạc Bắc Thảo Nguyên';
+  try {
+    if (window.A && window.A.cfg) {
+      window.A.cfg.farmMap = targetLabel;
+      window.A.lastFarmMapPrefix = prefix;
+    }
+  } catch (_eCfg) {}
+  try {
+    var fns = ['setFarmMap', 'changeMap', 'switchMap', 'enterMap', 'goMap', 'selectMap'];
+    for (var k = 0; k < fns.length; k++) {
+      var fnName = fns[k];
+      if (typeof window[fnName] === 'function') {
+        try { window[fnName](targetLabel); } catch (_e1) {}
+        try { window[fnName](prefix); } catch (_e2) {}
       }
-    } catch (e) {}
-    ['mousedown', 'mouseup', 'click'].forEach(function(ev) {
-      try { el.dispatchEvent(new MouseEvent(ev, opts)); } catch (e) {}
-    });
-    try { el.click(); } catch (e) {}
-    return true;
-  }
-  function findBottomMapBtn() {
-    var els = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a, p, li'));
-    var best = null;
-    var bestScore = -999999;
+    }
+  } catch (_eWin) {}
+  try {
+    var els = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a, li'));
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
-      var raw = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-      if (!raw || raw.length > 36) continue;
-      var t = norm(raw);
-      if (t !== want && t.indexOf(want) < 0) continue;
-      if (/cap\s*\d+/i.test(t) || raw.indexOf('·') >= 0 || raw.indexOf('+') >= 0 || raw.indexOf('-') >= 0) continue;
-      var r = el.getBoundingClientRect();
-      if (r.width < 20 || r.height < 12) continue;
-      var sc = (t === want ? 300 : 120) - raw.length * 2 + (r.top > window.innerHeight * 0.5 ? 200 : 0);
-      if (sc > bestScore) { bestScore = sc; best = el; }
+      var txt = String(el.innerText || el.textContent || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
+      if (!txt || txt.length > 34) continue;
+      if (txt.indexOf(prefix) === 0 && txt.indexOf('cap') < 0 && txt.indexOf('·') < 0 && txt.indexOf('+') < 0 && txt.indexOf('-') < 0) {
+        try { el.click(); return true; } catch (_eClk) {}
+      }
     }
-    return best;
-  }
-  var btn = findBottomMapBtn();
-  if (btn) { tapEl(btn); return true; }
-  var all = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a'));
-  for (var j = 0; j < all.length; j++) {
-    var topEl = all[j];
-    var rTop = topEl.getBoundingClientRect();
-    var tTop = norm(topEl.innerText || topEl.textContent || '');
-    if (rTop.top < window.innerHeight * 0.25 && rTop.left > window.innerWidth * 0.55 && rTop.width >= 24 && (tTop.indexOf('mac bac') >= 0 || tTop.indexOf('vi son dao') >= 0 || tTop.indexOf('thao nguyen') >= 0)) {
-      tapEl(topEl);
-      await new Promise(function(res){ setTimeout(res, 220); });
-      break;
-    }
-  }
-  var btn2 = findBottomMapBtn();
-  if (btn2) { tapEl(btn2); return true; }
-  return false;
+  } catch (_eDom) {}
+  return true;
 }
-var __didTap = await vlmRealSelectMap130(arguments[1] || arguments[0] || ''); if (__didTap) return true;
+var __didTap = vlmSilentJumpMap130(arguments[1] || arguments[0] || ''); if (__didTap) return true;
     var targetClean = "Mạc Bắc Thảo Nguyên"; if (noAccent(targetMapName || "").indexOf("Vi sơn đảo") >= 0) targetClean = "Vi sơn đảo";
     if (!targetClean) return false;
     if (isAlreadyOnTrainingMap(I, targetClean)) {
@@ -4541,7 +4520,7 @@ var __didTap = await vlmRealSelectMap130(arguments[1] || arguments[0] || ''); if
             curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
             !alreadySelectedThisSession && !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
-                    try { await vlmRealSelectMap130(A.cfg.farmMap); } catch (_eMap) {}
+                    try { vlmSilentJumpMap130(A.cfg.farmMap); } catch (_eMap) {}
         }
       } catch (eMapForce) {}
 
