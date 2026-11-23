@@ -65,6 +65,7 @@ private fun normalize130MapName(raw: String?): String {
 }
 
 
+
 @Composable
 fun AutoConfigDialog(
     tabIndex: Int,
@@ -695,7 +696,26 @@ private fun AfterDailyActionSelector(
                                 onSelectMap("Mạc Bắc Thảo Nguyên" )
                             }
                         )
-                        AutoConfig.ALL_TRAINING_MAPS.filter { it.name == "M?c B?c Th?o Nguy�n" || it.name == "Vi son d?o" }.forEach { mapOpt -> val isSel = farmMap == mapOpt.name; DropdownMenuItem(text = { Text(text = "[${mapOpt.levelRange}] ${mapOpt.name}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mapOpt.name) }) } }
+                        listOf("Mạc Bắc Thảo Nguyên", "Vi sơn đảo").forEach { mName ->
+                        val isSel = normalize130MapName(farmMap) == mName
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "[Cấp 130–140] $mName",
+                                    color = if (isSel) Color(0xFF6EE7B7) else Color.White,
+                                    fontSize = 10.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            onClick = {
+                                mapExpanded = false
+                                onSelectMap(mName)
+                            }
+                        )
+                    } }
                 }
             }
 

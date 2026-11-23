@@ -179,6 +179,95 @@ data class AutoConfig(
             return "Mạc Bắc Thảo Nguyên"
         }
 
+        fun vlmSwipeAndTapMapScript(targetMap: String): String {
+            val safeTarget = targetMap.replace("'", "\\'")
+            return """
+                (function() {
+                    function noAcc(s) {
+                        return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
+                    }
+                    var want = noAcc('');
+                    if (want.indexOf('vi son dao') >= 0) want = 'vi son dao';
+                    else want = 'mac bac thao nguyen';
+
+                    function realTap(el) {
+                        if (!el) return false;
+                        try { el.scrollIntoView({block: 'center', inline: 'nearest'}); } catch (e) {}
+                        var r = el.getBoundingClientRect();
+                        var cx = r.left + r.width / 2;
+                        var cy = r.top + r.height / 2;
+                        ['pointerdown', 'mousedown', 'touchstart', 'pointerup', 'mouseup', 'touchend', 'click'].forEach(function(evName) {
+                            try {
+                                var ev = new MouseEvent(evName, {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy});
+                                el.dispatchEvent(ev);
+                            } catch (e) {}
+                        });
+                        try { el.click(); } catch (e) {}
+                        return true;
+                    }
+
+                    function scrollListDownStep() {
+                        var nodes = Array.prototype.slice.call(document.querySelectorAll('div, li, button, span, a'));
+                        var scrolled = false;
+                        nodes.forEach(function(n) {
+                            try {
+                                if (n.scrollHeight > n.clientHeight + 24 && n.clientHeight > 60) {
+                                    var before = n.scrollTop;
+                                    n.scrollTop = n.scrollHeight;
+                                    if (n.scrollTop > before) scrolled = true;
+                                }
+                            } catch (e) {}
+                        });
+                        try {
+                            var winBefore = window.scrollY || window.pageYOffset || 0;
+                            window.scrollTo(0, document.body.scrollHeight || 99999);
+                            if ((window.scrollY || 0) > winBefore) scrolled = true;
+                        } catch (e) {}
+                        return scrolled;
+                    }
+
+                    function findMapCandidate() {
+                        var all = Array.prototype.slice.call(document.querySelectorAll('div, li, button, span, a, p'));
+                        var best = null;
+                        var bestScore = -9999;
+                        for (var i = 0; i < all.length; i++) {
+                            var el = all[i];
+                            var txt = (el.innerText || el.textContent || '').trim();
+                            if (!txt || txt.length > 60) continue;
+                            var norm = noAcc(txt);
+                            if (norm.indexOf(want) < 0) continue;
+                            var isGroupHeader = (txt.indexOf('+') >= 0 || txt.indexOf('-') >= 0 || /cap\s*\d+/i.test(norm));
+                            if (isGroupHeader) continue;
+                            var r = el.getBoundingClientRect();
+                            if (r.width <= 0 || r.height <= 0) continue;
+                            var score = 100 - txt.length + (el.tagName === 'BUTTON' || el.tagName === 'LI' ? 20 : 0);
+                            if (score > bestScore) {
+                                bestScore = score;
+                                best = el;
+                            }
+                        }
+                        return best;
+                    }
+
+                    for (var s = 0; s < 6; s++) {
+                        var hit = findMapCandidate();
+                        if (hit) {
+                            realTap(hit);
+                            return 'TAPPED:' + want;
+                        }
+                        scrollListDownStep();
+                    }
+                    scrollListDownStep();
+                    var finalHit = findMapCandidate();
+                    if (finalHit) {
+                        realTap(finalHit);
+                        return 'TAPPED_AFTER_SCROLL:' + want;
+                    }
+                    return 'NOT_FOUND:' + want;
+                })();
+            """.trimIndent()
+        }
+
         val ALL_9X_SKILLS: List<TowerMainSkill> = listOf(
             // Thiếu Lâm
             TowerMainSkill("dat ma do giang", "thieu lam", "Thiếu Lâm", "Đạt Ma Độ Giang", ORBIT_MELEE),
@@ -345,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-59"
+        const val SCRIPT_VER = "vlmauto-60"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
