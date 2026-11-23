@@ -175,7 +175,7 @@ data class AutoConfig(
             val clean = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
                 .replace(Regex("[\\p{InCombiningDiacriticalMarks}]"), "")
                 .replace('đ', 'd')
-            if (clean.contains("vi son dao")) return "Vi sơn đảo"
+            if (clean.contains("Vi sơn đảo")) return "Vi sơn đảo"
             return "Mạc Bắc Thảo Nguyên"
         }
 
@@ -187,8 +187,8 @@ data class AutoConfig(
                         return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
                     }
                     var want = noAcc('');
-                    if (want.indexOf('vi son dao') >= 0) want = 'vi son dao';
-                    else want = 'mac bac thao nguyen';
+                    if (want.indexOf('Vi sơn đảo') >= 0) want = 'Vi sơn đảo';
+                    else want = 'Mạc Bắc Thảo Nguyên';
 
                     function realTap(el) {
                         if (!el) return false;
@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-62"
+        const val SCRIPT_VER = "vlmauto-63"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3584,8 +3584,8 @@ class GameAutoPilot(
     'truong bach son nam': 'truong bach son nam',
     'truong bach son bac': 'truong bach son nam',
     'phong lang do': '',
-    'mac bac thao nguyen': 'vi son dao',
-    'vi son dao': 'vi son dao'
+    'Mạc Bắc Thảo Nguyên': 'Vi sơn đảo',
+    'Vi sơn đảo': 'Vi sơn đảo'
   };
 
   var KNOWN_CITY_NAMES = [
@@ -4028,7 +4028,7 @@ class GameAutoPilot(
   }
 
   async function selectTrainingMap(I, targetMapName) {
-    var targetClean = "Mạc Bắc Thảo Nguyên"; if (noAccent(targetMapName || "").indexOf("vi son dao") >= 0) targetClean = "Vi sơn đảo";
+    var targetClean = "Mạc Bắc Thảo Nguyên"; if (noAccent(targetMapName || "").indexOf("Vi sơn đảo") >= 0) targetClean = "Vi sơn đảo";
     if (!targetClean) return false;
     if (isAlreadyOnTrainingMap(I, targetClean)) {
       A.lastMapSelected = targetClean;
@@ -5873,3 +5873,67 @@ class GameAutoPilot(
 })();
     """.trimIndent()
 }
+
+        fun vlmForceTapElement(targetMap: String): String {
+            val safeTarget = targetMap.replace("'", "\\'")
+            return """
+                (function() {
+                    function norm(s) {
+                        return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+                    }
+                    var want = norm('');
+                    if (want.indexOf('vi son dao') >= 0) want = 'vi son dao';
+                    else want = 'mac bac thao nguyen';
+
+                    function hitPoint(x, y, el) {
+                        var opts = {bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, screenX: x, screenY: y, button: 0, buttons: 1};
+                        try {
+                            if (window.PointerEvent) {
+                                el.dispatchEvent(new PointerEvent('pointerdown', Object.assign({}, opts, {pointerId: 1, pointerType: 'touch', isPrimary: true})));
+                                el.dispatchEvent(new PointerEvent('pointerup', Object.assign({}, opts, {pointerId: 1, pointerType: 'touch', isPrimary: true, buttons: 0})));
+                            }
+                        } catch (e) {}
+                        ['mousedown', 'mouseup', 'click'].forEach(function(t) {
+                            try { el.dispatchEvent(new MouseEvent(t, opts)); } catch (e) {}
+                        });
+                        try { el.click(); } catch (e) {}
+                    }
+
+                    var candidates = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a, p, li'));
+                    var picked = null;
+                    var bestScore = -999999;
+                    for (var i = 0; i < candidates.length; i++) {
+                        var el = candidates[i];
+                        var raw = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+                        if (!raw || raw.length > 36) continue;
+                        var n = norm(raw);
+                        if (n !== want && n.indexOf(want) < 0) continue;
+                        if (/cap\s*\d+/i.test(n) || raw.indexOf('·') >= 0 || raw.indexOf('+') >= 0 || raw.indexOf('-') >= 0) continue;
+                        var r = el.getBoundingClientRect();
+                        if (r.width < 20 || r.height < 14) continue;
+                        var score = (n === want ? 300 : 100) - raw.length + (r.top > window.innerHeight * 0.5 ? 200 : 0);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            picked = el;
+                        }
+                    }
+
+                    if (picked) {
+                        var rect = picked.getBoundingClientRect();
+                        hitPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, picked);
+                        return 'TAPPED:' + want;
+                    }
+
+                    for (var j = 0; j < candidates.length; j++) {
+                        var topEl = candidates[j];
+                        var rTop = topEl.getBoundingClientRect();
+                        var nTop = norm(topEl.innerText || topEl.textContent || '');
+                        if (rTop.top < window.innerHeight * 0.25 && rTop.left > window.innerWidth * 0.55 && rTop.width >= 24 && (nTop.indexOf('mac bac') >= 0 || nTop.indexOf('vi son dao') >= 0 || nTop.indexOf('thao nguyen') >= 0)) {
+                            hitPoint(rTop.left + rTop.width / 2, rTop.top + rTop.height / 2, topEl);
+                            return 'OPENED_PANEL:' + want;
+                        }
+                    }
+                    return 'NO_TARGET:' + want;
+                })();
+            """.trimIndent()
+        }

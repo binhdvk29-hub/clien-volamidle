@@ -61,7 +61,7 @@ private fun normalize130MapName(raw: String?): String {
     val norm = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
         .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
         .replace('đ', 'd')
-    return if (norm.contains("vi son dao")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
+    return if (norm.contains("Vi sơn đảo")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
 }
 
 
