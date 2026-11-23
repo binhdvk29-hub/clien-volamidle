@@ -318,7 +318,7 @@ data class AutoConfig(
                 },
                 afterDailyFarm = o.optBoolean("afterDailyFarm", DEF.afterDailyFarm),
                 farmMap = normalizeAllowed130Map(o.optString("farmMap", "Mạc Bắc Thảo Nguyên"))
-                thap = if (o.optBoolean("afterDailyFarm", DEF.afterDailyFarm)) false else o.optBoolean("thap", DEF.thap),
+                thap = false,
                 thapAfterMode = normalizeThapAfterMode(o.optString("thapAfterMode", DEF.thapAfterMode)),
                 thapNeDon = o.optBoolean("thapNeDon", DEF.thapNeDon),
                 thapNeDonStyle = normalizeOrbitStyle(o.optString("thapNeDonStyle", DEF.thapNeDonStyle)),
@@ -345,7 +345,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-51"
+        const val SCRIPT_VER = "vlmauto-52"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
