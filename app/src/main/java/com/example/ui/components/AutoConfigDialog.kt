@@ -1,4 +1,11 @@
-﻿package com.example.ui.components
+﻿private fun normalize130MapName(raw: String?): String {
+    val norm = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        .replace('đ', 'd')
+    return if (norm.contains("vi son dao")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
+}
+
+package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -51,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -653,7 +661,7 @@ private fun AfterDailyActionSelector(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = normalizeAllowed130Map(farmMap),
+                            text = normalize130MapName(farmMap),
                             color = if (farmMap.isNotBlank()) Color.White else Color(0xFF94A3B8),
                             fontSize = 10.sp,
                             maxLines = 1,
@@ -687,7 +695,9 @@ private fun AfterDailyActionSelector(
                                 onSelectMap("Mạc Bắc Thảo Nguyên" )
                             }
                         )
-                        listOf("Mạc Bắc Thảo Nguyên", "Vi sơn đảo").forEach { mName -> val isSel = normalizeAllowed130Map(farmMap) == mName; DropdownMenuItem(text = { Text(text = "[Cấp 130–140] ${mName}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mName) }) } }
+                        AutoConfig.ALL_TRAINING_MAPS.filter { it.name == "M?c B?c Th?o Nguy�n" || it.name == "Vi son d?o" }.forEach { mapOpt -> val isSel = farmMap == mapOpt.name; DropdownMenuItem(text = { Text(text = "[${mapOpt.levelRange}] ${mapOpt.name}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mapOpt.name) }) } }
+                }
+            }
 
             Spacer(modifier = Modifier.height(4.dp))
 
