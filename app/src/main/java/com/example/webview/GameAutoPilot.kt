@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-68"
+        const val SCRIPT_VER = "vlmauto-69"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1185,10 +1185,21 @@ class GameAutoPilot(
     var prevTgd = !!A.cfg.theGiaoDich;
     try {
       var c = (typeof j === 'string') ? JSON.parse(j) : (j || {});
+      var __prevFarmKey = (A.cfg && A.cfg.farmMap) ? normalizeMapCompareKey(A.cfg.farmMap) : '';
       A.cfg = Object.assign({}, DEF, c || {});
       A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
       A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
-      A.cfg.farmMap = String(A.cfg.farmMap || '').trim();
+      var __rawFarmNA = noAccent(A.cfg.farmMap || '').replace(/\s+/g, ' ').trim();
+      if (__rawFarmNA.indexOf('vi son') >= 0 || __rawFarmNA.indexOf('son dao') >= 0) A.cfg.farmMap = 'Vi sơn đảo';
+      else if (__rawFarmNA.indexOf('mac bac') >= 0 || __rawFarmNA.indexOf('thao nguyen') >= 0) A.cfg.farmMap = 'Mạc Bắc Thảo Nguyên';
+      else A.cfg.farmMap = String(A.cfg.farmMap || '').trim();
+      if (normalizeMapCompareKey(A.cfg.farmMap) !== __prevFarmKey) {
+        A.lastMapSelected = '';
+        delete A.cool.select_map;
+        delete A.cool.select_map_force;
+        A.forceMapSwitchUntil = Date.now() + 25000;
+        A.immediate = true;
+      }
       if (A.cfg.afterDailyFarm) A.cfg.thap = false
       A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
       A.cfg.thapNeDon = !!A.cfg.thapNeDon;
@@ -3584,8 +3595,8 @@ class GameAutoPilot(
     'truong bach son nam': 'truong bach son nam',
     'truong bach son bac': 'truong bach son nam',
     'phong lang do': '',
-    'Mạc Bắc Thảo Nguyên': 'Vi sơn đảo',
-    'Vi sơn đảo': 'Vi sơn đảo'
+    'mac bac thao nguyen': 'Vi sơn đảo',
+    'vi son dao': 'Vi sơn đảo'
   };
 
   var KNOWN_CITY_NAMES = [
@@ -3745,6 +3756,7 @@ class GameAutoPilot(
             t.indexOf('van') === t.length - 3) continue;
 
         var score = 0;
+        if (t.indexOf('mac bac') === 0 || t.indexOf('vi son') === 0) { score = 260; }
         for (var mk in TRAINING_MAP_GROUPS) {
           if (mk === t || (t.length >= 3 && mk.indexOf(t) === 0)) { score = 250; break; }
         }
@@ -3765,57 +3777,78 @@ class GameAutoPilot(
 
   function findOpenMapListContainer() {
     try {
-      var priorityIds = ['mapModal', 'mapList', 'mapPop', 'mapMenu', 'mBody', 'modal'];
-      for (var p = 0; p < priorityIds.length; p++) {
-        var pel = document.getElementById(priorityIds[p]);
-        if (!pel || !isVis(pel)) continue;
-        var ptxt = noAccent(pel.textContent || '');
-        if (ptxt.indexOf('ban do luyen cong') >= 0 || ptxt.indexOf('chon ban do') >= 0 ||
-            ptxt.indexOf('danh sach ban do') >= 0 || ptxt.indexOf('ban do') >= 0 ||
-            (ptxt.indexOf('ba lang huyen') >= 0 && (ptxt.indexOf('hoa son') >= 0 || ptxt.indexOf('cap 1') >= 0))) {
-          return pel;
-        }
-      }
-      var cands = document.querySelectorAll('.popup, .modal, [role="dialog"], div');
-      var cap = Math.min(cands.length, 420);
+      var winW = window.innerWidth || 800;
+      var winH = window.innerHeight || 480;
+      var cands = document.querySelectorAll('#mapModal, #mapList, #mapPop, #mapMenu, .popup, .modal, [role="dialog"], div, section, ul');
+      var best = null;
+      var bestArea = 999999999;
+      var cap = Math.min(cands.length, 650);
       for (var i = 0; i < cap; i++) {
         var el = cands[i];
-        if (!el || !isVis(el) || el.id === 'vlmAuto') continue;
+        if (!el || !isVis(el) || el.id === 'vlmAuto' || el === document.body || el === document.documentElement) continue;
+        var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        if (!rect || rect.width < 140 || rect.height < 110) continue;
+        if (rect.width >= winW * 0.94 && rect.height >= winH * 0.94) continue;
         var txt = noAccent(el.textContent || '');
-        var hasHeader = txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0 || txt.indexOf('danh sach ban do') >= 0;
-        var hasMaps = (txt.indexOf('ba lang huyen') >= 0 && (txt.indexOf('hoa son') >= 0 || txt.indexOf('cap 1') >= 0 || txt.indexOf('kiem cac') >= 0));
-        if (hasHeader || hasMaps) {
-          if (el.children && el.children.length > 0) return el;
+        if (!txt || txt.length < 24) continue;
+        var hits = 0;
+        if (txt.indexOf('mac bac thao nguyen') >= 0 && txt.indexOf('vi son dao') >= 0) hits += 2;
+        if (txt.indexOf('130') >= 0 && txt.indexOf('140') >= 0) hits += 1;
+        if (txt.indexOf('phong lang do') >= 0) hits += 1;
+        if (txt.indexOf('truong bach son') >= 0) hits += 1;
+        if (txt.indexOf('sa mac son dong') >= 0) hits += 1;
+        if (txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0) hits += 2;
+        if (hits >= 2) {
+          var area = rect.width * rect.height;
+          if (area < bestArea) {
+            bestArea = area;
+            best = el;
+          }
         }
       }
+      if (best) return best;
     } catch (eFindPop) {}
     return null;
   }
 
   function isAlreadyOnTrainingMap(I, targetMapName) {
-    var want = normalizeMapCompareKey(targetMapName || '');
+    var rawNA = noAccent(targetMapName || '').replace(/\s+/g, ' ').trim();
+    var isViSon = rawNA.indexOf('vi son') >= 0 || rawNA.indexOf('son dao') >= 0;
+    var isMacBac = rawNA.indexOf('mac bac') >= 0 || rawNA.indexOf('thao nguyen') >= 0;
+    var want = isViSon ? 'vi son dao' : (isMacBac ? 'mac bac thao nguyen' : normalizeMapCompareKey(targetMapName || ''));
     if (!want) return true;
     try {
+      var pickerBtn = findMapPickerButton();
+      if (pickerBtn && isVis(pickerBtn)) {
+        var btnKey = normalizeMapCompareKey(pickerBtn.textContent || '');
+        if (btnKey.length >= 4) {
+          if (isViSon) {
+            if (btnKey.indexOf('vi son') === 0 || btnKey.indexOf('son dao') >= 0) return true;
+            if (btnKey.indexOf('mac bac') === 0) return false;
+          } else if (isMacBac) {
+            if (btnKey.indexOf('mac bac') === 0 || btnKey.indexOf('thao nguyen') >= 0) return true;
+            if (btnKey.indexOf('vi son') === 0) return false;
+          } else if (btnKey === want) {
+            return true;
+          }
+        }
+      }
       var curNames = [];
       if (A.st && A.st.map) curNames.push(normalizeMapCompareKey(A.st.map));
       if (A.st && A.st.mapName) curNames.push(normalizeMapCompareKey(A.st.mapName));
       if (A.st && A.st.tenMap) curNames.push(normalizeMapCompareKey(A.st.tenMap));
       if (I && I.map) curNames.push(normalizeMapCompareKey(I.map));
       if (I && I.mapName) curNames.push(normalizeMapCompareKey(I.mapName));
-      var pickerBtn = findMapPickerButton();
-      if (pickerBtn) {
-        var btnTxt = normalizeMapCompareKey(pickerBtn.textContent || '');
-        if (btnTxt.length >= 3) curNames.push(btnTxt);
-      }
       for (var i = 0; i < curNames.length; i++) {
         var cn = curNames[i];
         if (!cn || cn.length < 3) continue;
+        if (isViSon && (cn.indexOf('vi son') === 0 || cn === 'vi son dao')) return true;
+        if (isMacBac && (cn.indexOf('mac bac') === 0 || cn === 'mac bac thao nguyen')) return true;
         if (cn === want) return true;
       }
     } catch (eChk) {}
     return false;
   }
-
   function scoreMapCandidateElement(el, wantKey, mode) {
     if (!el || !isVis(el) || el.disabled) return -1;
     if (el.id === 'vlmAuto' || el.id === 'mswBtn' || el.id === 'mClose') return -1;
@@ -4028,134 +4061,207 @@ class GameAutoPilot(
   }
 
   async function selectTrainingMap(I, targetMapName) {
-function vlmSilentJumpMap130(rawMap) {
-  function normPrefix(s) {
-    var clean = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-    if (clean.indexOf('vi son') === 0 || clean.indexOf('vi son dao') >= 0) return 'vi son dao';
-    if (clean.indexOf('mac bac') === 0 || clean.indexOf('mac bac thao nguyen') >= 0) return 'mac bac thao nguyen';
-    return 'mac bac thao nguyen';
-  }
-  var prefix = normPrefix(rawMap);
-  var targetLabel = (prefix === 'vi son dao') ? 'Vi sơn đảo' : 'Mạc Bắc Thảo Nguyên';
-  try {
-    if (window.A && window.A.cfg) {
-      window.A.cfg.farmMap = targetLabel;
-      window.A.lastFarmMapPrefix = prefix;
-    }
-  } catch (_eCfg) {}
-  try {
-    var fns = ['setFarmMap', 'changeMap', 'switchMap', 'enterMap', 'goMap', 'selectMap'];
-    for (var k = 0; k < fns.length; k++) {
-      var fnName = fns[k];
-      if (typeof window[fnName] === 'function') {
-        try { window[fnName](targetLabel); } catch (_e1) {}
-        try { window[fnName](prefix); } catch (_e2) {}
-      }
-    }
-  } catch (_eWin) {}
-  try {
-    var els = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a, li'));
-    for (var i = 0; i < els.length; i++) {
-      var el = els[i];
-      var txt = String(el.innerText || el.textContent || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
-      if (!txt || txt.length > 34) continue;
-      if (txt.indexOf(prefix) === 0 && txt.indexOf('cap') < 0 && txt.indexOf('·') < 0 && txt.indexOf('+') < 0 && txt.indexOf('-') < 0) {
-        try { el.click(); return true; } catch (_eClk) {}
-      }
-    }
-  } catch (_eDom) {}
-  return true;
-}
-var __didTap = vlmSilentJumpMap130(arguments[1] || arguments[0] || ''); if (__didTap) return true;
-    var targetClean = "Mạc Bắc Thảo Nguyên"; if (noAccent(targetMapName || "").indexOf("Vi sơn đảo") >= 0) targetClean = "Vi sơn đảo";
+    var rawNA = noAccent(targetMapName || '').replace(/\s+/g, ' ').trim();
+    var isViSon = rawNA.indexOf('vi son') >= 0 || rawNA.indexOf('son dao') >= 0;
+    var isMacBac = rawNA.indexOf('mac bac') >= 0 || rawNA.indexOf('thao nguyen') >= 0;
+    var targetClean = isViSon ? 'Vi sơn đảo' : (isMacBac ? 'Mạc Bắc Thảo Nguyên' : String(targetMapName || '').trim());
     if (!targetClean) return false;
+    var wantNA = isViSon ? 'vi son dao' : (isMacBac ? 'mac bac thao nguyen' : normalizeMapCompareKey(targetClean));
+
     if (isAlreadyOnTrainingMap(I, targetClean)) {
       A.lastMapSelected = targetClean;
+      A.forceMapSwitchUntil = 0;
       return true;
     }
-    if (isUserControlling(4500) || isModalLocked()) return false;
-    if (!ready('select_map', 10000)) return false;
+
+    var forceNow = !!(A.forceMapSwitchUntil && Date.now() < A.forceMapSwitchUntil);
+    if (!forceNow && (isUserControlling(4500) || isModalLocked())) return false;
+    if (!forceNow && !ready('select_map', 8000)) return false;
+    if (forceNow && !ready('select_map_force', 1500)) return false;
 
     var pickerBtn = findMapPickerButton();
-    if (!pickerBtn) return false;
 
-    var wantNA = normalizeMapCompareKey(targetClean);
-    var groupNA = TRAINING_MAP_GROUPS[noAccent(targetClean)] || '';
-    var beforeBtnText = normalizeMapCompareKey(pickerBtn.textContent || '');
+    function isExactTargetPill(el, allowHidden) {
+      if (!el || el.disabled) return false;
+      if (!allowHidden && !isVis(el)) return false;
+      if (el.id === 'vlmAuto' || el.id === 'mswBtn' || el.id === 'mClose') return false;
+      if (pickerBtn && (el === pickerBtn || pickerBtn.contains(el) || el.contains(pickerBtn))) return false;
+      if (el.closest && el.closest('#vlmAuto, #tabs, #chatLines, #u20lines, #logBox, #u20log, #modeSw, #mswMenu')) return false;
+      var rawTxt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!rawTxt || rawTxt.length > 32) return false;
+      if (rawTxt.indexOf('+') >= 0 || rawTxt.indexOf('-') >= 0 || rawTxt.indexOf('...') >= 0) return false;
+      var normTxt = noAccent(rawTxt).replace(/\s+/g, ' ').trim();
+      if (normTxt.indexOf('cap') >= 0 || /\d/.test(normTxt)) return false;
+      if (isViSon) return normTxt === 'vi son dao';
+      if (isMacBac) return normTxt === 'mac bac thao nguyen';
+      return normalizeMapCompareKey(rawTxt) === wantNA;
+    }
+
+    function pickBestPill(root, allowHidden) {
+      if (!root) return null;
+      var nodes = root.querySelectorAll('button, [role="button"], .btn, div, span, li, a');
+      var best = null;
+      var bestScore = -1;
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (!isExactTargetPill(el, allowHidden)) continue;
+        var clickEl = el;
+        var par = el.parentElement;
+        if (par && par !== root && isExactTargetPill(par, allowHidden) && (par.tagName === 'BUTTON' || par.getAttribute('role') === 'button')) {
+          clickEl = par;
+        }
+        var sc = 100;
+        if (clickEl.tagName === 'BUTTON' || clickEl.getAttribute('role') === 'button') sc += 80;
+        if (clickEl.children && clickEl.children.length === 0) sc += 30;
+        if (typeof clickEl.onclick === 'function') sc += 40;
+        if (sc > bestScore) { bestScore = sc; best = clickEl; }
+      }
+      return best;
+    }
+
+    function verifySwitched() {
+      if (isAlreadyOnTrainingMap(I, targetClean)) return true;
+      var pbNow = findMapPickerButton() || pickerBtn;
+      if (pbNow && isVis(pbNow)) {
+        var pbKey = normalizeMapCompareKey(pbNow.textContent || '');
+        if (isViSon && (pbKey.indexOf('vi son') === 0 || pbKey.indexOf('son dao') >= 0)) return true;
+        if (isMacBac && (pbKey.indexOf('mac bac') === 0 || pbKey.indexOf('thao nguyen') >= 0)) return true;
+        if (!isViSon && !isMacBac && pbKey === wantNA) return true;
+      }
+      return false;
+    }
+
+    // Buoc 1: Thu kich hoat ngam neu nut map da co san trong DOM an
+    try {
+      var silentPill = pickBestPill(document, true);
+      if (silentPill) {
+        try { silentPill.click(); } catch (eS0) {}
+        await sleep(320);
+        if (verifySwitched()) {
+          A.lastMapSelected = targetClean;
+          A.forceMapSwitchUntil = 0;
+          note('Da chuyen ngam sang map Luyen Cong: ' + targetClean);
+          return true;
+        }
+      }
+    } catch (eSilent) {}
+
+    // Buoc 2: Mo popup map o trang thai an (opacity: 0), cuon xuong nhom 130-140, bam dung nut con roi dong ngay
+    if (!pickerBtn) return false;
+    var openedPopup = null;
+    var savedOpacity = null;
+    var savedTransition = null;
+    var popupWasAlreadyOpen = !!findOpenMapListContainer();
 
     try {
-      dispatchRealUiClick(pickerBtn);
-      var popup = null;
-      var waitEnd = Date.now() + 3200;
-      while (Date.now() < waitEnd) {
-        popup = findOpenMapListContainer();
-        if (popup) break;
-        await sleep(150);
+      if (!popupWasAlreadyOpen) {
+        dispatchRealUiClick(pickerBtn);
       }
-      if (!popup) return false;
-      await sleep(360);
-      popup = findOpenMapListContainer() || popup;
-      await ensureTrainingTabSelectedInMapPopup(popup);
+      var waitEnd = Date.now() + 2600;
+      while (Date.now() < waitEnd) {
+        openedPopup = findOpenMapListContainer();
+        if (openedPopup) break;
+        await sleep(60);
+      }
+      if (!openedPopup) return false;
 
-      var candidates = await findMapItemAcrossScrolls(popup, wantNA, groupNA);
-      if (candidates.length === 0) {
-        await sleep(200);
-        if (findOpenMapListContainer() && pickerBtn && isVis(pickerBtn)) {
-          dispatchRealUiClick(pickerBtn);
+      try {
+        savedOpacity = openedPopup.style.opacity;
+        savedTransition = openedPopup.style.transition;
+        openedPopup.style.transition = 'none';
+        openedPopup.style.opacity = '0';
+      } catch (eHide) {}
+
+      await sleep(120);
+      openedPopup = findOpenMapListContainer() || openedPopup;
+
+      function scrollPopupToBottom(root) {
+        var scs = collectScrollContainers(root);
+        for (var si = 0; si < scs.length; si++) {
+          try { scs[si].scrollTop = scs[si].scrollHeight; } catch (eSc) {}
         }
-        return false;
+      }
+
+      scrollPopupToBottom(openedPopup);
+      await sleep(100);
+
+      var pillBtn = pickBestPill(openedPopup, false);
+
+      // Chi bam dau '+' de mo nhom 130-140 neu nut con chua hien, tuyet doi khong bam dau '-'
+      if (!pillBtn && (isViSon || isMacBac)) {
+        var rows = openedPopup.querySelectorAll('div, li, tr, section');
+        for (var ri = 0; ri < rows.length; ri++) {
+          var row = rows[ri];
+          if (!row || !isVis(row)) continue;
+          var rTxt = noAccent(row.textContent || '').replace(/\s+/g, ' ').trim();
+          if (rTxt.length > 100) continue;
+          if (rTxt.indexOf('130') >= 0 && rTxt.indexOf('140') >= 0) {
+            var plusBtn = null;
+            var subBtns = row.querySelectorAll('button, span, div');
+            for (var sb = 0; sb < subBtns.length; sb++) {
+              if ((subBtns[sb].textContent || '').trim() === '+') {
+                plusBtn = subBtns[sb];
+                break;
+              }
+            }
+            if (plusBtn) {
+              dispatchRealUiClick(plusBtn);
+              await sleep(220);
+              scrollPopupToBottom(openedPopup);
+              await sleep(100);
+              break;
+            }
+          }
+        }
+        pillBtn = pickBestPill(openedPopup, false);
       }
 
       var switched = false;
-      var maxTry = Math.min(candidates.length, 4);
-      for (var cIdx = 0; cIdx < maxTry; cIdx++) {
-        var itemEl = candidates[cIdx];
-        if (!itemEl || !itemEl.isConnected) continue;
-        try { if (itemEl.scrollIntoView) itemEl.scrollIntoView({ block: 'center' }); } catch (eS2) {}
-        await sleep(240);
-        dispatchRealUiClick(itemEl);
-        await sleep(320);
-
-        var confirmMapBtn = findMapConfirmButton(findOpenMapListContainer() || popup);
-        if (confirmMapBtn) {
-          await sleep(180);
-          dispatchRealUiClick(confirmMapBtn);
-        }
-        await sleep(700);
-
-        var afterBtnText = pickerBtn && isVis(pickerBtn) ? normalizeMapCompareKey(pickerBtn.textContent || '') : '';
-        var curPopupNow = findOpenMapListContainer();
-        switched = isAlreadyOnTrainingMap(I, targetClean) ||
-          (afterBtnText && afterBtnText !== beforeBtnText && afterBtnText.length >= 3) ||
-          (!curPopupNow && !!afterBtnText);
-
-        if (switched) break;
-      }
-
-      var stillOpen = findOpenMapListContainer();
-      if (stillOpen) {
-        var closeBtn = stillOpen.querySelector('#mClose, .close, [data-close], button[aria-label*="Đóng" i], button[aria-label*="Close" i]');
-        if (closeBtn && isVis(closeBtn)) {
-          dispatchRealUiClick(closeBtn);
-          await sleep(200);
-        } else if (pickerBtn && isVis(pickerBtn) && findOpenMapListContainer()) {
-          dispatchRealUiClick(pickerBtn);
-          await sleep(200);
+      if (pillBtn) {
+        try { if (pillBtn.scrollIntoView) pillBtn.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (eSv) {}
+        await sleep(80);
+        dispatchRealUiClick(pillBtn);
+        await sleep(360);
+        switched = verifySwitched();
+        if (!switched && pillBtn.isConnected) {
+          try { pillBtn.click(); } catch (eCk2) {}
+          await sleep(360);
+          switched = verifySwitched();
         }
       }
 
       if (switched) {
         A.lastMapSelected = targetClean;
-        note('🗺️ Đã chuyển sang map Luyện Công: ' + targetClean);
+        A.forceMapSwitchUntil = 0;
+        note('Da chuyen sang map Luyen Cong: ' + targetClean);
         return true;
       }
 
-      A.cool.select_map = Date.now() + 5000;
+      A.cool.select_map = Date.now() + 4000;
       return false;
-    } catch (eMapSel) {}
-    return false;
+    } catch (eMapSel) {
+      return false;
+    } finally {
+      try {
+        var stillOpen = findOpenMapListContainer();
+        if (stillOpen && !popupWasAlreadyOpen) {
+          var closeBtn = stillOpen.querySelector('#mClose, .close, [data-close], button[aria-label*="Đóng" i], button[aria-label*="Close" i]');
+          if (closeBtn && isVis(closeBtn)) {
+            dispatchRealUiClick(closeBtn);
+          } else if (pickerBtn && isVis(pickerBtn)) {
+            dispatchRealUiClick(pickerBtn);
+          }
+          await sleep(120);
+        }
+      } catch (eCl) {}
+      try {
+        if (openedPopup && savedOpacity !== null) {
+          openedPopup.style.opacity = savedOpacity;
+          openedPopup.style.transition = savedTransition || '';
+        }
+      } catch (eRest) {}
+    }
   }
-
   function isDungeonListExhaustedInDom() {
     try {
       var md = document.getElementById('modal');
@@ -4520,7 +4626,6 @@ var __didTap = vlmSilentJumpMap130(arguments[1] || arguments[0] || ''); if (__di
             curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
             !alreadySelectedThisSession && !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
-                    try { vlmSilentJumpMap130(A.cfg.farmMap); } catch (_eMap) {}
         }
       } catch (eMapForce) {}
 
