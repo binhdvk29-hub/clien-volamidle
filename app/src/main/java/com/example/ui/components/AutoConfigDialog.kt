@@ -61,7 +61,7 @@ private fun normalize130MapName(raw: String?): String {
     val norm = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
         .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
         .replace('đ', 'd')
-    return if (norm.contains("Vi sơn đảo")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
+    return if (norm.contains("vi son") || norm.contains("son dao")) "Vi sơn đảo" else "Mạc Bắc Thảo Nguyên"
 }
 
 
@@ -700,8 +700,9 @@ private fun AfterDailyActionSelector(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        var uiSelectedMap by remember(farmMap) { mutableStateOf(normalize130MapName(farmMap)) }
                         listOf("Mạc Bắc Thảo Nguyên", "Vi sơn đảo").forEach { mName ->
-                            val isChecked = normalize130MapName(farmMap) == mName
+                            val isChecked = uiSelectedMap == mName
                             Row(
                                 modifier = Modifier
                                     .weight(1f)
@@ -709,7 +710,7 @@ private fun AfterDailyActionSelector(
                                     .background(if (isChecked) Color(0xFF14532D) else Color(0xFF1E293B))
                                     .clickable {
                                         mapExpanded = false
-                                        onSelectMap(mName)
+                                        uiSelectedMap = mName; onSelectMap(mName)
                                     }
                                     .padding(horizontal = 6.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -718,7 +719,7 @@ private fun AfterDailyActionSelector(
                                     checked = isChecked,
                                     onCheckedChange = {
                                         mapExpanded = false
-                                        onSelectMap(mName)
+                                        uiSelectedMap = mName; onSelectMap(mName)
                                     },
                                     modifier = Modifier.size(18.dp)
                                 )

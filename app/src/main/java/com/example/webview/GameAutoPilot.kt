@@ -171,11 +171,11 @@ data class AutoConfig(
             TrainingMapOption("Vi sơn đảo", "Cấp 130–140", "Vi sơn đảo")
         )
 
-        fun normalizeAllowed130Map(raw: String?): String {
+                fun normalizeAllowed130Map(raw: String?): String {
             val clean = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
                 .replace(Regex("[\\p{InCombiningDiacriticalMarks}]"), "")
                 .replace('đ', 'd')
-            if (clean.contains("Vi sơn đảo")) return "Vi sơn đảo"
+            if (clean.contains("vi son") || clean.contains("son dao")) return "Vi sơn đảo"
             return "Mạc Bắc Thảo Nguyên"
         }
 
@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-66"
+        const val SCRIPT_VER = "vlmauto-68"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
