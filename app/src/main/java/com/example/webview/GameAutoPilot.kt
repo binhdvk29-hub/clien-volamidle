@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-63"
+        const val SCRIPT_VER = "vlmauto-65"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -4028,6 +4028,66 @@ class GameAutoPilot(
   }
 
   async function selectTrainingMap(I, targetMapName) {
+async function vlmRealSelectMap130(rawMap) {
+  function norm(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+  }
+  var n = norm(rawMap);
+  var want = (n.indexOf('vi son dao') >= 0) ? 'vi son dao' : 'mac bac thao nguyen';
+  function tapEl(el) {
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    var cx = r.left + r.width / 2;
+    var cy = r.top + r.height / 2;
+    var opts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, screenX: cx, screenY: cy, button: 0, buttons: 1};
+    try {
+      if (window.PointerEvent) {
+        el.dispatchEvent(new PointerEvent('pointerdown', Object.assign({}, opts, {pointerId: 1, pointerType: 'touch', isPrimary: true})));
+        el.dispatchEvent(new PointerEvent('pointerup', Object.assign({}, opts, {pointerId: 1, pointerType: 'touch', isPrimary: true, buttons: 0})));
+      }
+    } catch (e) {}
+    ['mousedown', 'mouseup', 'click'].forEach(function(ev) {
+      try { el.dispatchEvent(new MouseEvent(ev, opts)); } catch (e) {}
+    });
+    try { el.click(); } catch (e) {}
+    return true;
+  }
+  function findBottomMapBtn() {
+    var els = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a, p, li'));
+    var best = null;
+    var bestScore = -999999;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var raw = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!raw || raw.length > 36) continue;
+      var t = norm(raw);
+      if (t !== want && t.indexOf(want) < 0) continue;
+      if (/cap\s*\d+/i.test(t) || raw.indexOf('·') >= 0 || raw.indexOf('+') >= 0 || raw.indexOf('-') >= 0) continue;
+      var r = el.getBoundingClientRect();
+      if (r.width < 20 || r.height < 12) continue;
+      var sc = (t === want ? 300 : 120) - raw.length * 2 + (r.top > window.innerHeight * 0.5 ? 200 : 0);
+      if (sc > bestScore) { bestScore = sc; best = el; }
+    }
+    return best;
+  }
+  var btn = findBottomMapBtn();
+  if (btn) { tapEl(btn); return true; }
+  var all = Array.prototype.slice.call(document.querySelectorAll('button, div, span, a'));
+  for (var j = 0; j < all.length; j++) {
+    var topEl = all[j];
+    var rTop = topEl.getBoundingClientRect();
+    var tTop = norm(topEl.innerText || topEl.textContent || '');
+    if (rTop.top < window.innerHeight * 0.25 && rTop.left > window.innerWidth * 0.55 && rTop.width >= 24 && (tTop.indexOf('mac bac') >= 0 || tTop.indexOf('vi son dao') >= 0 || tTop.indexOf('thao nguyen') >= 0)) {
+      tapEl(topEl);
+      await new Promise(function(res){ setTimeout(res, 220); });
+      break;
+    }
+  }
+  var btn2 = findBottomMapBtn();
+  if (btn2) { tapEl(btn2); return true; }
+  return false;
+}
+var __didTap = await vlmRealSelectMap130(arguments[1] || arguments[0] || ''); if (__didTap) return true;
     var targetClean = "Mạc Bắc Thảo Nguyên"; if (noAccent(targetMapName || "").indexOf("Vi sơn đảo") >= 0) targetClean = "Vi sơn đảo";
     if (!targetClean) return false;
     if (isAlreadyOnTrainingMap(I, targetClean)) {
@@ -4481,6 +4541,7 @@ class GameAutoPilot(
             curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
             !alreadySelectedThisSession && !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
+                    try { await vlmRealSelectMap130(A.cfg.farmMap); } catch (_eMap) {}
         }
       } catch (eMapForce) {}
 
