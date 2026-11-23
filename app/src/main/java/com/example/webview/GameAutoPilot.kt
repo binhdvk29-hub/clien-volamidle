@@ -1,4 +1,4 @@
-package com.example.webview
+﻿package com.example.webview
 
 import android.os.Handler
 import android.os.Looper
@@ -167,14 +167,16 @@ data class AutoConfig(
         }
 
         val ALL_TRAINING_MAPS: List<TrainingMapOption> = listOf(
-            TrainingMapOption("M?c B?c Th?o Nguy�n", "C?p 130�140", "Vi son d?o"),
-            TrainingMapOption("Vi son d?o", "C?p 130�140", "Vi son d?o")
+            TrainingMapOption("Mạc Bắc Thảo Nguyên", "Cấp 130–140", "Vi sơn đảo"),
+            TrainingMapOption("Vi sơn đảo", "Cấp 130–140", "Vi sơn đảo")
         )
 
         fun normalizeAllowed130Map(raw: String?): String {
-            val t = raw?.trim().orEmpty()
-            if (t.equals("Vi son d?o", ignoreCase = true) || t.equals("Vi son dao", ignoreCase = true)) return "Vi son d?o"
-            return "M?c B?c Th?o Nguy�n"
+            val clean = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
+                .replace(Regex("[\\p{InCombiningDiacriticalMarks}]"), "")
+                .replace('đ', 'd')
+            if (clean.contains("vi son dao")) return "Vi sơn đảo"
+            return "Mạc Bắc Thảo Nguyên"
         }
 
         val ALL_9X_SKILLS: List<TowerMainSkill> = listOf(
@@ -315,7 +317,7 @@ data class AutoConfig(
                     o.optBoolean("afterDailyFarm", DEF.afterDailyFarm) || o.optBoolean("thap", DEF.thap)
                 },
                 afterDailyFarm = o.optBoolean("afterDailyFarm", DEF.afterDailyFarm),
-                farmMap = o.optString("farmMap", DEF.farmMap).trim(),
+                farmMap = normalizeAllowed130Map(o.optString("farmMap", "Mạc Bắc Thảo Nguyên"))
                 thap = if (o.optBoolean("afterDailyFarm", DEF.afterDailyFarm)) false else o.optBoolean("thap", DEF.thap),
                 thapAfterMode = normalizeThapAfterMode(o.optString("thapAfterMode", DEF.thapAfterMode)),
                 thapNeDon = o.optBoolean("thapNeDon", DEF.thapNeDon),
@@ -343,7 +345,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-49"
+        const val SCRIPT_VER = "vlmauto-50"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3937,7 +3939,7 @@ class GameAutoPilot(
   }
 
   async function selectTrainingMap(I, targetMapName) {
-    var targetClean = String(targetMapName || '').trim();
+    var targetClean = "Mạc Bắc Thảo Nguyên"; if (noAccent(targetMapName || "").indexOf("vi son dao") >= 0) targetClean = "Vi sơn đảo";
     if (!targetClean) return false;
     if (isAlreadyOnTrainingMap(I, targetClean)) {
       A.lastMapSelected = targetClean;

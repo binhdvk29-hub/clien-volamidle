@@ -1,4 +1,4 @@
-package com.example.ui.components
+﻿package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -653,7 +653,7 @@ private fun AfterDailyActionSelector(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = farmMap.ifBlank { "Chọn map" },
+                            text = farmMap.ifBlank { "Mạc Bắc Thảo Nguyên" },
                             color = if (farmMap.isNotBlank()) Color.White else Color(0xFF94A3B8),
                             fontSize = 10.sp,
                             maxLines = 1,
@@ -684,10 +684,10 @@ private fun AfterDailyActionSelector(
                             },
                             onClick = {
                                 mapExpanded = false
-                                onSelectMap("")
+                                onSelectMap("Mạc Bắc Thảo Nguyên" )
                             }
                         )
-                        AutoConfig.ALL_TRAINING_MAPS.filter { it.name == "M?c B?c Th?o Nguy�n" || it.name == "Vi son d?o" }.forEach { mapOpt -> val isSel = farmMap == mapOpt.name; DropdownMenuItem(text = { Text(text = "[${mapOpt.levelRange}] ${mapOpt.name}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mapOpt.name) }) } }
+                        AutoConfig.ALL_TRAINING_MAPS.filter { it.name == "M?c B?c Th?o Nguy�n" || it.name == "Vi son d?o" }.forEach { mapOpt -> val isSel = farmMap == mapOpt.name; DropdownMenuItem(text = { Text(text = "[${mapOpt.levelRange}] ${mapOpt.name}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mapOpt.name) }) } }
                 }
             }
 
