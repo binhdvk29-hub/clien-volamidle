@@ -687,24 +687,7 @@ private fun AfterDailyActionSelector(
                                 onSelectMap("")
                             }
                         )
-                        AutoConfig.ALL_TRAINING_MAPS.forEach { mapOpt ->
-                            val isSel = farmMap == mapOpt.name
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = "[${mapOpt.levelRange}] ${mapOpt.name}",
-                                        color = if (isSel) Color(0xFF6EE7B7) else Color.White,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                onClick = {
-                                    mapExpanded = false
-                                    onSelectMap(mapOpt.name)
-                                }
-                            )
-                        }
-                    }
+                        AutoConfig.ALL_TRAINING_MAPS.filter { it.name == "M?c B?c Th?o Nguyên" || it.name == "Vi son d?o" }.forEach { mapOpt -> val isSel = farmMap == mapOpt.name; DropdownMenuItem(text = { Text(text = "[${mapOpt.levelRange}] ${mapOpt.name}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mapOpt.name) }) } }
                 }
             }
 

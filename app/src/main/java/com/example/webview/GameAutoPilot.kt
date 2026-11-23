@@ -167,55 +167,15 @@ data class AutoConfig(
         }
 
         val ALL_TRAINING_MAPS: List<TrainingMapOption> = listOf(
-            // Cấp 1-10
-            TrainingMapOption("Ba Lăng huyện", "Cấp 1–10", ""),
-            // Cấp 10-20
-            TrainingMapOption("Hoa Sơn", "Cấp 10–20", "Hoa Sơn"),
-            TrainingMapOption("Nga My phái", "Cấp 10–20", "Hoa Sơn"),
-            TrainingMapOption("Thiên Nhẫn Giáo tầng 1", "Cấp 10–20", "Hoa Sơn"),
-            TrainingMapOption("Mê cung Đáy giếng", "Cấp 10–20", "Hoa Sơn"),
-            TrainingMapOption("Côn Lôn phái", "Cấp 10–20", "Hoa Sơn"),
-            TrainingMapOption("Ngũ Độc Giáo", "Cấp 10–20", "Hoa Sơn"),
-            // Cấp 20-30
-            TrainingMapOption("Kiếm Các Tây Bắc", "Cấp 20–30", "Kiếm Các Tây Bắc"),
-            TrainingMapOption("Mãnh Hổ động", "Cấp 20–30", "Kiếm Các Tây Bắc"),
-            TrainingMapOption("Hỏa Lang động", "Cấp 20–30", "Kiếm Các Tây Bắc"),
-            // Cấp 30-40
-            TrainingMapOption("Thục Cương sơn", "Cấp 30–40", "Thục Cương sơn"),
-            TrainingMapOption("Tuyết Báo động tầng 1", "Cấp 30–40", "Thục Cương sơn"),
-            TrainingMapOption("Yến Tử động", "Cấp 30–40", "Thục Cương sơn"),
-            TrainingMapOption("Mê cung nhập môn", "Cấp 30–40", "Thục Cương sơn"),
-            // Cấp 40-50
-            TrainingMapOption("Điểm Thương động tầng 1", "Cấp 40–50", "Điểm Thương động tầng 1"),
-            // Cấp 50-60
-            TrainingMapOption("Thiên Tâm động", "Cấp 50–60", "Thiên Tâm động"),
-            TrainingMapOption("Đáy Động Đình hồ tầng 2", "Cấp 50–60", "Thiên Tâm động"),
-            TrainingMapOption("Băng Huyệt động", "Cấp 50–60", "Thiên Tâm động"),
-            // Cấp 60-70
-            TrainingMapOption("Hoành Sơn Phái", "Cấp 60–70", "Hoành Sơn Phái"),
-            // Cấp 70-80
-            TrainingMapOption("Lâm Du Quan", "Cấp 70–80", "Lâm Du Quan"),
-            TrainingMapOption("Sơn Bảo động", "Cấp 70–80", "Lâm Du Quan"),
-            TrainingMapOption("Linh Cốc động", "Cấp 70–80", "Lâm Du Quan"),
-            // Cấp 80-90
-            TrainingMapOption("Chân núi Trường Bạch", "Cấp 80–90", "Chân núi Trường Bạch"),
-            TrainingMapOption("Vũ Lăng động", "Cấp 80–90", "Chân núi Trường Bạch"),
-            TrainingMapOption("Phi Thiên động", "Cấp 80–90", "Chân núi Trường Bạch"),
-            TrainingMapOption("Phù Dung động", "Cấp 80–90", "Chân núi Trường Bạch"),
-            TrainingMapOption("Nhạn Thạch động", "Cấp 80–90", "Chân núi Trường Bạch"),
-            // Cấp 90-100
-            TrainingMapOption("Sa mạc sơn động 1", "Cấp 90–100", "Sa mạc sơn động 1"),
-            TrainingMapOption("Cán Viên động", "Cấp 90–100", "Sa mạc sơn động 1"),
-            TrainingMapOption("Khoả Lang động", "Cấp 90–100", "Sa mạc sơn động 1"),
-            // Cấp 110-120
-            TrainingMapOption("Trường Bạch sơn Nam", "Cấp 110–120", "Trường Bạch sơn Nam"),
-            TrainingMapOption("Trường Bạch sơn Bắc", "Cấp 110–120", "Trường Bạch sơn Nam"),
-            // Cấp 120-130
-            TrainingMapOption("Phong Lăng độ", "Cấp 120–130", ""),
-            // Cấp 130-140
-            TrainingMapOption("Mạc Bắc Thảo Nguyên", "Cấp 130–140", "Vi sơn đảo"),
-            TrainingMapOption("Vi sơn đảo", "Cấp 130–140", "Vi sơn đảo")
+            TrainingMapOption("M?c B?c Th?o Nguy�n", "C?p 130�140", "Vi son d?o"),
+            TrainingMapOption("Vi son d?o", "C?p 130�140", "Vi son d?o")
         )
+
+        fun normalizeAllowed130Map(raw: String?): String {
+            val t = raw?.trim().orEmpty()
+            if (t.equals("Vi son d?o", ignoreCase = true) || t.equals("Vi son dao", ignoreCase = true)) return "Vi son d?o"
+            return "M?c B?c Th?o Nguy�n"
+        }
 
         val ALL_9X_SKILLS: List<TowerMainSkill> = listOf(
             // Thiếu Lâm
@@ -383,7 +343,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-48"
+        const val SCRIPT_VER = "vlmauto-49"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
