@@ -653,7 +653,7 @@ private fun AfterDailyActionSelector(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = farmMap.ifBlank { "Mạc Bắc Thảo Nguyên" },
+                            text = normalizeAllowed130Map(farmMap),
                             color = if (farmMap.isNotBlank()) Color.White else Color(0xFF94A3B8),
                             fontSize = 10.sp,
                             maxLines = 1,
@@ -687,9 +687,7 @@ private fun AfterDailyActionSelector(
                                 onSelectMap("Mạc Bắc Thảo Nguyên" )
                             }
                         )
-                        AutoConfig.ALL_TRAINING_MAPS.filter { it.name == "M?c B?c Th?o Nguy�n" || it.name == "Vi son d?o" }.forEach { mapOpt -> val isSel = farmMap == mapOpt.name; DropdownMenuItem(text = { Text(text = "[${mapOpt.levelRange}] ${mapOpt.name}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.5.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mapOpt.name) }) } }
-                }
-            }
+                        listOf("Mạc Bắc Thảo Nguyên", "Vi sơn đảo").forEach { mName -> val isSel = normalizeAllowed130Map(farmMap) == mName; DropdownMenuItem(text = { Text(text = "[Cấp 130–140] ${mName}", color = if (isSel) Color(0xFF6EE7B7) else Color.White, fontSize = 10.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) }, onClick = { mapExpanded = false; onSelectMap(mName) }) } }
 
             Spacer(modifier = Modifier.height(4.dp))
 
