@@ -383,7 +383,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-40"
+        const val SCRIPT_VER = "vlmauto-44"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3545,11 +3545,77 @@ class GameAutoPilot(
   function normalizeMapCompareKey(raw) {
     return noAccent(raw || '')
       .replace(/\[[^\]]*\]/g, ' ')
-      .replace(/c[aấ]p\s*\d+[\s–-]*\d*/gi, ' ')
-      .replace(/^[+\-•·*>\s]+/, '')
+      .replace(/\bc[aấ]p\s*\d+[\s–-]*\d*\b/gi, ' ')
+      .replace(/^[+\-•·*>,\s]+/, '')
       .replace(/\.+$/, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  function invokeInlineOrClickableChain(el) {
+    if (!el) return false;
+    var fired = false;
+    try {
+      var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+      var cx = rect ? Math.round(rect.left + rect.width * 0.5) : 0;
+      var cy = rect ? Math.round(rect.top + rect.height * 0.5) : 0;
+
+      if (typeof el.focus === 'function') {
+        try { el.focus({ preventScroll: true }); } catch (eFoc) { try { el.focus(); } catch (eF2) {} }
+      }
+
+      if (typeof PointerEvent === 'function' && rect) {
+        el.dispatchEvent(new PointerEvent('pointerdown', {
+          bubbles: true, cancelable: true, composed: true,
+          clientX: cx, clientY: cy, button: 0, buttons: 1,
+          pointerId: 1, pointerType: 'mouse', isPrimary: true
+        }));
+      }
+      el.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, composed: true,
+        clientX: cx, clientY: cy, button: 0, buttons: 1
+      }));
+      if (typeof PointerEvent === 'function' && rect) {
+        el.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, cancelable: true, composed: true,
+          clientX: cx, clientY: cy, button: 0, buttons: 0,
+          pointerId: 1, pointerType: 'mouse', isPrimary: true
+        }));
+      }
+      el.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, composed: true,
+        clientX: cx, clientY: cy, button: 0, buttons: 0
+      }));
+      if (typeof el.click === 'function') {
+        el.click();
+        fired = true;
+      } else {
+        el.dispatchEvent(new MouseEvent('click', {
+          bubbles: true, cancelable: true, composed: true,
+          clientX: cx, clientY: cy, button: 0, buttons: 0
+        }));
+        fired = true;
+      }
+      if (typeof el.onclick === 'function') {
+        try { el.onclick.call(el, new MouseEvent('click', { bubbles: true, cancelable: true })); fired = true; } catch (eOn1) {}
+      }
+    } catch (eClk) {
+      try { el.click(); fired = true; } catch (eFb) {}
+    }
+    return fired;
+  }
+
+  function dispatchRealUiClick(el) {
+    if (!el) return false;
+    var ok = invokeInlineOrClickableChain(el);
+    try {
+      var parentBtn = el.closest ? el.closest('button, [role="button"], .btn, li, a, .map-item, .qrow, .item, [data-map], [onclick]') : null;
+      if (parentBtn && parentBtn !== el && isVis(parentBtn) && !parentBtn.disabled) {
+        invokeInlineOrClickableChain(parentBtn);
+        ok = true;
+      }
+    } catch (ePar) {}
+    return ok;
   }
 
   function findMapPickerButton() {
@@ -3568,7 +3634,6 @@ class GameAutoPilot(
           if (at.indexOf('hoa binh') < 0 && at.indexOf('che do') < 0) return ae;
         }
       }
-      // Quét nút/thẻ click ở vùng trên bên phải hoặc góc trên HUD
       var winW = window.innerWidth || 800;
       var winH = window.innerHeight || 480;
       var els = document.querySelectorAll('button, [role="button"], .btn, a, div, span');
@@ -3613,15 +3678,25 @@ class GameAutoPilot(
 
   function findOpenMapListContainer() {
     try {
-      var cands = document.querySelectorAll('#mapModal, #mapList, #mapPop, #mapMenu, #mBody, #modal, .popup, .modal, [role="dialog"], div');
+      var priorityIds = ['mapModal', 'mapList', 'mapPop', 'mapMenu', 'mBody', 'modal'];
+      for (var p = 0; p < priorityIds.length; p++) {
+        var pel = document.getElementById(priorityIds[p]);
+        if (!pel || !isVis(pel)) continue;
+        var ptxt = noAccent(pel.textContent || '');
+        if (ptxt.indexOf('ban do luyen cong') >= 0 || ptxt.indexOf('chon ban do') >= 0 ||
+            (ptxt.indexOf('ba lang huyen') >= 0 && (ptxt.indexOf('hoa son') >= 0 || ptxt.indexOf('cap 1') >= 0))) {
+          return pel;
+        }
+      }
+      var cands = document.querySelectorAll('.popup, .modal, [role="dialog"], div');
       var cap = Math.min(cands.length, 380);
       for (var i = 0; i < cap; i++) {
         var el = cands[i];
         if (!el || !isVis(el)) continue;
         var txt = noAccent(el.textContent || '');
-        var hasHeader = txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0 || txt.indexOf('luyen cong') >= 0;
+        var hasHeader = txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0;
         var hasMaps = (txt.indexOf('ba lang huyen') >= 0 && (txt.indexOf('hoa son') >= 0 || txt.indexOf('cap 1') >= 0));
-        if ((hasHeader && (txt.indexOf('cap 1') >= 0 || txt.indexOf('ba lang') >= 0 || txt.indexOf('hoa son') >= 0)) || hasMaps) {
+        if (hasHeader || hasMaps) {
           if (el.children && el.children.length > 0) return el;
         }
       }
@@ -3647,12 +3722,152 @@ class GameAutoPilot(
       for (var i = 0; i < curNames.length; i++) {
         var cn = curNames[i];
         if (!cn || cn.length < 3) continue;
-        if (cn === want || (cn.length >= 4 && want.indexOf(cn) === 0) || (want.length >= 5 && cn.indexOf(want) >= 0)) {
-          return true;
-        }
+        if (cn === want) return true;
       }
     } catch (eChk) {}
     return false;
+  }
+
+  function scoreMapCandidateElement(el, wantKey, mode) {
+    if (!el || !isVis(el) || el.disabled) return -1;
+    if (el.id === 'vlmAuto' || el.id === 'mswBtn' || el.id === 'mClose') return -1;
+    var childCount = el.children ? el.children.length : 0;
+    if (childCount > 8) return -1;
+
+    var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+    if (!rect || rect.width < 12 || rect.height < 8) return -1;
+    if (rect.height > 150 || rect.width > 560) return -1;
+
+    var rawText = (el.textContent || '').trim();
+    if (!rawText || rawText.length > 96) return -1;
+
+    var rawNA = noAccent(rawText).replace(/\s+/g, ' ').trim();
+    if (rawNA.indexOf('ban do luyen cong') === 0 || rawNA.indexOf('chon ban do') === 0) return -1;
+    if (/^cap\s*\d+[\s–-]*\d*$/i.test(rawNA)) return -1;
+
+    var t = normalizeMapCompareKey(rawText);
+    if (!t || t.length < 2 || t.length > 64) return -1;
+
+    var matched = false;
+    var baseScore = 0;
+    if (mode === 'exact') {
+      matched = (t === wantKey);
+      baseScore = 320;
+    } else if (mode === 'prefix') {
+      matched = (t.indexOf(wantKey) === 0 && (t.length === wantKey.length || t.charAt(wantKey.length) === ' '));
+      baseScore = 240;
+    } else if (mode === 'contains') {
+      matched = (wantKey.length >= 3 && t.indexOf(wantKey) >= 0);
+      baseScore = 160;
+    }
+    if (!matched) return -1;
+
+    var tag = (el.tagName || '').toUpperCase();
+    if (tag === 'BUTTON' || el.getAttribute('role') === 'button' || tag === 'A') baseScore += 40;
+    if (childCount === 0) baseScore += 25;
+    else if (childCount <= 3) baseScore += 15;
+    if (rect.height <= 72) baseScore += 15;
+
+    return baseScore;
+  }
+
+  function rankMapItemElements(root, wantKey) {
+    if (!root) return [];
+    var modes = ['exact', 'prefix', 'contains'];
+    var els = root.querySelectorAll('button, [role="button"], .btn, span, div, li, a');
+    var scoredList = [];
+    for (var m = 0; m < modes.length; m++) {
+      for (var i = 0; i < els.length; i++) {
+        var sc = scoreMapCandidateElement(els[i], wantKey, modes[m]);
+        if (sc >= 0) {
+          scoredList.push({ el: els[i], score: sc });
+        }
+      }
+      if (scoredList.length > 0 && modes[m] === 'exact') break;
+    }
+    scoredList.sort(function (a, b) { return b.score - a.score; });
+    var uniqueEls = [];
+    for (var k = 0; k < scoredList.length; k++) {
+      if (uniqueEls.indexOf(scoredList[k].el) < 0) uniqueEls.push(scoredList[k].el);
+    }
+    return uniqueEls;
+  }
+
+  function pickBestMapItemElement(root, wantKey, mode) {
+    var list = rankMapItemElements(root, wantKey);
+    return list.length > 0 ? list[0] : null;
+  }
+
+  async function ensureTrainingTabSelectedInMapPopup(popup) {
+    if (!popup) return;
+    try {
+      var tabs = popup.querySelectorAll('button, [role="tab"], [role="button"], .tab, a, span, div');
+      for (var i = 0; i < tabs.length; i++) {
+        var tb = tabs[i];
+        if (!tb || !isVis(tb) || tb.disabled || tb.id === 'vlmAuto') continue;
+        if (tb.children && tb.children.length > 2) continue;
+        var rect = tb.getBoundingClientRect ? tb.getBoundingClientRect() : null;
+        if (!rect || rect.height > 64) continue;
+        var tt = noAccent(tb.textContent || '').replace(/\s+/g, ' ').trim();
+        if (tt === 'luyen cong' || tt === 'ban do luyen cong') {
+          var isSel = (tb.getAttribute('aria-selected') === 'true') ||
+            (tb.classList && (tb.classList.contains('active') || tb.classList.contains('on') || tb.classList.contains('selected')));
+          if (!isSel) {
+            dispatchRealUiClick(tb);
+            await sleep(280);
+          }
+          break;
+        }
+      }
+    } catch (eTabM) {}
+  }
+
+  async function findMapItemAcrossScrolls(popup, wantNA) {
+    var found = rankMapItemElements(popup, wantNA);
+    if (found.length > 0) return found;
+
+    // Nếu danh sách có thanh cuộn dọc bên trong popup, cuộn từng bước để lộ mục bản đồ bị ẩn phía dưới
+    try {
+      var scrollables = [];
+      var all = [popup].concat(Array.prototype.slice.call(popup.querySelectorAll('div, ul, ol, section')));
+      for (var i = 0; i < all.length; i++) {
+        var sEl = all[i];
+        if (sEl && sEl.scrollHeight > sEl.clientHeight + 12) {
+          scrollables.push(sEl);
+        }
+      }
+      for (var s = 0; s < scrollables.length; s++) {
+        var scBox = scrollables[s];
+        var origTop = scBox.scrollTop || 0;
+        var maxTop = Math.max(0, scBox.scrollHeight - scBox.clientHeight);
+        for (var pos = 0; pos <= maxTop; pos += Math.max(80, Math.floor(scBox.clientHeight * 0.7))) {
+          scBox.scrollTop = pos;
+          await sleep(110);
+          found = rankMapItemElements(findOpenMapListContainer() || popup, wantNA);
+          if (found.length > 0) return found;
+        }
+        scBox.scrollTop = origTop;
+      }
+    } catch (eScr) {}
+    return [];
+  }
+
+  function findMapConfirmButton(root) {
+    var searchRoots = [root, document.getElementById('mBody'), document.getElementById('modal'), document.body];
+    for (var s = 0; s < searchRoots.length; s++) {
+      var sr = searchRoots[s];
+      if (!sr || !isVis(sr)) continue;
+      var btns = sr.querySelectorAll('button, [role="button"], .btn, a');
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        if (!b || !isVis(b) || b.disabled || b.id === 'vlmAuto' || b.id === 'mClose') continue;
+        var bt = noAccent(b.textContent || '').replace(/\s+/g, ' ').trim();
+        if (bt === 'vao' || bt === 'vao map' || bt === 'dich chuyen' || bt === 'xac nhan' || bt === 'chon') {
+          return b;
+        }
+      }
+    }
+    return null;
   }
 
   async function selectTrainingMap(I, targetMapName) {
@@ -3662,85 +3877,105 @@ class GameAutoPilot(
       A.lastMapSelected = targetClean;
       return true;
     }
-    if (isUserControlling(4000) || isModalLocked()) return false;
-    if (!ready('select_map', 10000)) return false;
+    if (isUserControlling(4500) || isModalLocked()) return false;
+    if (!ready('select_map', 12000)) return false;
 
     var pickerBtn = findMapPickerButton();
     if (!pickerBtn) return false;
 
     var wantNA = normalizeMapCompareKey(targetClean);
     var groupNA = TRAINING_MAP_GROUPS[noAccent(targetClean)] || '';
+    var beforeBtnText = normalizeMapCompareKey(pickerBtn.textContent || '');
 
     try {
-      try { pickerBtn.click(); } catch (eOpen0) { return false; }
+      dispatchRealUiClick(pickerBtn);
       var popup = null;
-      var waitEnd = Date.now() + 2400;
+      var waitEnd = Date.now() + 3000;
       while (Date.now() < waitEnd) {
         popup = findOpenMapListContainer();
         if (popup) break;
-        await sleep(90);
+        await sleep(150);
       }
       if (!popup) return false;
-      await sleep(160);
+      await sleep(340);
+      popup = findOpenMapListContainer() || popup;
+      await ensureTrainingTabSelectedInMapPopup(popup);
 
-      var findMapItemEl = function (root, wantKey, mode) {
-        var els = root.querySelectorAll('button, [role="button"], .btn, span, div, li, a');
-        for (var i = 0; i < els.length; i++) {
-          var el = els[i];
-          if (!el || !isVis(el) || el.disabled) continue;
-          if (el.children && el.children.length > 3) continue;
-          var t = normalizeMapCompareKey(el.textContent || '');
-          if (!t || t.length > 52) continue;
-          if (mode === 'exact' && t === wantKey) return el;
-          if (mode === 'prefix' && t.indexOf(wantKey) === 0) return el;
-          if (mode === 'contains' && wantKey.length >= 4 && t.indexOf(wantKey) >= 0) return el;
-        }
-        return null;
-      };
-
-      var targetEl = findMapItemEl(popup, wantNA, 'exact');
-      if (!targetEl && groupNA) {
+      var candidates = await findMapItemAcrossScrolls(popup, wantNA);
+      if (candidates.length === 0 && groupNA) {
         var rows = popup.querySelectorAll('div, li, button, span');
         for (var r = 0; r < rows.length; r++) {
           var row = rows[r];
           if (!row || !isVis(row)) continue;
           var rt = noAccent(row.textContent || '');
-          if (rt.indexOf(groupNA) >= 0 && rt.length < 110) {
-            var toggleBtn = row.querySelector('button, span, [role="button"]');
+          if (rt.indexOf(groupNA) >= 0 && rt.length < 120) {
+            var toggleBtn = row.querySelector('button, span, [role="button"]') || row;
             try { if (row.scrollIntoView) row.scrollIntoView({ block: 'center' }); } catch (eS1) {}
-            try { (toggleBtn || row).click(); } catch (eExp) {}
-            await sleep(260);
+            await sleep(200);
+            dispatchRealUiClick(toggleBtn);
+            await sleep(480);
             popup = findOpenMapListContainer() || popup;
             break;
           }
         }
-        targetEl = findMapItemEl(popup, wantNA, 'exact');
+        candidates = await findMapItemAcrossScrolls(popup, wantNA);
       }
 
-      if (!targetEl) targetEl = findMapItemEl(popup, wantNA, 'prefix');
-      if (!targetEl) targetEl = findMapItemEl(popup, wantNA, 'contains');
-
-      if (targetEl) {
-        try { if (targetEl.scrollIntoView) targetEl.scrollIntoView({ block: 'center' }); } catch (eS2) {}
-        await sleep(100);
-        try { targetEl.click(); } catch (eClkMap) {}
-        await sleep(380);
-        A.lastMapSelected = targetClean;
-        note('🗺️ Chuyển sang map Luyện Công: ' + targetClean);
-        var stillOpen = findOpenMapListContainer();
-        if (stillOpen) {
-          var closeBtn = stillOpen.querySelector('#mClose, .close, [data-close], button[aria-label*="Đóng" i], button[aria-label*="Close" i]');
-          if (closeBtn && isVis(closeBtn)) {
-            try { closeBtn.click(); } catch (eCloseX) {}
-          } else if (pickerBtn && isVis(pickerBtn) && findOpenMapListContainer()) {
-            try { pickerBtn.click(); } catch (eCloseM) {}
-          }
+      if (candidates.length === 0) {
+        await sleep(200);
+        if (findOpenMapListContainer() && pickerBtn && isVis(pickerBtn)) {
+          dispatchRealUiClick(pickerBtn);
         }
+        return false;
+      }
+
+      var switched = false;
+      var maxTry = Math.min(candidates.length, 3);
+      for (var cIdx = 0; cIdx < maxTry; cIdx++) {
+        var itemEl = candidates[cIdx];
+        if (!itemEl || !itemEl.isConnected) continue;
+        try { if (itemEl.scrollIntoView) itemEl.scrollIntoView({ block: 'center' }); } catch (eS2) {}
+        await sleep(220);
+        dispatchRealUiClick(itemEl);
+        await sleep(300);
+
+        var confirmMapBtn = findMapConfirmButton(findOpenMapListContainer() || popup);
+        if (confirmMapBtn) {
+          await sleep(160);
+          dispatchRealUiClick(confirmMapBtn);
+        }
+        await sleep(650);
+
+        var afterBtnText = pickerBtn && isVis(pickerBtn) ? normalizeMapCompareKey(pickerBtn.textContent || '') : '';
+        var curPopupNow = findOpenMapListContainer();
+        switched = isAlreadyOnTrainingMap(I, targetClean) ||
+          (afterBtnText && afterBtnText !== beforeBtnText && afterBtnText.length >= 3) ||
+          (!curPopupNow && !!afterBtnText);
+
+        if (switched) break;
+      }
+
+      var stillOpen = findOpenMapListContainer();
+      if (stillOpen) {
+        var closeBtn = stillOpen.querySelector('#mClose, .close, [data-close], button[aria-label*="Đóng" i], button[aria-label*="Close" i]');
+        if (closeBtn && isVis(closeBtn)) {
+          dispatchRealUiClick(closeBtn);
+          await sleep(200);
+        } else if (pickerBtn && isVis(pickerBtn) && findOpenMapListContainer()) {
+          dispatchRealUiClick(pickerBtn);
+          await sleep(200);
+        }
+      }
+
+      if (switched) {
+        A.lastMapSelected = targetClean;
+        note('🗺️ Đã chuyển sang map Luyện Công: ' + targetClean);
         return true;
       }
-      if (findOpenMapListContainer() && pickerBtn && isVis(pickerBtn)) {
-        try { pickerBtn.click(); } catch (eCloseM2) {}
-      }
+
+      // Chưa xác nhận đổi map: đặt cooldown ngắn (6s) để quét lại và bấm chuẩn ở nhịp sau
+      A.cool.select_map = Date.now() + 6000;
+      return false;
     } catch (eMapSel) {}
     return false;
   }
@@ -4103,10 +4338,11 @@ class GameAutoPilot(
         var stDoneA = !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
         var pbDoneA = !(A.cfg.pb && !pbXong());
         var curM = readDomModeFallback() || Iafter.mode || 'farm';
+        var alreadySelectedThisSession = (A.lastMapSelected && normalizeMapCompareKey(A.lastMapSelected) === normalizeMapCompareKey(A.cfg.farmMap));
         if (!A.cfg.thapNeDon && (A.cfg.afterDailyFarm || A.cfg.afterDailyEnabled) &&
             !A.cfg.thap && A.cfg.farmMap && dtDoneA && stDoneA && pbDoneA &&
             curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
-            !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
+            !alreadySelectedThisSession && !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
         }
       } catch (eMapForce) {}
