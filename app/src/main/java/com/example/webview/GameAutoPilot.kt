@@ -383,7 +383,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-44"
+        const val SCRIPT_VER = "vlmauto-45"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -3498,7 +3498,7 @@ class GameAutoPilot(
     }
   }
 
-  // Danh sách nhóm bản đồ luyện công (khớp chính xác từng tên trong game từ Cấp 1-10 đến Cấp 130-140)
+  // Danh sách nhóm bản đồ luyện công & thư mục con cấp độ / khu vực trong game
   var TRAINING_MAP_GROUPS = {
     'ba lang huyen': '',
     'hoa son': 'hoa son',
@@ -3545,6 +3545,7 @@ class GameAutoPilot(
   function normalizeMapCompareKey(raw) {
     return noAccent(raw || '')
       .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/\([^)]*\)/g, ' ')
       .replace(/\bc[aấ]p\s*\d+[\s–-]*\d*\b/gi, ' ')
       .replace(/^[+\-•·*>,\s]+/, '')
       .replace(/\.+$/, '')
@@ -3552,69 +3553,104 @@ class GameAutoPilot(
       .trim();
   }
 
-  function invokeInlineOrClickableChain(el) {
+  function simulateMousePointerClick(el) {
     if (!el) return false;
-    var fired = false;
+    var ok = false;
     try {
       var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-      var cx = rect ? Math.round(rect.left + rect.width * 0.5) : 0;
-      var cy = rect ? Math.round(rect.top + rect.height * 0.5) : 0;
+      var hasRect = !!(rect && rect.width > 0 && rect.height > 0);
+      var cx = hasRect ? Math.round(rect.left + rect.width * 0.5) : 10;
+      var cy = hasRect ? Math.round(rect.top + rect.height * 0.5) : 10;
 
       if (typeof el.focus === 'function') {
-        try { el.focus({ preventScroll: true }); } catch (eFoc) { try { el.focus(); } catch (eF2) {} }
+        try { el.focus({ preventScroll: true }); } catch (eF1) { try { el.focus(); } catch (eF2) {} }
       }
 
-      if (typeof PointerEvent === 'function' && rect) {
-        el.dispatchEvent(new PointerEvent('pointerdown', {
-          bubbles: true, cancelable: true, composed: true,
-          clientX: cx, clientY: cy, button: 0, buttons: 1,
-          pointerId: 1, pointerType: 'mouse', isPrimary: true
-        }));
+      if (typeof PointerEvent === 'function') {
+        try {
+          el.dispatchEvent(new PointerEvent('pointerover', {
+            view: window, bubbles: true, cancelable: true, composed: true,
+            clientX: cx, clientY: cy, button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+          }));
+          el.dispatchEvent(new PointerEvent('pointerenter', {
+            view: window, bubbles: false, cancelable: false, composed: true,
+            clientX: cx, clientY: cy, button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+          }));
+          el.dispatchEvent(new PointerEvent('pointerdown', {
+            view: window, bubbles: true, cancelable: true, composed: true,
+            clientX: cx, clientY: cy, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true
+          }));
+        } catch (eP1) {}
       }
-      el.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true, cancelable: true, composed: true,
-        clientX: cx, clientY: cy, button: 0, buttons: 1
-      }));
-      if (typeof PointerEvent === 'function' && rect) {
-        el.dispatchEvent(new PointerEvent('pointerup', {
-          bubbles: true, cancelable: true, composed: true,
-          clientX: cx, clientY: cy, button: 0, buttons: 0,
-          pointerId: 1, pointerType: 'mouse', isPrimary: true
-        }));
-      }
-      el.dispatchEvent(new MouseEvent('mouseup', {
-        bubbles: true, cancelable: true, composed: true,
+
+      el.dispatchEvent(new MouseEvent('mouseover', {
+        view: window, bubbles: true, cancelable: true, composed: true,
         clientX: cx, clientY: cy, button: 0, buttons: 0
       }));
+      el.dispatchEvent(new MouseEvent('mouseenter', {
+        view: window, bubbles: false, cancelable: false, composed: true,
+        clientX: cx, clientY: cy, button: 0, buttons: 0
+      }));
+      el.dispatchEvent(new MouseEvent('mousedown', {
+        view: window, bubbles: true, cancelable: true, composed: true,
+        clientX: cx, clientY: cy, button: 0, buttons: 1
+      }));
+
+      if (typeof PointerEvent === 'function') {
+        try {
+          el.dispatchEvent(new PointerEvent('pointerup', {
+            view: window, bubbles: true, cancelable: true, composed: true,
+            clientX: cx, clientY: cy, button: 0, buttons: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true
+          }));
+        } catch (eP2) {}
+      }
+
+      el.dispatchEvent(new MouseEvent('mouseup', {
+        view: window, bubbles: true, cancelable: true, composed: true,
+        clientX: cx, clientY: cy, button: 0, buttons: 0
+      }));
+
       if (typeof el.click === 'function') {
         el.click();
-        fired = true;
-      } else {
-        el.dispatchEvent(new MouseEvent('click', {
-          bubbles: true, cancelable: true, composed: true,
-          clientX: cx, clientY: cy, button: 0, buttons: 0
-        }));
-        fired = true;
       }
+      el.dispatchEvent(new MouseEvent('click', {
+        view: window, bubbles: true, cancelable: true, composed: true,
+        clientX: cx, clientY: cy, button: 0, buttons: 0
+      }));
+
       if (typeof el.onclick === 'function') {
-        try { el.onclick.call(el, new MouseEvent('click', { bubbles: true, cancelable: true })); fired = true; } catch (eOn1) {}
+        try { el.onclick.call(el, new MouseEvent('click', { view: window, bubbles: true, cancelable: true, clientX: cx, clientY: cy })); } catch (eInline) {}
       }
-    } catch (eClk) {
-      try { el.click(); fired = true; } catch (eFb) {}
+      ok = true;
+    } catch (eSim) {
+      try { if (typeof el.click === 'function') { el.click(); ok = true; } } catch (eSimFb) {}
     }
-    return fired;
+    return ok;
   }
 
   function dispatchRealUiClick(el) {
     if (!el) return false;
-    var ok = invokeInlineOrClickableChain(el);
+    var ok = simulateMousePointerClick(el);
     try {
-      var parentBtn = el.closest ? el.closest('button, [role="button"], .btn, li, a, .map-item, .qrow, .item, [data-map], [onclick]') : null;
-      if (parentBtn && parentBtn !== el && isVis(parentBtn) && !parentBtn.disabled) {
-        invokeInlineOrClickableChain(parentBtn);
-        ok = true;
+      var cur = el.parentElement;
+      var depth = 0;
+      while (cur && cur !== document.body && depth < 4) {
+        var tag = (cur.tagName || '').toUpperCase();
+        var hasClickAttr = cur.hasAttribute && (
+          cur.hasAttribute('onclick') || cur.hasAttribute('data-map') ||
+          cur.hasAttribute('data-id') || cur.hasAttribute('data-value') ||
+          cur.getAttribute('role') === 'button'
+        );
+        if (tag === 'BUTTON' || tag === 'A' || tag === 'LI' || hasClickAttr || typeof cur.onclick === 'function') {
+          if (isVis(cur) && !cur.disabled) {
+            simulateMousePointerClick(cur);
+            ok = true;
+          }
+        }
+        cur = cur.parentElement;
+        depth++;
       }
-    } catch (ePar) {}
+    } catch (eAnc) {}
     return ok;
   }
 
@@ -3684,18 +3720,19 @@ class GameAutoPilot(
         if (!pel || !isVis(pel)) continue;
         var ptxt = noAccent(pel.textContent || '');
         if (ptxt.indexOf('ban do luyen cong') >= 0 || ptxt.indexOf('chon ban do') >= 0 ||
+            ptxt.indexOf('danh sach ban do') >= 0 || ptxt.indexOf('ban do') >= 0 ||
             (ptxt.indexOf('ba lang huyen') >= 0 && (ptxt.indexOf('hoa son') >= 0 || ptxt.indexOf('cap 1') >= 0))) {
           return pel;
         }
       }
       var cands = document.querySelectorAll('.popup, .modal, [role="dialog"], div');
-      var cap = Math.min(cands.length, 380);
+      var cap = Math.min(cands.length, 420);
       for (var i = 0; i < cap; i++) {
         var el = cands[i];
-        if (!el || !isVis(el)) continue;
+        if (!el || !isVis(el) || el.id === 'vlmAuto') continue;
         var txt = noAccent(el.textContent || '');
-        var hasHeader = txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0;
-        var hasMaps = (txt.indexOf('ba lang huyen') >= 0 && (txt.indexOf('hoa son') >= 0 || txt.indexOf('cap 1') >= 0));
+        var hasHeader = txt.indexOf('ban do luyen cong') >= 0 || txt.indexOf('chon ban do') >= 0 || txt.indexOf('danh sach ban do') >= 0;
+        var hasMaps = (txt.indexOf('ba lang huyen') >= 0 && (txt.indexOf('hoa son') >= 0 || txt.indexOf('cap 1') >= 0 || txt.indexOf('kiem cac') >= 0));
         if (hasHeader || hasMaps) {
           if (el.children && el.children.length > 0) return el;
         }
@@ -3732,41 +3769,42 @@ class GameAutoPilot(
     if (!el || !isVis(el) || el.disabled) return -1;
     if (el.id === 'vlmAuto' || el.id === 'mswBtn' || el.id === 'mClose') return -1;
     var childCount = el.children ? el.children.length : 0;
-    if (childCount > 8) return -1;
+    if (childCount > 10) return -1;
 
     var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-    if (!rect || rect.width < 12 || rect.height < 8) return -1;
-    if (rect.height > 150 || rect.width > 560) return -1;
+    if (!rect || rect.width < 10 || rect.height < 6) return -1;
+    if (rect.height > 180 || rect.width > 640) return -1;
 
     var rawText = (el.textContent || '').trim();
-    if (!rawText || rawText.length > 96) return -1;
+    if (!rawText || rawText.length > 110) return -1;
 
     var rawNA = noAccent(rawText).replace(/\s+/g, ' ').trim();
-    if (rawNA.indexOf('ban do luyen cong') === 0 || rawNA.indexOf('chon ban do') === 0) return -1;
+    if (rawNA.indexOf('ban do luyen cong') === 0 || rawNA.indexOf('chon ban do') === 0 || rawNA.indexOf('danh sach ban do') === 0) return -1;
     if (/^cap\s*\d+[\s–-]*\d*$/i.test(rawNA)) return -1;
 
     var t = normalizeMapCompareKey(rawText);
-    if (!t || t.length < 2 || t.length > 64) return -1;
+    if (!t || t.length < 2 || t.length > 72) return -1;
 
     var matched = false;
     var baseScore = 0;
     if (mode === 'exact') {
       matched = (t === wantKey);
-      baseScore = 320;
+      baseScore = 340;
     } else if (mode === 'prefix') {
       matched = (t.indexOf(wantKey) === 0 && (t.length === wantKey.length || t.charAt(wantKey.length) === ' '));
-      baseScore = 240;
+      baseScore = 260;
     } else if (mode === 'contains') {
       matched = (wantKey.length >= 3 && t.indexOf(wantKey) >= 0);
-      baseScore = 160;
+      baseScore = 170;
     }
     if (!matched) return -1;
 
     var tag = (el.tagName || '').toUpperCase();
-    if (tag === 'BUTTON' || el.getAttribute('role') === 'button' || tag === 'A') baseScore += 40;
+    if (tag === 'BUTTON' || el.getAttribute('role') === 'button' || tag === 'A' || tag === 'LI') baseScore += 45;
+    if (el.hasAttribute && (el.hasAttribute('onclick') || el.hasAttribute('data-map') || el.hasAttribute('data-id'))) baseScore += 35;
     if (childCount === 0) baseScore += 25;
-    else if (childCount <= 3) baseScore += 15;
-    if (rect.height <= 72) baseScore += 15;
+    else if (childCount <= 4) baseScore += 15;
+    if (rect.height <= 80) baseScore += 15;
 
     return baseScore;
   }
@@ -3774,7 +3812,7 @@ class GameAutoPilot(
   function rankMapItemElements(root, wantKey) {
     if (!root) return [];
     var modes = ['exact', 'prefix', 'contains'];
-    var els = root.querySelectorAll('button, [role="button"], .btn, span, div, li, a');
+    var els = root.querySelectorAll('button, [role="button"], .btn, span, div, li, a, tr, td, p');
     var scoredList = [];
     for (var m = 0; m < modes.length; m++) {
       for (var i = 0; i < els.length; i++) {
@@ -3807,14 +3845,14 @@ class GameAutoPilot(
         if (!tb || !isVis(tb) || tb.disabled || tb.id === 'vlmAuto') continue;
         if (tb.children && tb.children.length > 2) continue;
         var rect = tb.getBoundingClientRect ? tb.getBoundingClientRect() : null;
-        if (!rect || rect.height > 64) continue;
+        if (!rect || rect.height > 72) continue;
         var tt = noAccent(tb.textContent || '').replace(/\s+/g, ' ').trim();
         if (tt === 'luyen cong' || tt === 'ban do luyen cong') {
           var isSel = (tb.getAttribute('aria-selected') === 'true') ||
             (tb.classList && (tb.classList.contains('active') || tb.classList.contains('on') || tb.classList.contains('selected')));
           if (!isSel) {
             dispatchRealUiClick(tb);
-            await sleep(280);
+            await sleep(300);
           }
           break;
         }
@@ -3822,29 +3860,97 @@ class GameAutoPilot(
     } catch (eTabM) {}
   }
 
-  async function findMapItemAcrossScrolls(popup, wantNA) {
-    var found = rankMapItemElements(popup, wantNA);
-    if (found.length > 0) return found;
-
-    // Nếu danh sách có thanh cuộn dọc bên trong popup, cuộn từng bước để lộ mục bản đồ bị ẩn phía dưới
+  function collectScrollContainers(root) {
+    var scrollables = [];
+    if (!root) return scrollables;
     try {
-      var scrollables = [];
-      var all = [popup].concat(Array.prototype.slice.call(popup.querySelectorAll('div, ul, ol, section')));
+      var all = [root].concat(Array.prototype.slice.call(root.querySelectorAll('div, ul, ol, section, tbody')));
       for (var i = 0; i < all.length; i++) {
         var sEl = all[i];
-        if (sEl && sEl.scrollHeight > sEl.clientHeight + 12) {
+        if (!sEl || !isVis(sEl)) continue;
+        if (sEl.scrollHeight > sEl.clientHeight + 8) {
           scrollables.push(sEl);
         }
       }
+    } catch (eColSc) {}
+    return scrollables;
+  }
+
+  async function expandSubFoldersInMapPopup(popup, wantNA, groupNA) {
+    if (!popup) return false;
+    var expandedAny = false;
+    try {
+      var keysToOpen = [];
+      if (groupNA) keysToOpen.push(normalizeMapCompareKey(groupNA));
+      if (wantNA) keysToOpen.push(wantNA);
+
+      var rows = popup.querySelectorAll('div, li, button, span, tr, section');
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        if (!row || !isVis(row) || row.id === 'vlmAuto') continue;
+        var rect = row.getBoundingClientRect ? row.getBoundingClientRect() : null;
+        if (!rect || rect.height > 140 || rect.width > 640) continue;
+        var rt = noAccent(row.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!rt || rt.length > 130) continue;
+
+        var matchesFolder = false;
+        for (var k = 0; k < keysToOpen.length; k++) {
+          var kw = keysToOpen[k];
+          if (kw && kw.length >= 2 && rt.indexOf(kw) >= 0) {
+            matchesFolder = true;
+            break;
+          }
+        }
+        var hasExpandMarker = (rt.indexOf('+') === 0 || rt.indexOf('▸') >= 0 || rt.indexOf('▶') >= 0 || rt.indexOf('▾') >= 0 || rt.indexOf('▼') >= 0 || /cap\s*\d+/i.test(rt));
+        if (matchesFolder && (hasExpandMarker || row.getAttribute('aria-expanded') === 'false' || (row.className && /fold|group|folder|collapse|expand|header|cat/i.test(String(row.className))))) {
+          var toggleBtn = row.querySelector('button, [role="button"], .toggle, .arrow, span') || row;
+          try { if (row.scrollIntoView) row.scrollIntoView({ block: 'center' }); } catch (eScF) {}
+          await sleep(160);
+          dispatchRealUiClick(toggleBtn);
+          await sleep(360);
+          expandedAny = true;
+        }
+      }
+    } catch (eExp) {}
+    return expandedAny;
+  }
+
+  async function findMapItemAcrossScrolls(popup, wantNA, groupNA) {
+    var curRoot = findOpenMapListContainer() || popup;
+    var found = rankMapItemElements(curRoot, wantNA);
+    if (found.length > 0) return found;
+
+    var didExpand = await expandSubFoldersInMapPopup(curRoot, wantNA, groupNA);
+    if (didExpand) {
+      curRoot = findOpenMapListContainer() || curRoot;
+      found = rankMapItemElements(curRoot, wantNA);
+      if (found.length > 0) return found;
+    }
+
+    try {
+      var scrollables = collectScrollContainers(curRoot);
       for (var s = 0; s < scrollables.length; s++) {
         var scBox = scrollables[s];
         var origTop = scBox.scrollTop || 0;
         var maxTop = Math.max(0, scBox.scrollHeight - scBox.clientHeight);
-        for (var pos = 0; pos <= maxTop; pos += Math.max(80, Math.floor(scBox.clientHeight * 0.7))) {
-          scBox.scrollTop = pos;
-          await sleep(110);
-          found = rankMapItemElements(findOpenMapListContainer() || popup, wantNA);
+        var stepPx = Math.max(64, Math.floor(scBox.clientHeight * 0.65));
+        for (var pos = 0; pos <= maxTop + stepPx; pos += stepPx) {
+          var targetPos = Math.min(pos, maxTop);
+          scBox.scrollTop = targetPos;
+          try { scBox.dispatchEvent(new Event('scroll', { bubbles: true })); } catch (eEvSc) {}
+          await sleep(130);
+
+          var activeRoot = findOpenMapListContainer() || scBox;
+          found = rankMapItemElements(activeRoot, wantNA);
           if (found.length > 0) return found;
+
+          if (await expandSubFoldersInMapPopup(activeRoot, wantNA, groupNA)) {
+            await sleep(220);
+            activeRoot = findOpenMapListContainer() || activeRoot;
+            found = rankMapItemElements(activeRoot, wantNA);
+            if (found.length > 0) return found;
+          }
+          if (targetPos >= maxTop) break;
         }
         scBox.scrollTop = origTop;
       }
@@ -3862,7 +3968,7 @@ class GameAutoPilot(
         var b = btns[i];
         if (!b || !isVis(b) || b.disabled || b.id === 'vlmAuto' || b.id === 'mClose') continue;
         var bt = noAccent(b.textContent || '').replace(/\s+/g, ' ').trim();
-        if (bt === 'vao' || bt === 'vao map' || bt === 'dich chuyen' || bt === 'xac nhan' || bt === 'chon') {
+        if (bt === 'vao' || bt === 'vao map' || bt === 'vao ban do' || bt === 'dich chuyen' || bt === 'xac nhan' || bt === 'chon') {
           return b;
         }
       }
@@ -3878,7 +3984,7 @@ class GameAutoPilot(
       return true;
     }
     if (isUserControlling(4500) || isModalLocked()) return false;
-    if (!ready('select_map', 12000)) return false;
+    if (!ready('select_map', 10000)) return false;
 
     var pickerBtn = findMapPickerButton();
     if (!pickerBtn) return false;
@@ -3890,37 +3996,18 @@ class GameAutoPilot(
     try {
       dispatchRealUiClick(pickerBtn);
       var popup = null;
-      var waitEnd = Date.now() + 3000;
+      var waitEnd = Date.now() + 3200;
       while (Date.now() < waitEnd) {
         popup = findOpenMapListContainer();
         if (popup) break;
         await sleep(150);
       }
       if (!popup) return false;
-      await sleep(340);
+      await sleep(360);
       popup = findOpenMapListContainer() || popup;
       await ensureTrainingTabSelectedInMapPopup(popup);
 
-      var candidates = await findMapItemAcrossScrolls(popup, wantNA);
-      if (candidates.length === 0 && groupNA) {
-        var rows = popup.querySelectorAll('div, li, button, span');
-        for (var r = 0; r < rows.length; r++) {
-          var row = rows[r];
-          if (!row || !isVis(row)) continue;
-          var rt = noAccent(row.textContent || '');
-          if (rt.indexOf(groupNA) >= 0 && rt.length < 120) {
-            var toggleBtn = row.querySelector('button, span, [role="button"]') || row;
-            try { if (row.scrollIntoView) row.scrollIntoView({ block: 'center' }); } catch (eS1) {}
-            await sleep(200);
-            dispatchRealUiClick(toggleBtn);
-            await sleep(480);
-            popup = findOpenMapListContainer() || popup;
-            break;
-          }
-        }
-        candidates = await findMapItemAcrossScrolls(popup, wantNA);
-      }
-
+      var candidates = await findMapItemAcrossScrolls(popup, wantNA, groupNA);
       if (candidates.length === 0) {
         await sleep(200);
         if (findOpenMapListContainer() && pickerBtn && isVis(pickerBtn)) {
@@ -3930,21 +4017,21 @@ class GameAutoPilot(
       }
 
       var switched = false;
-      var maxTry = Math.min(candidates.length, 3);
+      var maxTry = Math.min(candidates.length, 4);
       for (var cIdx = 0; cIdx < maxTry; cIdx++) {
         var itemEl = candidates[cIdx];
         if (!itemEl || !itemEl.isConnected) continue;
         try { if (itemEl.scrollIntoView) itemEl.scrollIntoView({ block: 'center' }); } catch (eS2) {}
-        await sleep(220);
+        await sleep(240);
         dispatchRealUiClick(itemEl);
-        await sleep(300);
+        await sleep(320);
 
         var confirmMapBtn = findMapConfirmButton(findOpenMapListContainer() || popup);
         if (confirmMapBtn) {
-          await sleep(160);
+          await sleep(180);
           dispatchRealUiClick(confirmMapBtn);
         }
-        await sleep(650);
+        await sleep(700);
 
         var afterBtnText = pickerBtn && isVis(pickerBtn) ? normalizeMapCompareKey(pickerBtn.textContent || '') : '';
         var curPopupNow = findOpenMapListContainer();
@@ -3973,8 +4060,7 @@ class GameAutoPilot(
         return true;
       }
 
-      // Chưa xác nhận đổi map: đặt cooldown ngắn (6s) để quét lại và bấm chuẩn ở nhịp sau
-      A.cool.select_map = Date.now() + 6000;
+      A.cool.select_map = Date.now() + 5000;
       return false;
     } catch (eMapSel) {}
     return false;
