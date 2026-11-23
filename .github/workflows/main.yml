@@ -21,6 +21,27 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Resolve release version and tag
+        id: resolve_ver
+        shell: bash
+        run: |
+          GRADLE_FILE=$(find . -maxdepth 4 -path "*/app/build.gradle.kts" -type f | head -n 1)
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "Không tìm thấy app/build.gradle.kts" >&2
+            exit 1
+          fi
+          RAW_VER=$(grep -E 'versionName\s*=' "$GRADLE_FILE" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' | tr -d '[:space:]')
+          CLEAN_VER=$(printf '%s' "$RAW_VER" | sed -E 's/-test$//I; s/^[vV]//')
+          if [ -z "$CLEAN_VER" ]; then
+            echo "Không đọc được versionName hợp lệ từ $GRADLE_FILE" >&2
+            exit 1
+          fi
+          TAG_NAME="v${CLEAN_VER}"
+          RELEASE_NAME="Vo Lam Idle v${CLEAN_VER}"
+          echo "TAG_NAME=${TAG_NAME}" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=${RELEASE_NAME}" >> "$GITHUB_ENV"
+          echo "Resolved -> TAG_NAME=${TAG_NAME} | RELEASE_NAME=${RELEASE_NAME}"
+
       - name: Decode release keystore
         shell: pwsh
         env:
@@ -67,8 +88,8 @@ jobs:
       - name: Publish Release APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v5.4.13
-          name: "Vo Lam Idle v5.4.13"
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_NAME }}
           files: "**/app/build/outputs/apk/release/*.apk"
           make_latest: true
         env:
