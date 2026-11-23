@@ -345,7 +345,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-53"
+        const val SCRIPT_VER = "vlmauto-54"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1320,7 +1320,7 @@ class GameAutoPilot(
         (document.head || document.documentElement).appendChild(st);
       }
       if (st.dataset) st.dataset.ver = '3';
-      st.textContent =
+      st.textContent = false
         'html.__vlm-stealth #modal, html.__vlm-stealth #modal *, ' +
         'html.__vlm-stealth #cModal, html.__vlm-stealth #cModal *, ' +
         'html.__vlm-stealth #cfModal, html.__vlm-stealth #cfModal *, ' +
@@ -4410,9 +4410,9 @@ class GameAutoPilot(
     }
   }
 
-  // =========================================================================
+  // ========================================================================= false
   // LEO THÁP: LẤY TỌA ĐỘ TRUNG TÂM MAP LÀM ĐIỂM TẬP TRUNG, GIỮ AUTO GAME BẬT
-  // =========================================================================
+  // ========================================================================= false
   // Chỉ dùng phím mũi tên điều hướng hoặc joystick (KHÔNG gửi W/A/S/D hay click canvas để tránh đổi chiêu)
   var ORBIT_KEY_GROUPS = {
     up: [{ key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 }],
