@@ -345,7 +345,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-52"
+        const val SCRIPT_VER = "vlmauto-53"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1100,7 +1100,7 @@ class GameAutoPilot(
       A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
       A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
       A.cfg.farmMap = String(A.cfg.farmMap || '').trim();
-      if (A.cfg.afterDailyFarm) A.cfg.thap = false;
+      if (A.cfg.afterDailyFarm) A.cfg.thap = false
       A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
       A.cfg.thapNeDon = !!A.cfg.thapNeDon;
       A.cfg.thapNeDonStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
