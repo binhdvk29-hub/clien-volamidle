@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-75"
+        const val SCRIPT_VER = "vlmauto-76"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1873,7 +1873,8 @@ class GameAutoPilot(
     return parts.join(' ');
   }
 
-  // Tra ve ca trang thai bat/tat lan thoi gian con lai (ms) cua tung vat pham tieu hao  function scanHudBuffs(I) {
+  // Tra ve ca trang thai bat/tat lan thoi gian con lai (ms) cua tung vat pham tieu hao
+  function scanHudBuffs(I) {
     var found = { ttl: false, tt2: false, qht: false, rem: { ttl: 0, tt2: 0, qht: 0 } };
     var recordBuff = function (kind, ms) {
       if (!kind) return;
@@ -4665,7 +4666,8 @@ class GameAutoPilot(
       return false;
     }
 
-    // 3. UU TIEN KHUNG GIO: 4 moc Boss Hoang Kim (12:00, 15:30, 19:30, 22:00)    var activeBossSlot = forceOnlyTower ? null : getActiveBossHkSlot();
+    // 3. UU TIEN KHUNG GIO: 4 moc Boss Hoang Kim (12:00, 15:30, 19:30, 22:00)
+    var activeBossSlot = forceOnlyTower ? null : getActiveBossHkSlot();
     var savedBossPrev = bossHkPrevGet();
     if (activeBossSlot) {
       if (!savedBossPrev && mode && mode !== 'farm') {
@@ -4838,7 +4840,8 @@ class GameAutoPilot(
         A.cool.tower_reenter = Date.now() + 5500;
         await ensureReenterTower();
         note('Leo Thap (sau hoat dong): tu vao Thap');
-      }    } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
+      }
+    } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
       if (I.dg || I.sat || !ranh() || !ready('mode_restore', 8000)) return;
       if (await switchMode(prev)) {
         prevSet(null);
@@ -4937,7 +4940,8 @@ class GameAutoPilot(
   // =========================================================================
   // LEO THAP: LAY TOA DO TRUNG TAM MAP LAM DIEM TAP TRUNG, GIU AUTO GAME BAT
   // =========================================================================
-  // Chi dung phim mui ten dieu huong hoac joystick (KHONG gui W/A/S/D hay click canvas de tranh doi chieu)  var ORBIT_KEY_GROUPS = {
+  // Chi dung phim mui ten dieu huong hoac joystick (KHONG gui W/A/S/D hay click canvas de tranh doi chieu)
+  var ORBIT_KEY_GROUPS = {
     up: [{ key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 }],
     down: [{ key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 }],
     left: [{ key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 }],
