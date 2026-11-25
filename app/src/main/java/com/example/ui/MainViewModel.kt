@@ -1,4 +1,4 @@
-package com.example.ui
+﻿package com.example.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -114,6 +114,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isSystemRunning: StateFlow<Boolean> = tabManager.isSystemRunning
     val isMasterAutoRunning: StateFlow<Boolean> = tabManager.isSystemRunning
     val characterStatsList: StateFlow<List<CharacterStats>> = tabManager.characterStatsList
+    val gameLogs: StateFlow<List<String>> = tabManager.gameLogs
 
     init {
         tabManager.onFpsChanged = { newFps -> _fps.value = newFps }
@@ -368,6 +369,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _autoConfigs.value = mutable
         }
         tabManager.updateAutoConfig(tabIndex, json, immediate = enabled)
+    }
+
+    fun clearGameLogs() {
+        tabManager.clearGameLogs()
     }
 
     fun resetAutoDailyCounters(tabIndex: Int) {

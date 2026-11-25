@@ -434,7 +434,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-73"
+        const val SCRIPT_VER = "vlmauto-74"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -726,7 +726,7 @@ class GameAutoPilot(
             runCatching {
                 injectTab(
                     i = tabIndex,
-                    forceFull = false,
+                    forceFull = updated.on,
                     cfgJson = cfgJson,
                     immediate = updated.on,
                     pushEvenIfOff = true
@@ -848,7 +848,7 @@ class GameAutoPilot(
         val needFull = forceFull || installedUrl[i] != url
         val script = if (needFull) {
             installedUrl[i] = url
-            buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate)
+            buildAutoScript(i, cfgJson, if (immediate) 0L else wv.lastTouchTimeMs, immediate)
         } else {
             buildPushScript(cfgJson, if (immediate) 0L else wv.lastTouchTimeMs, immediate)
         }
@@ -1228,7 +1228,9 @@ class GameAutoPilot(
       A.immUntil = nowCfg + 120000;
       A.started = nowCfg - 60000;
       A.saveTriggeredAt = nowCfg;
-      A.saveGraceUntil = nowCfg + 12000;
+      A.saveGraceUntil = nowCfg + 18000;
+      A.cfgSeq = (A.cfgSeq | 0) + 1;
+      note('[Auto] Luu & quet ngay (chiLeoThap=' + (A.cfg.thapNeDon ? 1 : 0) + ', sauHD=' + (A.cfg.thap ? 'LeoThap' : (A.cfg.afterDailyFarm ? 'LuyenCong' : 'Tat')) + ', QHT=' + (A.cfg.qht ? 1 : 0) + ')');
       A.cool = {};
       A.lastMapSelected = '';
       A.pbOut = 0;
@@ -2043,13 +2045,13 @@ class GameAutoPilot(
     var allBtns = document.querySelectorAll('button, [role="button"], [role="tab"], a, .btn, [onclick], #u20bar > *, #tabs > *');
     for (var ai = 0; ai < allBtns.length; ai++) {
       var bt = stripCountText(allBtns[ai].textContent || allBtns[ai].getAttribute('title') || allBtns[ai].getAttribute('aria-label') || '');
-      if (bt === 'hanh trang' || bt === 'tui do' || bt === 'tui') push(allBtns[ai]);
+      if (bt === 'hanh trang' || bt.indexOf('hanh tran') === 0 || bt === 'tui do' || bt === 'tui') push(allBtns[ai]);
     }
     var leafEls = document.querySelectorAll('div, span');
     for (var li = 0; li < leafEls.length; li++) {
       if (leafEls[li].children && leafEls[li].children.length > 3) continue;
       var lt = stripCountText(leafEls[li].textContent || '');
-      if (lt === 'hanh trang' || lt === 'tui do') push(leafEls[li]);
+      if (lt === 'hanh trang' || lt.indexOf('hanh tran') === 0 || lt === 'tui do') push(leafEls[li]);
     }
     return out;
   }
@@ -3158,7 +3160,7 @@ class GameAutoPilot(
         if (!isVis(btns[j]) || btns[j].disabled) continue;
         if (md && md.contains(btns[j])) continue;
         var bt = noAccent(btns[j].textContent || btns[j].getAttribute('title') || btns[j].getAttribute('aria-label') || '');
-        if (bt === 'ky tran cac' || (bt.indexOf('ky tran cac') >= 0 && bt.length <= 24)) {
+        if (bt === 'ky tran cac' || bt.indexOf('ky tran') === 0 || bt === 'ktc' || (bt.indexOf('ky tran cac') >= 0 && bt.length <= 24)) {
           nut = btns[j];
           break;
         }
@@ -4563,7 +4565,7 @@ class GameAutoPilot(
       if (targetMode !== 'tower') {
         try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eSwRel) {}
       }
-      var r = await api('cheDo', { m: targetMode }, 6000);
+      var r = await api('cheDo', { m: targetMode }, 2200);
       if (r && r.ok && r.m === targetMode) {
         ensureGameAutoOn(false);
         return true;
@@ -4720,7 +4722,8 @@ class GameAutoPilot(
     //    (3) Ưu tiên hành động khi hết lượt -> 'farm' (+ Chọn map) hoặc 'tower' (Xa em ra / Bình thường)
     var justSaved = !!(A.saveGraceUntil && now < A.saveGraceUntil);
     var dtMax = (t.max | 0) > 0 ? (t.max | 0) : 200;
-    var dtCon = !forceOnlyTower && A.cfg.dt && lv >= 20 && !t.du && !dtStalled30m &&
+    var hasDtInfo = !!(I && I.ok && I.dt);
+    var dtCon = !forceOnlyTower && hasDtInfo && A.cfg.dt && lv >= 20 && !t.du && !dtStalled30m &&
       ((t.today | 0) < dtMax || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
     var stCon = !forceOnlyTower && A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
     var pldCon = !forceOnlyTower && !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
@@ -4895,7 +4898,7 @@ class GameAutoPilot(
     try {
       var I0 = await info();
       if (!I0) return;
-      try { await cheDo(I0); } catch (eChe) {}
+      try { await cheDo(I0); } catch (eChe) { note('[Loi cheDo] ' + (eChe && eChe.message ? eChe.message : eChe)); }
       if (!A.cfg.on) return;
       try {
         var Iafter = (await info()) || I0;

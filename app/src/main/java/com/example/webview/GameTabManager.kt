@@ -1,4 +1,4 @@
-package com.example.webview
+﻿package com.example.webview
 
 import android.annotation.SuppressLint
 import android.app.ActivityManager
@@ -110,6 +110,28 @@ class GameTabManager(
     )
     val characterStatsList: StateFlow<List<CharacterStats>> = _characterStatsList.asStateFlow()
 
+    private val _gameLogs = MutableStateFlow<List<String>>(emptyList())
+    val gameLogs: StateFlow<List<String>> = _gameLogs.asStateFlow()
+
+    fun appendGameLog(tabIndex: Int, message: String) {
+        val clean = message.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+        if (clean.isEmpty()) return
+        val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val entry = "[$ts] [Tab ${tabIndex + 1}] $clean"
+        mainHandler.post {
+            val next = ArrayList<String>((_gameLogs.value.size + 1).coerceAtMost(251))
+            next.add(entry)
+            next.addAll(_gameLogs.value.take(249))
+            _gameLogs.value = next
+        }
+    }
+
+    fun clearGameLogs() {
+        mainHandler.post {
+            _gameLogs.value = emptyList()
+        }
+    }
+
     private val webViews = arrayOfNulls<KeepAliveWebView>(TabLimits.SLOT_COUNT)
     private val isTabActive = BooleanArray(TabLimits.SLOT_COUNT) { false }
 
@@ -183,6 +205,8 @@ class GameTabManager(
 
     fun saveAutoConfigOnly(tabIndex: Int, json: String?) {
         autoPilot.saveConfigOnly(tabIndex, json)
+        val cfg = autoPilot.currentConfig(tabIndex)
+        appendGameLog(tabIndex, "Luu cau hinh Tab ${tabIndex + 1} (auto=${if (cfg.on) "BAT" else "TAT"}, chiLeoThap=${cfg.thapNeDon}, sauHD=${if (cfg.thap) "LeoThap" else if (cfg.afterDailyFarm) "LuyenCong:" + cfg.farmMap else "Tat"}, QHT=${cfg.qht}/${cfg.qhtMua})")
     }
 
     fun updateAutoConfig(tabIndex: Int, json: String?, immediate: Boolean = true) {
@@ -1629,6 +1653,7 @@ class GameTabManager(
                     lastUpdateEpoch = System.currentTimeMillis()
                 )
                 _characterStatsList.value = currentList
+                appendGameLog(tabIndex, message)
             }
         }
 

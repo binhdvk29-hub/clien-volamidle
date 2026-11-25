@@ -1,4 +1,4 @@
-package com.example
+﻿package com.example
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -180,6 +180,7 @@ fun MainScreen(
 
     val isMasterAutoRunning by viewModel.isMasterAutoRunning.collectAsState()
     val characterStatsList by viewModel.characterStatsList.collectAsState()
+    val gameLogs by viewModel.gameLogs.collectAsState()
     val selectedTabIndex by viewModel.selectedTabIndex.collectAsState()
     val networkData by viewModel.networkData.collectAsState()
     val isDownloading = hasDownloadTraffic(networkData.downloadSpeedFormatted)
@@ -423,6 +424,8 @@ fun MainScreen(
                 isPcMode = isPcMode,
                 onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
                 isTestChannel = viewModel.isTestChannel,
+                gameLogs = gameLogs,
+                onClearGameLogs = { viewModel.clearGameLogs() },
                 updateStatusLabel = when (val u = updateState) {
                     is UpdateCheckState.Checking -> "⏳ Đang kiểm..."
                     is UpdateCheckState.Downloading -> "⬇️ ${u.progressPercent}%"
