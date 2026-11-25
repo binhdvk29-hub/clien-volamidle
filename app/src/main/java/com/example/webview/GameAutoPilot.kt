@@ -1,1355 +1,30 @@
-﻿package com.example.webview
-
-import android.os.Handler
-import android.os.Looper
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.json.JSONObject
-import java.util.Calendar
-import java.util.TimeZone
-
-/**
- * Chuẩn thời gian làm mới hoạt động ngày mới của game theo giờ Việt Nam (GMT+7): 00:00:01,
- * và mốc ngày lịch 00:00:00 GMT+7 cho Mua Thẻ Giao Dịch ưu tiên đầu ngày.
- */
-object VnResetSchedule {
-    private const val VN_OFFSET_MS = 7L * 3600L * 1000L
-    private const val RESET_OFFSET_MS = 1_000L // 00:00:01 GMT+7
-    private const val ONE_DAY_MS = 86_400_000L
-
-    fun vnCalendarDayId(epochMs: Long): String {
-        val shifted = epochMs + VN_OFFSET_MS
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-            timeInMillis = shifted
-        }
-        val year = cal.get(Calendar.YEAR)
-        val month = cal.get(Calendar.MONTH) + 1
-        val day = cal.get(Calendar.DAY_OF_MONTH)
-        return "$year-$month-$day"
-    }
-
-    fun millisUntilMidnight000000(epochMs: Long): Long {
-        val shifted = epochMs + VN_OFFSET_MS
-        val mod = ((shifted % ONE_DAY_MS) + ONE_DAY_MS) % ONE_DAY_MS
-        val remaining = ONE_DAY_MS - mod
-        return if (remaining <= 0L) ONE_DAY_MS else remaining
-    }
-
-    fun vnGameDayId(epochMs: Long): String {
-        val shifted = epochMs + VN_OFFSET_MS - RESET_OFFSET_MS
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-            timeInMillis = shifted
-        }
-        val year = cal.get(Calendar.YEAR)
-        val month = cal.get(Calendar.MONTH) + 1
-        val day = cal.get(Calendar.DAY_OF_MONTH)
-        return "$year-$month-$day"
-    }
-
-    fun millisUntilNextReset(epochMs: Long): Long {
-        val shifted = epochMs + VN_OFFSET_MS - RESET_OFFSET_MS
-        val mod = ((shifted % ONE_DAY_MS) + ONE_DAY_MS) % ONE_DAY_MS
-        val remaining = ONE_DAY_MS - mod
-        return if (remaining <= 0L) ONE_DAY_MS else remaining
-    }
-}
-
-data class TowerMainSkill(
-    val id: String,
-    val sectKey: String,
-    val sectLabel: String,
-    val displayName: String,
-    val combatStyle: String
-)
-
-data class TrainingMapOption(
-    val name: String,
-    val levelRange: String,
-    val groupName: String
-)
-
-data class AutoConfig(
-    val on: Boolean = false,
-    val theGiaoDich: Boolean = false,
-    val dt: Boolean = true,
-    val ldtMua: Boolean = true,
-    val k2k: Int = 0,
-    val pd: Boolean = true,
-    val st: Boolean = true,
-    val lbMua: Int = 0,
-    val knbMua: Int = 0,
-    val knbGiu: Int = 0,
-    val qua: Boolean = true,
-    val khan: Boolean = true,
-    val ttl: Boolean = true,
-    val ttlMua: Boolean = false,
-    val tt2: Boolean = true,
-    val tt2Mua: Boolean = false,
-    val pb: Boolean = true,
-    val afterDailyEnabled: Boolean = false,
-    val afterDailyFarm: Boolean = false,
-    val farmMap: String = "",
-    val thap: Boolean = false,
-    val thapAfterMode: String = THAP_MODE_NORMAL,
-    val thapNeDon: Boolean = false,
-    val thapNeDonStyle: String = ORBIT_AUTO,
-    val thapMainSkill: String = "",
-    val qht: Boolean = false,
-    val qhtMua: Boolean = false,
-    val doiNguyenLieu: Set<String> = emptySet()
-) {
-    fun toJson(): JSONObject {
-        val o = JSONObject()
-        o.put("on", on)
-        o.put("theGiaoDich", theGiaoDich)
-        o.put("dt", dt)
-        o.put("ldtMua", ldtMua)
-        o.put("k2k", k2k)
-        o.put("pd", pd)
-        o.put("st", st)
-        o.put("lbMua", lbMua)
-        o.put("knbMua", knbMua)
-        o.put("knbGiu", knbGiu)
-        o.put("qua", qua)
-        o.put("khan", khan)
-        o.put("ttl", ttl)
-        o.put("ttlMua", ttlMua)
-        o.put("tt2", tt2)
-        o.put("tt2Mua", tt2Mua)
-        o.put("pb", pb)
-        o.put("afterDailyEnabled", afterDailyEnabled)
-        o.put("afterDailyFarm", afterDailyFarm)
-        o.put("farmMap", farmMap)
-        o.put("thap", thap)
-        o.put("thapAfterMode", normalizeThapAfterMode(thapAfterMode))
-        o.put("thapNeDon", thapNeDon)
-        o.put("thapNeDonStyle", normalizeOrbitStyle(thapNeDonStyle))
-        o.put("thapMainSkill", normalizeMainSkillId(thapMainSkill))
-        o.put("qht", qht)
-        o.put("qhtMua", qhtMua)
-
-        val arr = org.json.JSONArray()
-        doiNguyenLieu.forEach { arr.put(it) }
-        o.put("doiNguyenLieu", arr)
-
-        return o
-    }
-
-    fun resolvedOrbitCombatStyle(): String? {
-        return when (normalizeOrbitStyle(thapNeDonStyle)) {
-            ORBIT_MELEE -> ORBIT_MELEE
-            ORBIT_RANGED -> ORBIT_RANGED
-            else -> findMainSkill(thapMainSkill)?.combatStyle
-        }
-    }
-
-    companion object {
-        const val K2K_MAX = 100_000
-        const val LB_MUA_MAX = 100
-        const val KNB_MUA_MAX = 1000
-        const val KNB_GIU_MAX = 10_000_000
-
-        const val ORBIT_AUTO = "AUTO"
-        const val ORBIT_MELEE = "MELEE"
-        const val ORBIT_RANGED = "RANGED"
-
-        const val THAP_MODE_ORBIT = "ORBIT"
-        const val THAP_MODE_NORMAL = "NORMAL"
-
-        fun normalizeThapAfterMode(raw: String?): String {
-            return when (raw?.trim()?.uppercase()) {
-                THAP_MODE_ORBIT -> THAP_MODE_ORBIT
-                else -> THAP_MODE_NORMAL
-            }
-        }
-
-        val ALL_TRAINING_MAPS: List<TrainingMapOption> = listOf(
-            TrainingMapOption("Mạc Bắc Thảo Nguyên", "Cấp 130–140", "Vi sơn đảo"),
-            TrainingMapOption("Vi sơn đảo", "Cấp 130–140", "Vi sơn đảo")
-        )
-
-                fun normalizeAllowed130Map(raw: String?): String {
-            val clean = java.text.Normalizer.normalize((raw ?: "").lowercase().trim(), java.text.Normalizer.Form.NFD)
-                .replace(Regex("[\\p{InCombiningDiacriticalMarks}]"), "")
-                .replace('đ', 'd')
-            if (clean.contains("vi son") || clean.contains("son dao")) return "Vi sơn đảo"
-            return "Mạc Bắc Thảo Nguyên"
-        }
-
-        fun vlmSwipeAndTapMapScript(targetMap: String): String {
-            val safeTarget = targetMap.replace("'", "\\'")
-            return """
-                (function() {
-                    function noAcc(s) {
-                        return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').trim();
-                    }
-                    var want = noAcc('');
-                    if (want.indexOf('Vi sơn đảo') >= 0) want = 'Vi sơn đảo';
-                    else want = 'Mạc Bắc Thảo Nguyên';
-
-                    function realTap(el) {
-                        if (!el) return false;
-                        try { el.scrollIntoView({block: 'center', inline: 'nearest'}); } catch (e) {}
-                        var r = el.getBoundingClientRect();
-                        var cx = r.left + r.width / 2;
-                        var cy = r.top + r.height / 2;
-                        ['pointerdown', 'mousedown', 'touchstart', 'pointerup', 'mouseup', 'touchend', 'click'].forEach(function(evName) {
-                            try {
-                                var ev = new MouseEvent(evName, {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy});
-                                el.dispatchEvent(ev);
-                            } catch (e) {}
-                        });
-                        try { el.click(); } catch (e) {}
-                        return true;
-                    }
-
-                    function scrollListDownStep() {
-                        var nodes = Array.prototype.slice.call(document.querySelectorAll('div, li, button, span, a'));
-                        var scrolled = false;
-                        nodes.forEach(function(n) {
-                            try {
-                                if (n.scrollHeight > n.clientHeight + 24 && n.clientHeight > 60) {
-                                    var before = n.scrollTop;
-                                    n.scrollTop = n.scrollHeight;
-                                    if (n.scrollTop > before) scrolled = true;
-                                }
-                            } catch (e) {}
-                        });
-                        try {
-                            var winBefore = window.scrollY || window.pageYOffset || 0;
-                            window.scrollTo(0, document.body.scrollHeight || 99999);
-                            if ((window.scrollY || 0) > winBefore) scrolled = true;
-                        } catch (e) {}
-                        return scrolled;
-                    }
-
-                    function findMapCandidate() {
-                        var all = Array.prototype.slice.call(document.querySelectorAll('div, li, button, span, a, p'));
-                        var best = null;
-                        var bestScore = -9999;
-                        for (var i = 0; i < all.length; i++) {
-                            var el = all[i];
-                            var txt = (el.innerText || el.textContent || '').trim();
-                            if (!txt || txt.length > 60) continue;
-                            var norm = noAcc(txt);
-                            if (norm.indexOf(want) < 0) continue;
-                            var isGroupHeader = (txt.indexOf('+') >= 0 || txt.indexOf('-') >= 0 || /cap\s*\d+/i.test(norm));
-                            if (isGroupHeader) continue;
-                            var r = el.getBoundingClientRect();
-                            if (r.width <= 0 || r.height <= 0) continue;
-                            var score = 100 - txt.length + (el.tagName === 'BUTTON' || el.tagName === 'LI' ? 20 : 0);
-                            if (score > bestScore) {
-                                bestScore = score;
-                                best = el;
-                            }
-                        }
-                        return best;
-                    }
-
-                    for (var s = 0; s < 6; s++) {
-                        var hit = findMapCandidate();
-                        if (hit) {
-                            realTap(hit);
-                            return 'TAPPED:' + want;
-                        }
-                        scrollListDownStep();
-                    }
-                    scrollListDownStep();
-                    var finalHit = findMapCandidate();
-                    if (finalHit) {
-                        realTap(finalHit);
-                        return 'TAPPED_AFTER_SCROLL:' + want;
-                    }
-                    return 'NOT_FOUND:' + want;
-                })();
-            """.trimIndent()
-        }
-
-        val ALL_9X_SKILLS: List<TowerMainSkill> = listOf(
-            // Thiếu Lâm
-            TowerMainSkill("dat ma do giang", "thieu lam", "Thiếu Lâm", "Đạt Ma Độ Giang", ORBIT_MELEE),
-            TowerMainSkill("hoanh tao thien quan", "thieu lam", "Thiếu Lâm", "Hoành Tảo Thiên Quân", ORBIT_MELEE),
-            TowerMainSkill("vo tuong tram", "thieu lam", "Thiếu Lâm", "Vô Tướng Trảm", ORBIT_RANGED),
-            // Thiên Nhẫn
-            TowerMainSkill("van long kich", "thien nhan", "Thiên Nhẫn", "Vân Long Kích", ORBIT_MELEE),
-            TowerMainSkill("thien ngoai luu tinh", "thien nhan", "Thiên Nhẫn", "Thiên Ngoại Lưu Tinh", ORBIT_RANGED),
-            // Côn Lôn
-            TowerMainSkill("ngao tuyet tieu phong", "con lon", "Côn Lôn", "Ngạo Tuyết Tiêu Phong", ORBIT_RANGED),
-            TowerMainSkill("loi dong cuu thien", "con lon", "Côn Lôn", "Lôi Động Cửu Thiên", ORBIT_RANGED),
-            // Nga Mi
-            TowerMainSkill("tam nga te tuyet", "nga mi", "Nga Mi", "Tam Nga Tề Tuyết", ORBIT_RANGED),
-            TowerMainSkill("phong suong toai anh", "nga mi", "Nga Mi", "Phong Sương Toái Ảnh", ORBIT_RANGED),
-            // Đường Môn
-            TowerMainSkill("bao vu le hoa", "duong mon", "Đường Môn", "Bạo Vũ Lê Hoa", ORBIT_RANGED),
-            TowerMainSkill("nhiep hon nguyet anh", "duong mon", "Đường Môn", "Nhiếp Hồn Nguyệt Ảnh", ORBIT_RANGED),
-            TowerMainSkill("cuu cung phi tinh", "duong mon", "Đường Môn", "Cửu Cung Phi Tinh", ORBIT_RANGED),
-            // Cái Bang
-            TowerMainSkill("phi long tai thien", "cai bang", "Cái Bang", "Phi Long Tại Thiên", ORBIT_RANGED),
-            TowerMainSkill("thien ha vo cau", "cai bang", "Cái Bang", "Thiên Hạ Vô Cẩu", ORBIT_RANGED),
-            // Võ Đang
-            TowerMainSkill("thien dia vo cuc", "vo dang", "Võ Đang", "Thiên Địa Vô Cực", ORBIT_RANGED),
-            TowerMainSkill("nhan kiem hop nhat", "vo dang", "Võ Đang", "Nhân Kiếm Hợp Nhất", ORBIT_MELEE),
-            // Thuý Yên
-            TowerMainSkill("bang tung vo anh", "thuy yen", "Thuý Yên", "Băng Tung Vô Ảnh", ORBIT_RANGED),
-            TowerMainSkill("bang tam tien tu", "thuy yen", "Thuý Yên", "Băng Tâm Tiên Tử", ORBIT_RANGED),
-            // Thiên Vương Bang
-            TowerMainSkill("truy tinh truc nguyet", "thien vuong", "Thiên Vương Bang", "Truy Tinh Trục Nguyệt", ORBIT_MELEE),
-            TowerMainSkill("truy phong quyet", "thien vuong", "Thiên Vương Bang", "Truy Phong Quyết", ORBIT_MELEE),
-            TowerMainSkill("pha thien tram", "thien vuong", "Thiên Vương Bang", "Phá Thiên Trảm", ORBIT_MELEE),
-            // Ngũ Độc
-            TowerMainSkill("am phong thuc cot", "ngu doc", "Ngũ Độc", "Âm Phong Thực Cốt", ORBIT_RANGED),
-            TowerMainSkill("huyen am tram", "ngu doc", "Ngũ Độc", "Huyền Âm Trảm", ORBIT_RANGED)
-        )
-
-        fun normalizeTextKey(raw: String?): String {
-            if (raw.isNullOrBlank()) return ""
-            val nfd = java.text.Normalizer.normalize(raw.lowercase().trim(), java.text.Normalizer.Form.NFD)
-            return nfd.replace(Regex("[\\p{InCombiningDiacriticalMarks}]"), "")
-                .replace('đ', 'd')
-                .replace(Regex("\\s+"), " ")
-                .trim()
-        }
-
-        fun normalizeSectKey(sectRaw: String?): String? {
-            val n = normalizeTextKey(sectRaw)
-            if (n.isEmpty() || n == "chua ro") return null
-            return when {
-                n.contains("thieu lam") -> "thieu lam"
-                n.contains("thien vuong") -> "thien vuong"
-                n.contains("thien nhan") -> "thien nhan"
-                n.contains("con lon") -> "con lon"
-                n.contains("nga mi") || n.contains("nga my") -> "nga mi"
-                n.contains("duong mon") -> "duong mon"
-                n.contains("cai bang") -> "cai bang"
-                n.contains("vo dang") -> "vo dang"
-                n.contains("thuy yen") -> "thuy yen"
-                n.contains("ngu doc") -> "ngu doc"
-                else -> null
-            }
-        }
-
-        fun sectDisplayLabel(sectRaw: String?): String? {
-            val key = normalizeSectKey(sectRaw) ?: return null
-            return ALL_9X_SKILLS.firstOrNull { it.sectKey == key }?.sectLabel
-        }
-
-        fun skills9xForSect(sectRaw: String?): List<TowerMainSkill> {
-            val key = normalizeSectKey(sectRaw) ?: return emptyList()
-            return ALL_9X_SKILLS.filter { it.sectKey == key }
-        }
-
-        fun findMainSkill(rawSkill: String?): TowerMainSkill? {
-            val cleaned = rawSkill?.replace(Regex("\\s*\\([^)]*\\)"), "")
-            val n = normalizeTextKey(cleaned)
-            if (n.isEmpty()) return null
-            // Xác định hoàn toàn theo tên chiêu (không xác định theo vũ khí)
-            return ALL_9X_SKILLS.firstOrNull { skill ->
-                n == skill.id || normalizeTextKey(skill.displayName) == n
-            } ?: ALL_9X_SKILLS.firstOrNull { skill ->
-                n.contains(skill.id)
-            }
-        }
-
-        fun normalizeMainSkillId(rawSkill: String?): String {
-            return findMainSkill(rawSkill)?.id ?: ""
-        }
-
-        fun normalizeOrbitStyle(raw: String?): String {
-            return when (raw?.trim()?.uppercase()) {
-                ORBIT_MELEE -> ORBIT_MELEE
-                ORBIT_RANGED -> ORBIT_RANGED
-                else -> ORBIT_AUTO
-            }
-        }
-
-        private val DEF = AutoConfig()
-
-        fun fromJson(raw: String?): AutoConfig {
-            if (raw.isNullOrBlank()) return DEF
-            val o = try {
-                JSONObject(raw)
-            } catch (_: Exception) {
-                return DEF
-            }
-            val arr = o.optJSONArray("doiNguyenLieu")
-            val nguyenLieuSet = mutableSetOf<String>()
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    arr.optString(i)?.let { if (it.isNotBlank()) nguyenLieuSet.add(it) }
-                }
-            }
-
-            return AutoConfig(
-                on = o.optBoolean("on", DEF.on),
-                theGiaoDich = o.optBoolean("theGiaoDich", DEF.theGiaoDich),
-                dt = o.optBoolean("dt", DEF.dt),
-                ldtMua = o.optBoolean("ldtMua", DEF.ldtMua),
-                k2k = clamp(o.optInt("k2k", DEF.k2k), K2K_MAX),
-                pd = o.optBoolean("pd", DEF.pd),
-                st = o.optBoolean("st", DEF.st),
-                lbMua = clamp(o.optInt("lbMua", DEF.lbMua), LB_MUA_MAX),
-                knbMua = clamp(o.optInt("knbMua", DEF.knbMua), KNB_MUA_MAX),
-                knbGiu = clamp(o.optInt("knbGiu", DEF.knbGiu), KNB_GIU_MAX),
-                qua = o.optBoolean("qua", DEF.qua),
-                khan = o.optBoolean("khan", DEF.khan),
-                ttl = o.optBoolean("ttl", DEF.ttl),
-                ttlMua = o.optBoolean("ttlMua", DEF.ttlMua),
-                tt2 = o.optBoolean("tt2", DEF.tt2),
-                tt2Mua = o.optBoolean("tt2Mua", DEF.tt2Mua),
-                pb = o.optBoolean("pb", DEF.pb),
-                afterDailyEnabled = if (o.has("afterDailyEnabled")) {
-                    o.optBoolean("afterDailyEnabled", DEF.afterDailyEnabled)
-                } else {
-                    o.optBoolean("afterDailyFarm", DEF.afterDailyFarm) || o.optBoolean("thap", DEF.thap)
-                },
-                afterDailyFarm = o.optBoolean("afterDailyFarm", DEF.afterDailyFarm),
-                farmMap = normalizeAllowed130Map(o.optString("farmMap", "Mạc Bắc Thảo Nguyên")),
-                thap = if (o.optBoolean("afterDailyFarm", DEF.afterDailyFarm)) false else o.optBoolean("thap", DEF.thap),
-                thapAfterMode = normalizeThapAfterMode(o.optString("thapAfterMode", DEF.thapAfterMode)),
-                thapNeDon = o.optBoolean("thapNeDon", DEF.thapNeDon),
-                thapNeDonStyle = normalizeOrbitStyle(o.optString("thapNeDonStyle", DEF.thapNeDonStyle)),
-                thapMainSkill = normalizeMainSkillId(o.optString("thapMainSkill", DEF.thapMainSkill)),
-                qht = o.optBoolean("qht", DEF.qht),
-                qhtMua = o.optBoolean("qhtMua", DEF.qhtMua),
-                doiNguyenLieu = nguyenLieuSet
-            )
-        }
-
-        private fun clamp(v: Int, max: Int): Int = if (v < 0) 0 else if (v > max) max else v
-    }
-}
-
-class GameAutoPilot(
-    private val scope: CoroutineScope,
-    private val tabCount: () -> Int,
-    initialConfigJsonForTab: (Int) -> String?,
-    private val webViewAt: (Int) -> KeepAliveWebView?,
-    private val isTabActive: (Int) -> Boolean,
-    private val isSystemRunning: () -> Boolean
-) {
-    companion object {
-        private const val TICK_MS = 25_000L
-        private const val FULL_EVERY = 5L
-        private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-71"
-        const val KNB_NGAY_MAX = 1000
-        const val EV_DHB_MAX = 1
-        const val EV_HB_MAX = 3
-    }
-
-    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
-
-    private val cfgs: Array<AutoConfig> = Array(com.example.model.TabLimits.SLOT_COUNT) { i ->
-        AutoConfig.fromJson(initialConfigJsonForTab(i))
-    }
-
-    private val installedUrl = arrayOfNulls<String>(com.example.model.TabLimits.SLOT_COUNT)
-
-    @Volatile
-    private var lastVnGameDay: String = VnResetSchedule.vnGameDayId(System.currentTimeMillis())
-
-    @Volatile
-    private var lastVnCalendarDay: String = VnResetSchedule.vnCalendarDayId(System.currentTimeMillis())
-
-    private var ticks = 0L
-    private var job: Job? = null
-    private var midnightResetJob: Job? = null
-    private var midnightTradeCardJob: Job? = null
-    private var periodicKnbSweepJob: Job? = null
-    private var periodic7MinSweepJob: Job? = null
-
-    fun isEnabled(tabIndex: Int): Boolean = cfgs.getOrNull(tabIndex)?.on == true
-
-    fun isAnyEnabled(): Boolean = cfgs.any { it.on }
-
-    fun currentConfig(tabIndex: Int): AutoConfig = cfgs.getOrNull(tabIndex) ?: AutoConfig()
-
-    fun start() {
-        if (job?.isActive != true) {
-            job = scope.launch {
-                while (true) {
-                    try {
-                        val now = System.currentTimeMillis()
-                        val currentCalendarDay = VnResetSchedule.vnCalendarDayId(now)
-                        if (currentCalendarDay != lastVnCalendarDay) {
-                            lastVnCalendarDay = currentCalendarDay
-                            triggerMidnight000000OnTabs()
-                        }
-                        val currentVnDay = VnResetSchedule.vnGameDayId(now)
-                        if (currentVnDay != lastVnGameDay) {
-                            lastVnGameDay = currentVnDay
-                            triggerNewVnDayOnTabs()
-                        } else {
-                            tick()
-                        }
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (_: Throwable) {
-                    }
-                    delay(TICK_MS)
-                }
-            }
-        }
-        startMidnightTradeCardScheduler()
-        startMidnightResetScheduler()
-        startPeriodic10MinKnbSweep()
-        startPeriodic7MinSweep()
-    }
-
-    private fun startPeriodic7MinSweep() {
-        if (periodic7MinSweepJob?.isActive == true) return
-        periodic7MinSweepJob = scope.launch {
-            while (true) {
-                delay(SWEEP_7M_MS)
-                try {
-                    if (isSystemRunning() && isAnyEnabled()) {
-                        trigger7MinSweepOnAllTabs()
-                    }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Throwable) {
-                }
-            }
-        }
-    }
-
-    fun trigger7MinSweepOnAllTabs() {
-        mainHandler.post {
-            val total = tabCount().coerceAtMost(installedUrl.size)
-            var delayIdx = 0
-            for (i in 0 until total) {
-                if (!isTabActive(i)) continue
-                val tabCfg = cfgs[i]
-                if (!tabCfg.on) continue
-                val offsetMs = 300L * delayIdx
-                delayIdx++
-                mainHandler.postDelayed({
-                    if (!isTabActive(i)) return@postDelayed
-                    val wv = webViewAt(i) ?: return@postDelayed
-                    val url = wv.url ?: return@postDelayed
-                    if (url == "about:blank") return@postDelayed
-                    val cfgJson = cfgs[i].toJson().toString()
-                    if (installedUrl[i] != url) {
-                        installedUrl[i] = url
-                        runCatching {
-                            wv.evaluateJavascript(
-                                buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate = true),
-                                null
-                            )
-                        }
-                    }
-                    runCatching {
-                        wv.evaluateJavascript(
-                            "(function(){try{var a=window.__vlmAuto;if(a&&a.onSweep7Min)a.onSweep7Min(" + cfgJson + ");else if(a&&a.tick)a.tick();}catch(e){}})();",
-                            null
-                        )
-                    }
-                }, offsetMs)
-            }
-        }
-    }
-
-    private fun startPeriodic10MinKnbSweep() {
-        if (periodicKnbSweepJob?.isActive == true) return
-        periodicKnbSweepJob = scope.launch {
-            while (true) {
-                delay(10L * 60L * 1000L) // Quét đồng bộ 10 phút / lần
-                try {
-                    if (isSystemRunning() && isAnyEnabled()) {
-                        triggerKnbSyncWaveOnAllTabs()
-                    }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Throwable) {
-                }
-            }
-        }
-    }
-
-    fun triggerKnbSyncWaveOnAllTabs() {
-        mainHandler.post {
-            val total = tabCount().coerceAtMost(installedUrl.size)
-            var delayIdx = 0
-            for (i in 0 until total) {
-                if (!isTabActive(i)) continue
-                val tabCfg = cfgs[i]
-                if (!tabCfg.on || tabCfg.knbMua <= 0) continue
-                val offsetMs = 350L * delayIdx
-                delayIdx++
-                mainHandler.postDelayed({
-                    if (!isTabActive(i)) return@postDelayed
-                    val wv = webViewAt(i) ?: return@postDelayed
-                    val url = wv.url ?: return@postDelayed
-                    if (url == "about:blank") return@postDelayed
-                    val cfgJson = cfgs[i].toJson().toString()
-                    if (installedUrl[i] != url) {
-                        installedUrl[i] = url
-                        runCatching {
-                            wv.evaluateJavascript(
-                                buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate = true),
-                                null
-                            )
-                        }
-                    }
-                    runCatching {
-                        wv.evaluateJavascript(
-                            "(function(){try{var a=window.__vlmAuto;if(a&&a.syncKnbNow)a.syncKnbNow();}catch(e){}})();",
-                            null
-                        )
-                    }
-                }, offsetMs)
-            }
-        }
-    }
-
-    private fun startMidnightTradeCardScheduler() {
-        if (midnightTradeCardJob?.isActive == true) return
-        midnightTradeCardJob = scope.launch {
-            while (true) {
-                try {
-                    val waitMs = VnResetSchedule.millisUntilMidnight000000(System.currentTimeMillis()) + 80L
-                    delay(waitMs)
-                    val newCalDay = VnResetSchedule.vnCalendarDayId(System.currentTimeMillis())
-                    if (newCalDay != lastVnCalendarDay) {
-                        lastVnCalendarDay = newCalDay
-                        triggerMidnight000000OnTabs()
-                    }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Throwable) {
-                    delay(5_000L)
-                }
-            }
-        }
-    }
-
-    private fun startMidnightResetScheduler() {
-        if (midnightResetJob?.isActive == true) return
-        midnightResetJob = scope.launch {
-            while (true) {
-                try {
-                    val waitMs = VnResetSchedule.millisUntilNextReset(System.currentTimeMillis()) + 150L
-                    delay(waitMs)
-                    val newDay = VnResetSchedule.vnGameDayId(System.currentTimeMillis())
-                    if (newDay != lastVnGameDay) {
-                        lastVnGameDay = newDay
-                        triggerNewVnDayOnTabs()
-                    }
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Throwable) {
-                    delay(5_000L)
-                }
-            }
-        }
-    }
-
-    private fun triggerMidnight000000OnTabs() {
-        mainHandler.post {
-            for (i in 0 until tabCount().coerceAtMost(installedUrl.size)) {
-                if (!isTabActive(i)) continue
-                val tabCfg = cfgs[i]
-                val wv = webViewAt(i) ?: continue
-                val url = wv.url ?: continue
-                if (url == "about:blank") continue
-                val cfgJson = tabCfg.toJson().toString()
-                if (installedUrl[i] != url) {
-                    installedUrl[i] = url
-                    runCatching {
-                        wv.evaluateJavascript(
-                            buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate = tabCfg.on),
-                            null
-                        )
-                    }
-                }
-                if (tabCfg.on && tabCfg.theGiaoDich && isSystemRunning()) {
-                    runCatching { wv.evaluateJavascript(buildMidnight000000Script(cfgJson), null) }
-                }
-            }
-        }
-    }
-
-    private fun triggerNewVnDayOnTabs() {
-        mainHandler.post {
-            for (i in 0 until tabCount().coerceAtMost(installedUrl.size)) {
-                if (!isTabActive(i)) continue
-                val tabCfg = cfgs[i]
-                val wv = webViewAt(i) ?: continue
-                val url = wv.url ?: continue
-                if (url == "about:blank") continue
-                val cfgJson = tabCfg.toJson().toString()
-                if (installedUrl[i] != url) {
-                    installedUrl[i] = url
-                    runCatching {
-                        wv.evaluateJavascript(
-                            buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate = tabCfg.on),
-                            null
-                        )
-                    }
-                }
-                if (tabCfg.on && isSystemRunning()) {
-                    runCatching { wv.evaluateJavascript(buildNewVnDayScript(cfgJson), null) }
-                }
-            }
-        }
-    }
-
-    fun shutdown() {
-        job?.cancel()
-        job = null
-        midnightResetJob?.cancel()
-        midnightResetJob = null
-        midnightTradeCardJob?.cancel()
-        midnightTradeCardJob = null
-        periodicKnbSweepJob?.cancel()
-        periodicKnbSweepJob = null
-        periodic7MinSweepJob?.cancel()
-        periodic7MinSweepJob = null
-    }
-
-    fun saveConfigOnly(tabIndex: Int, json: String?) {
-        if (tabIndex !in cfgs.indices) return
-        val wasOn = cfgs[tabIndex].on
-        val updated = AutoConfig.fromJson(json)
-        cfgs[tabIndex] = updated
-        // Chỉ đồng bộ xuống WebView nếu tab đang bật tự động sẵn (hoặc vừa bị tắt);
-        // khi tab đang tắt thì chỉ lưu cấu hình, tuyệt đối không kích hoạt chạy auto app.
-        if (!wasOn && !updated.on) return
-        val cfgJson = updated.toJson().toString()
-        mainHandler.post {
-            runCatching {
-                injectTab(
-                    i = tabIndex,
-                    forceFull = false,
-                    cfgJson = cfgJson,
-                    immediate = false,
-                    pushEvenIfOff = true
-                )
-            }
-        }
-    }
-
-    fun updateConfig(tabIndex: Int, json: String?, immediate: Boolean = true) {
-        if (tabIndex !in cfgs.indices) return
-        val updated = AutoConfig.fromJson(json)
-        cfgs[tabIndex] = updated
-        installedUrl[tabIndex] = null
-        if (job == null || job?.isActive != true || midnightResetJob?.isActive != true || midnightTradeCardJob?.isActive != true) start()
-        val cfgJson = updated.toJson().toString()
-        mainHandler.post {
-            runCatching {
-                injectTab(
-                    i = tabIndex,
-                    forceFull = true,
-                    cfgJson = cfgJson,
-                    immediate = immediate && updated.on,
-                    pushEvenIfOff = true
-                )
-            }
-        }
-    }
-
-    fun resetDailyCounters(tabIndex: Int? = null) {
-        mainHandler.post {
-            val range = if (tabIndex != null && tabIndex in 0 until tabCount().coerceAtMost(installedUrl.size)) {
-                tabIndex..tabIndex
-            } else {
-                0 until tabCount().coerceAtMost(installedUrl.size)
-            }
-            for (i in range) {
-                val wv = webViewAt(i) ?: continue
-                if (!isTabActive(i)) continue
-                if (wv.url == null || wv.url == "about:blank") continue
-                runCatching { wv.evaluateJavascript(buildResetScript(), null) }
-            }
-        }
-    }
-
-    fun onTabRestarted(tabIndex: Int) {
-        if (tabIndex in installedUrl.indices) installedUrl[tabIndex] = null
-    }
-
-    fun onTabEnteredGame(tabIndex: Int) {
-        if (tabIndex !in cfgs.indices || tabIndex >= tabCount()) return
-        val tabCfg = cfgs[tabIndex]
-        if (!tabCfg.on || !isSystemRunning()) return
-        installedUrl[tabIndex] = null
-        mainHandler.postDelayed({
-            if (!isTabActive(tabIndex) || !cfgs[tabIndex].on || !isSystemRunning()) return@postDelayed
-            injectTab(
-                i = tabIndex,
-                forceFull = true,
-                cfgJson = cfgs[tabIndex].toJson().toString(),
-                immediate = true,
-                pushEvenIfOff = false
-            )
-            val wv = webViewAt(tabIndex) ?: return@postDelayed
-            runCatching {
-                wv.evaluateJavascript(
-                    "(function(){try{var a=window.__vlmAuto;if(a&&a.onEnteredGame)a.onEnteredGame();}catch(e){}})();",
-                    null
-                )
-            }
-        }, 1_500L)
-    }
-
-    fun onTabRemoved(tabIndex: Int) {
-        if (tabIndex in installedUrl.indices) installedUrl[tabIndex] = null
-    }
-
-    private fun tick() {
-        if (!isSystemRunning()) return
-        if (!isAnyEnabled()) return
-
-        ticks++
-        val forceFull = ticks % FULL_EVERY == 0L
-
-        mainHandler.post { injectAll(forceFull, immediate = false) }
-    }
-
-    private fun injectAll(forceFull: Boolean, immediate: Boolean) {
-        for (i in 0 until tabCount().coerceAtMost(installedUrl.size)) {
-            val tabCfg = cfgs[i]
-            if (!tabCfg.on) continue
-            injectTab(
-                i = i,
-                forceFull = forceFull,
-                cfgJson = tabCfg.toJson().toString(),
-                immediate = immediate,
-                pushEvenIfOff = false
-            )
-        }
-    }
-
-    private fun injectTab(
-        i: Int,
-        forceFull: Boolean,
-        cfgJson: String,
-        immediate: Boolean,
-        pushEvenIfOff: Boolean
-    ) {
-        if (i !in installedUrl.indices || i >= tabCount()) return
-        if (!isTabActive(i)) {
-            installedUrl[i] = null
-            return
-        }
-        val tabCfg = cfgs[i]
-        if (!tabCfg.on && !pushEvenIfOff) return
-
-        val wv = webViewAt(i) ?: return
-        val url = wv.url ?: return
-        if (url == "about:blank") return
-
-        val needFull = forceFull || installedUrl[i] != url
-        val script = if (needFull) {
-            installedUrl[i] = url
-            buildAutoScript(i, cfgJson, wv.lastTouchTimeMs, immediate)
-        } else {
-            buildPushScript(cfgJson, wv.lastTouchTimeMs, immediate)
-        }
-        runCatching { wv.evaluateJavascript(script, null) }
-    }
-
-    private fun buildPushScript(cfgJson: String, touchMs: Long, immediate: Boolean): String {
-        return "(function(){try{var a=window.__vlmAuto;if(a&&a.ver==='" + SCRIPT_VER +
-            "'){a.setCfg(" + cfgJson + "," + touchMs + "," + immediate + ");" +
-            (if (immediate) "if(a.tick)a.tick();" else "") + "}}catch(e){}})();"
-    }
-
-    private fun buildMidnight000000Script(cfgJson: String): String {
-        return "(function(){try{var a=window.__vlmAuto;if(a&&a.onMidnight000000)a.onMidnight000000(" + cfgJson + ");}catch(e){}})();"
-    }
-
-    private fun buildNewVnDayScript(cfgJson: String): String {
-        return "(function(){try{var a=window.__vlmAuto;if(a&&a.onNewVnDay)a.onNewVnDay(" + cfgJson + ");}catch(e){}})();"
-    }
-
-    private fun buildResetScript(): String {
-        return "(function(){try{var a=window.__vlmAuto;if(a&&a.resetDay)a.resetDay();}catch(e){}})();"
-    }
-
-    internal fun buildAutoScript(tabIndex: Int, cfgJson: String, touchMs: Long, immediate: Boolean): String {
-        return BOOTSTRAP_JS
-            .replace("__TAB__", tabIndex.toString())
-            .replace("__CFG__", cfgJson)
-            .replace("__TOUCH__", touchMs.toString())
-            .replace("__IMMEDIATE__", if (immediate) "true" else "false")
-            .replace("__VER__", SCRIPT_VER)
-    }
-
-    private val BOOTSTRAP_JS: String = """
-(function () {
-  'use strict';
-  var VER = '__VER__';
-  var TAB = __TAB__;
-  var CFG0 = __CFG__;
-  var TOUCH0 = __TOUCH__;
-  var IMM0 = __IMMEDIATE__;
-
-  try {
-    if (window.__vlmAuto && window.__vlmAuto.ver === VER) {
-      window.__vlmAuto.setCfg(CFG0, TOUCH0, IMM0);
-      if (IMM0 && window.__vlmAuto.tick) window.__vlmAuto.tick();
-      return 'ok';
-    }
-    if (window.__vlmTickTimer) { clearInterval(window.__vlmTickTimer); window.__vlmTickTimer = 0; }
-    if (window.__vlmOrbitTimer) { clearTimeout(window.__vlmOrbitTimer); clearInterval(window.__vlmOrbitTimer); window.__vlmOrbitTimer = 0; }
-    if (window.__vlmAutoBtnTimer) { clearInterval(window.__vlmAutoBtnTimer); window.__vlmAutoBtnTimer = 0; }
-    if (window.__vlmOrbitRelease) window.__vlmOrbitRelease();
-  } catch (e0) {}
-
-  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
-
-  // Giờ Việt Nam GMT+7: làm mới hoạt động lúc 00:00:01; Thẻ Giao Dịch dùng mốc 00:00:00.
-  var vnDay = function () {
-    var v = new Date(Date.now() + 7 * 3600e3 - 1000);
-    return v.getUTCFullYear() + '-' + (v.getUTCMonth() + 1) + '-' + v.getUTCDate();
-  };
-  var vnTradeDay = function () {
-    var v = new Date(Date.now() + 7 * 3600e3);
-    return v.getUTCFullYear() + '-' + (v.getUTCMonth() + 1) + '-' + v.getUTCDate();
-  };
-  var dayIdForKey = function (k) {
-    return k === 'theGd' ? vnTradeDay() : vnDay();
-  };
-
-  var norm = function (s) {
-    return String(s || '').toLowerCase().normalize('NFC').replace(/\s+/g, ' ').trim();
-  };
-  var noAccent = function (s) {
-    return norm(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
-  };
-
-  var DEF = { on: false, theGiaoDich: false, dt: true, ldtMua: true, k2k: 0, pd: true, st: true, lbMua: 0,
-    knbMua: 0, knbGiu: 0, qua: true, evHb: false, evDhb: false, khan: true, ttl: true,
-    ttlMua: false, tt2: true, tt2Mua: false, pb: true, afterDailyEnabled: false, afterDailyFarm: false, farmMap: '', thap: false, thapAfterMode: 'NORMAL', thapNeDon: false, thapNeDonStyle: 'AUTO', thapMainSkill: '', qht: false, qhtMua: false };
-
-  var A = {
-    cfg: Object.assign({}, DEF, CFG0 || {}),
-    busy: false,
-    userAt: 0,
-    touchK: (typeof TOUCH0 === 'number' ? TOUCH0 : 0),
-    cool: {},
-    st: null,
-    stT: 0,
-    started: 0,
-    immediate: !!IMM0,
-    immUntil: IMM0 ? (Date.now() + 120000) : 0,
-    lastDay: vnDay(),
-    lastTradeDay: vnTradeDay(),
-    last: '',
-    lastAt: 0,
-    pbOut: 0,
-    pbSeen: 0,
-    pbStartedAt: 0,
-    dtLastProgressAt: 0,
-    dtLastToday: -1,
-    lastSweep10mAt: 0,
-    knb0005Day: '',
-    knbSyncUntil: 0,
-    lastMapSelected: '',
-    checkedQueue: [],
-    koWaitingRecovery: false,
-    koDetectedAt: 0,
-    towerMetric: {
-      floor: 0,
-      secPerFloor: 0,
-      floorsPer30m: 0,
-      prevFloor: 0,
-      prevSecPerFloor: 0,
-      leftTowerAt: 0,
-      floorEnteredAt: 0,
-      wasInTower: false
-    },
-    info: null,
-    gate: 0
-  };
-
-  var LOG_STATE = {
-    lastRaw: '',
-    lastNormKey: '',
-    lastSentAt: 0,
-    dupCount: 0,
-    lastFlushTimer: 0
-  };
-
-  function isRareItemOrMilestone(txt) {
-    var s = String(txt || '');
-    var na = noAccent(s);
-    if (na.indexOf('do pho') >= 0) return true;
-    if (na.indexOf('hoang kim mon phai') >= 0 || /\bhkmp\b/.test(na)) return true;
-    if (na.indexOf('can khon') >= 0 || na.indexOf('vo danh') >= 0 || na.indexOf('than ma') >= 0) return true;
-    return false;
-  }
-
-  function buildCoalescedLogText(rawText, dupCount) {
-    var clean = String(rawText || '').replace(/\s+/g, ' ').trim();
-    if (!clean) return '';
-    var prefix = isRareItemOrMilestone(clean) ? '🌟 [QUÝ] ' : '🤖 ';
-    var suffix = dupCount > 1 ? (' (x' + dupCount + ')') : '';
-    return prefix + clean + suffix;
-  }
-
-  function pushBridgeLog(formatted) {
-    if (!formatted) return;
-    A.last = formatted;
-    A.lastAt = Date.now();
-    try {
-      if (window.AndroidBridge && window.AndroidBridge.onGameLog) {
-        window.AndroidBridge.onGameLog(TAB, formatted);
-      }
-    } catch (e) {}
-  }
-
-  function normalizeLogGroupKey(txt) {
-    return noAccent(txt || '')
-      .replace(/\d+(?:[.,]\d+)?/g, '#')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function getBossHkKillCountToday() {
-    try {
-      var o = JSON.parse(localStorage.getItem(dayKey('bossHkKills')) || 'null');
-      if (o && o.d === vnDay() && isFinite(o.n)) return Math.max(0, Math.min(4, Math.floor(o.n)));
-    } catch (eB) {}
-    return 0;
-  }
-
-  function addBossHkKillCountToday() {
-    try {
-      var cur = getBossHkKillCountToday();
-      if (cur >= 4) return cur;
-      var next = cur + 1;
-      localStorage.setItem(dayKey('bossHkKills'), JSON.stringify({ d: vnDay(), n: next }));
-      return next;
-    } catch (eB2) { return 0; }
-  }
-
-  function publishLiveTelemetry(extraStatus) {
-    try {
-      if (!window.AndroidBridge || !window.AndroidBridge.onLiveTelemetry) return;
-      var I = A.info || {};
-      var dt = I.dt || {};
-      var dtToday = (dt.today !== undefined) ? (dt.today | 0) : 0;
-      var dtMax = (dt.max !== undefined && (dt.max | 0) > 0) ? (dt.max | 0) : 200;
-      var dtStr = dt.du ? (dtMax + '/' + dtMax + ' (Xong)') : (dtToday + '/' + dtMax);
-
-      var knbCap = Math.min(KNB_NGAY, Math.max(0, A.cfg.knbMua | 0));
-      var knbDone = demKnb();
-      var knbStr = knbCap > 0 ? (knbDone + '/' + knbCap) : (knbDone + '/0');
-
-      var dhbDone = dayGet('evDhb');
-      var hbDone = dayGet('evHb');
-      var bossHkDone = getBossHkKillCountToday();
-
-      var payload = {
-        daiHongBao: dhbDone + '/1',
-        hongBao: hbDone + '/3',
-        bossHoangKim: bossHkDone + '/4 lượt',
-        daTauQuest: dtStr,
-        knbSummary: knbStr,
-        actionStatus: extraStatus ? String(extraStatus) : ''
-      };
-      window.AndroidBridge.onLiveTelemetry(TAB, JSON.stringify(payload));
-    } catch (eTel) {}
-  }
-
-  function note(m) {
-    var raw = String(m || '').replace(/\s+/g, ' ').trim();
-    if (!raw) return;
-    var na = noAccent(raw);
-    // Đếm Boss Hoàng Kim đã hạ (tối đa 4 lượt/ngày); KHÔNG tính Boss Sát Thủ
-    var isSatThuEvent = (na.indexOf('sat thu') >= 0 || (A.st && A.st.noi === 'satthu') || (A.info && A.info.sat));
-    if (!isSatThuEvent && (na.indexOf('ha boss hoang kim') >= 0 || na.indexOf('boss hoang kim') >= 0) &&
-        (na.indexOf('ha ') >= 0 || na.indexOf('xong') >= 0 || na.indexOf('tieu diet') >= 0 || na.indexOf('da ha') >= 0)) {
-      addBossHkKillCountToday();
-    }
-
-    var now = Date.now();
-    var gKey = normalizeLogGroupKey(raw);
-    var isRare = isRareItemOrMilestone(raw);
-    var windowMs = isRare ? 3500 : 6500;
-
-    if (LOG_STATE.lastFlushTimer) {
-      clearTimeout(LOG_STATE.lastFlushTimer);
-      LOG_STATE.lastFlushTimer = 0;
-    }
-
-    if (gKey && gKey === LOG_STATE.lastNormKey && (now - LOG_STATE.lastSentAt) < windowMs) {
-      LOG_STATE.dupCount = (LOG_STATE.dupCount || 1) + 1;
-      var mergedNow = buildCoalescedLogText(raw, LOG_STATE.dupCount);
-      if ((now - LOG_STATE.lastSentAt) >= 1200) {
-        LOG_STATE.lastSentAt = now;
-        LOG_STATE.lastRaw = raw;
-        pushBridgeLog(mergedNow);
-        publishLiveTelemetry('🤖 ' + raw + ' (x' + LOG_STATE.dupCount + ')');
-      } else {
-        LOG_STATE.lastRaw = raw;
-        LOG_STATE.lastFlushTimer = setTimeout(function () {
-          LOG_STATE.lastFlushTimer = 0;
-          LOG_STATE.lastSentAt = Date.now();
-          pushBridgeLog(buildCoalescedLogText(LOG_STATE.lastRaw, LOG_STATE.dupCount));
-          publishLiveTelemetry('🤖 ' + LOG_STATE.lastRaw + ' (x' + LOG_STATE.dupCount + ')');
-        }, 1250);
-      }
-      return;
-    }
-
-    LOG_STATE.lastRaw = raw;
-    LOG_STATE.lastNormKey = gKey;
-    LOG_STATE.lastSentAt = now;
-    LOG_STATE.dupCount = 1;
-    var singleText = buildCoalescedLogText(raw, 1);
-    pushBridgeLog(singleText);
-    publishLiveTelemetry(singleText);
-  }
-
-  var evList = ['mousedown', 'keydown', 'wheel', 'touchstart', 'pointerdown'];
-  for (var ei = 0; ei < evList.length; ei++) {
-    (function (ev) {
-      document.addEventListener(ev, function (e) {
-        if (e && e.isTrusted) {
-          A.userAt = Date.now();
-          try { if (typeof pauseOrbitMovement === 'function') pauseOrbitMovement(); } catch (eP) {}
-        }
-      }, true);
-    })(evList[ei]);
-  }
-
-  window.addEventListener('message', function (e) {
-    try {
-      var d = e.data;
-      if (!d || typeof d !== 'object' || e.source !== window) return;
-      if (d.vlm === 'st' && d.st && typeof d.st === 'object') {
-        try { if (JSON.stringify(d.st).length > 64 * 1024) return; } catch (e2) { return; }
-        A.st = d.st;
-        A.stT = Date.now();
-      }
-    } catch (e3) {}
-  });
-
-  var dayWho = function () {
-    try {
-      if (A.st && A.st.ten) return String(A.st.ten);
-    } catch (e) {}
-    return '';
-  };
-
-  var dayKey = function (k) {
-    var who = dayWho();
-    return 'vlm_auto_' + (who ? who + '_' : '') + k;
-  };
-
-  var dayGet = function (k) {
-    try {
-      var o = JSON.parse(localStorage.getItem(dayKey(k)) || 'null');
-      return o && o.d === dayIdForKey(k) && isFinite(o.n) && o.n >= 0 && o.n < 1e12 ? Math.floor(o.n) : 0;
-    } catch (e) { return 0; }
-  };
-
-  var daySet = function (k, val) {
-    try {
-      if (!isFinite(val) || val < 0) return false;
-      var max = k === 'knb' ? 1000 : k === 'evDhb' ? 1 : k === 'evHb' ? 3 : k === 'theGd' ? 1 : 9999999999;
-      localStorage.setItem(dayKey(k),
-        JSON.stringify({ d: dayIdForKey(k), n: Math.min(max, Math.floor(Math.max(0, val))) }));
-      return true;
-    } catch (e) { return false; }
-  };
-
-  var dayAdd = function (k, n) {
-    try {
-      if (!isFinite(n) || n < 0) return false;
-      var max = k === 'knb' ? 1000 : k === 'evDhb' ? 1 : k === 'evHb' ? 3 : k === 'theGd' ? 1 : 9999999999;
-      localStorage.setItem(dayKey(k),
-        JSON.stringify({ d: dayIdForKey(k), n: Math.min(max, dayGet(k) + Math.floor(Math.min(n, max))) }));
-      return true;
-    } catch (e) { return false; }
-  };
-
-  function normalizeOrbitStyleJs(raw) {
-    var s = String(raw || '').toUpperCase().trim();
-    if (s === 'MELEE' || s === 'RANGED') return s;
-    return 'AUTO';
-  }
-
-  function setCfg(j, t, imm) {
-    var prevOn = !!A.cfg.on;
-    var prevTtl = !!A.cfg.ttl;
-    var prevTt2 = !!A.cfg.tt2;
-    var prevQht = !!A.cfg.qht;
-    var prevTtlMua = !!A.cfg.ttlMua;
-    var prevTt2Mua = !!A.cfg.tt2Mua;
-    var prevQhtMua = !!A.cfg.qhtMua;
-    var prevTgd = !!A.cfg.theGiaoDich;
-    try {
-      var c = (typeof j === 'string') ? JSON.parse(j) : (j || {});
-      var __prevFarmKey = (A.cfg && A.cfg.farmMap) ? normalizeMapCompareKey(A.cfg.farmMap) : '';
-      A.cfg = Object.assign({}, DEF, c || {});
-      A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
-      A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
-      var __rawFarmNA = noAccent(A.cfg.farmMap || '').replace(/\s+/g, ' ').trim();
-      if (__rawFarmNA.indexOf('vi son') >= 0 || __rawFarmNA.indexOf('son dao') >= 0) A.cfg.farmMap = 'Vi sơn đảo';
-      else if (__rawFarmNA.indexOf('mac bac') >= 0 || __rawFarmNA.indexOf('thao nguyen') >= 0) A.cfg.farmMap = 'Mạc Bắc Thảo Nguyên';
-      else A.cfg.farmMap = String(A.cfg.farmMap || '').trim();
-      if (normalizeMapCompareKey(A.cfg.farmMap) !== __prevFarmKey) {
-        A.lastMapSelected = '';
-        delete A.cool.select_map;
-        delete A.cool.select_map_force;
-        A.forceMapSwitchUntil = Date.now() + 25000;
-        A.immediate = true;
-      }
-      if (A.cfg.afterDailyFarm) A.cfg.thap = false
-      A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
-      A.cfg.thapNeDon = !!A.cfg.thapNeDon;
-      A.cfg.thapNeDonStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
-      A.cfg.thapMainSkill = String(A.cfg.thapMainSkill || '').trim();
-    } catch (e) {}
-    if (typeof t === 'number' && t > A.touchK) A.touchK = t;
-    if (!A.cfg.on || (!A.cfg.thapNeDon && !(A.cfg.afterDailyEnabled && A.cfg.thap && A.cfg.thapAfterMode === 'ORBIT'))) {
-      try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eRel) {}
-      try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl) {}
-    }
-    if (!A.cfg.on) {
-      A.started = 0;
-      A.immediate = false;
-      A.immUntil = 0;
-    } else if (imm || !prevOn) {
-      A.immediate = true;
-      A.immUntil = Date.now() + 120000;
-      A.started = Date.now() - 60000;
-      A.cool = {};
-    } else {
-      if ((!prevTtl && A.cfg.ttl) || (!prevTt2 && A.cfg.tt2) || (!prevQht && A.cfg.qht) || (!prevTtlMua && A.cfg.ttlMua) || (!prevTt2Mua && A.cfg.tt2Mua) || (!prevQhtMua && A.cfg.qhtMua)) {
-        delete A.cool.buff_scan_15m;
-      }
-      if (!prevTgd && A.cfg.theGiaoDich) {
-        delete A.cool.theGd;
-      }
-      var checkKeys = ['dt', 'ldtMua', 'pd', 'st', 'pb', 'afterDailyEnabled', 'afterDailyFarm', 'thap', 'thapNeDon', 'qua', 'khan', 'ttl', 'tt2', 'qht', 'theGiaoDich'];
-      for (var ck = 0; ck < checkKeys.length; ck++) {
-        var kName = checkKeys[ck];
-        if (A.cfg[kName] && A.checkedQueue.indexOf(kName) < 0) {
-          A.checkedQueue.push(kName);
-        }
-      }
-      A.immediate = true;
-      A.immUntil = Math.max(A.immUntil || 0, Date.now() + 90000);
-      publishLiveTelemetry('🔍 Quét tuần tự (' + A.checkedQueue.length + ' mục đã tích)...');
-    }
-  }
-
-  function resetDay(silent) {
-    try {
-      var td = vnTradeDay();
-      var ks = [];
-      for (var i = 0; i < localStorage.length; i++) {
-        var k = localStorage.key(i);
-        if (k && k.indexOf('vlm_auto_') === 0 && k.indexOf('vlm_auto_prev') !== 0) ks.push(k);
-      }
-      for (var j = 0; j < ks.length; j++) {
-        var keyName = ks[j];
-        if (silent && /_theGd$/.test(keyName)) {
-          try {
-            var cur = JSON.parse(localStorage.getItem(keyName) || 'null');
-            if (cur && cur.d === td) continue;
-          } catch (eCur) {}
-        }
-        localStorage.removeItem(keyName);
-      }
-      A.pbOut = 0; A.pbSeen = 0; A.gate = 0; A.cool = {};
-      try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl0) {}
-      try { if (typeof bossHkPrevSet === 'function') bossHkPrevSet(null); } catch (eBh0) {}
-      try { if (typeof prevSet === 'function') prevSet(null); } catch (ePr0) {}
-      if (!silent) note('đã đặt lại bộ đếm ngày');
-    } catch (e) {}
-  }
-
-  function onMidnight000000(c) {
-    if (c) setCfg(c, A.touchK, true);
-    A.lastTradeDay = vnTradeDay();
-    delete A.cool.theGd;
-    A.immediate = true;
-    A.immUntil = Date.now() + 120000;
-    A.started = Date.now() - 60000;
-    note('00:00:00 (GMT+7): ưu tiên mua ẩn Thẻ Giao Dịch');
-    setTimeout(function () { tick().catch(function () {}); }, 80);
-  }
-
-  function onEnteredGame() {
-    if (!A.cfg.on) return;
-    A.immediate = true;
-    A.immUntil = Math.max(A.immUntil || 0, Date.now() + 180000);
-    A.started = Date.now() - 60000;
-    delete A.cool.mode_quest;
-    delete A.cool.mode_dg;
-    delete A.cool.mode_farm;
-    delete A.cool.mode_tower;
-    publishLiveTelemetry('🟢 Vào game: đang quét chế độ & hoạt động...');
-    setTimeout(function () { tick().catch(function () {}); }, 600);
-  }
-
-  function onNewVnDay(c) {
-    if (c) setCfg(c, A.touchK, true);
-    A.lastDay = vnDay();
-    resetDay(true);
-    A.immediate = true;
-    A.immUntil = Date.now() + 180000;
-    A.started = Date.now() - 60000;
-    note('00:00:01 (GMT+7): làm mới ngày mới → quét Dã Tẩu, Phó Bản & hoạt động');
-    publishLiveTelemetry('🌅 Ngày mới: đang quét lại Dã Tẩu, Phó Bản & hoạt động...');
-    setTimeout(function () { tick().catch(function () {}); }, 1500);
-    setTimeout(function () { tick().catch(function () {}); }, 5000);
-  }
-
-  function onSweep7Min(c) {
-    if (!A.cfg.on) return;
-    if (c) setCfg(c, A.touchK, true);
-    A.lastSweep7mAt = Date.now();
-    A.immediate = true;
-    A.immUntil = Math.max(A.immUntil || 0, Date.now() + 120000);
-    // Xóa các cooldown kiểm tra chế độ / map / lượt hoạt động để đối chiếu lại tình trạng thực tế
-    delete A.cool.mode_quest;
-    delete A.cool.mode_dg;
-    delete A.cool.mode_farm;
-    delete A.cool.mode_tower;
-    delete A.cool.select_map;
-    delete A.cool.ldt;
-    delete A.cool.lb;
-    delete A.cool.qua;
-    publishLiveTelemetry('⏱️ Quét định kỳ 7p: đối chiếu nhân vật, lượt & chế độ...');
-    setTimeout(function () { tick().catch(function () {}); }, 120);
-  }
-
-  var ready = function (k, ms) {
-    if (A.cool[k] > Date.now()) return false;
-    A.cool[k] = Date.now() + ms;
-    return true;
-  };
-
-  var isUserControlling = function (graceMs) {
+﻿  var isUserControlling = function (graceMs) {
     var g = graceMs || 3500;
     if (window.__isUserTouching) return true;
     var now = Date.now();
+    if (A.saveGraceUntil && now < A.saveGraceUntil) {
+      var svAt = A.saveTriggeredAt || 0;
+      if ((A.userAt || 0) <= svAt && (A.touchK || 0) <= svAt) return false;
+    }
     if (now - A.userAt <= g) return true;
     if (now - (A.touchK || 0) <= g) return true;
     return false;
   };
 
   var ranh = function () {
-    if (A.knbSyncUntil > Date.now()) {
+    var now = Date.now();
+    if (A.saveGraceUntil && now < A.saveGraceUntil) {
+      return !isUserControlling(1500);
+    }
+    if (A.knbSyncUntil > now) {
       return !isUserControlling(2500);
     }
-    if (A.immediate || A.immUntil > Date.now()) {
+    if (A.immediate || A.immUntil > now) {
       return !isUserControlling(3500);
     }
     if (isUserControlling(4000)) return false;
-    if (Date.now() - A.userAt <= 8000) return false;
-    return Date.now() - (A.touchK || 0) > 6000;
+    if (now - A.userAt <= 8000) return false;
+    return now - (A.touchK || 0) > 6000;
   };
 
   // 4 mốc Boss Hoàng Kim theo giờ Việt Nam (GMT+7): 12:00, 15:30, 19:30, 22:00
@@ -4540,26 +3215,68 @@ class GameAutoPilot(
       if (targetMode !== 'tower') {
         try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eSwRel) {}
       }
-      var r = await api('cheDo', { m: targetMode }, 12000);
+      var r = await api('cheDo', { m: targetMode }, 6000);
       if (r && r.ok && r.m === targetMode) {
         ensureGameAutoOn(false);
         return true;
       }
-      var item = document.querySelector('#mswMenu [data-msw="' + targetMode + '"]');
-      if (item) {
-        try {
-          var mBtn = document.getElementById('mswBtn');
-          var menu = document.getElementById('mswMenu');
-          if (mBtn && menu && (menu.classList.contains('hidden') || !isVis(item))) {
-            mBtn.click();
-            await sleep(140);
+
+      var modeKeywords = {
+        farm: ['luyen cong'],
+        dg: ['pho ban'],
+        tower: ['leo thap'],
+        quest: ['nhiem vu', 'da tau']
+      };
+      var kws = modeKeywords[targetMode] || [];
+
+      var findModeMenuItem = function () {
+        var direct = document.querySelector('#mswMenu [data-msw="' + targetMode + '"], [data-msw="' + targetMode + '"], [data-mode="' + targetMode + '"]');
+        if (direct) return direct;
+        var menuEl = document.getElementById('mswMenu') || document.getElementById('modeSw') || document.body;
+        var nodes = menuEl.querySelectorAll('button, [role="button"], [role="menuitem"], .item, li, a, div');
+        var cap = Math.min(nodes.length, 240);
+        for (var i = 0; i < cap; i++) {
+          var el = nodes[i];
+          if (!el || el.id === 'mswBtn' || el.id === 'vlmAuto') continue;
+          if (el.children && el.children.length > 2) continue;
+          var txt = noAccent(el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!txt || txt.length > 28 || txt.indexOf('che do') === 0) continue;
+          for (var k = 0; k < kws.length; k++) {
+            if (txt === kws[k] || txt.indexOf(kws[k]) >= 0) return el;
           }
-          item.click();
-          await sleep(240);
+        }
+        return null;
+      };
+
+      var findModeTriggerBtn = function () {
+        var b = document.getElementById('mswBtn');
+        if (b && isVis(b)) return b;
+        var btns = document.querySelectorAll('button, [role="button"], .btn');
+        var cap = Math.min(btns.length, 160);
+        for (var i = 0; i < cap; i++) {
+          if (!isVis(btns[i]) || btns[i].id === 'vlmAuto') continue;
+          var bt = noAccent(btns[i].textContent || '').replace(/\s+/g, ' ').trim();
+          if (bt.indexOf('che do:') === 0 || bt.indexOf('che do ') === 0) return btns[i];
+        }
+        return null;
+      };
+
+      try {
+        var mBtn = findModeTriggerBtn();
+        var menu = document.getElementById('mswMenu');
+        var item = findModeMenuItem();
+        if (mBtn && (!item || !isVis(item) || (menu && menu.classList.contains('hidden')))) {
+          try { dispatchRealUiClick(mBtn); } catch (eB1) { try { mBtn.click(); } catch (eB2) {} }
+          await sleep(180);
+          item = findModeMenuItem();
+        }
+        if (item) {
+          try { dispatchRealUiClick(item); } catch (eI1) { try { item.click(); } catch (eI2) {} }
+          await sleep(260);
           if (menu && !menu.classList.contains('hidden')) {
             try { menu.classList.add('hidden'); } catch (eM) {}
           }
-          await sleep(140);
+          await sleep(160);
           if (readDomModeFallback() === targetMode) {
             ensureGameAutoOn(false);
             return true;
@@ -4569,13 +3286,36 @@ class GameAutoPilot(
             ensureGameAutoOn(false);
             return true;
           }
-        } catch (eDom) {}
-      }
+        }
+
+        var selects = document.querySelectorAll('select');
+        for (var si = 0; si < selects.length; si++) {
+          var sel = selects[si];
+          if (!isVis(sel)) continue;
+          var opts = sel.options || [];
+          for (var oi = 0; oi < opts.length; oi++) {
+            var opt = opts[oi];
+            var ot = noAccent((opt.text || '') + ' ' + (opt.value || ''));
+            var hit = (opt.value === targetMode);
+            for (var kk = 0; !hit && kk < kws.length; kk++) {
+              if (ot.indexOf(kws[kk]) >= 0) hit = true;
+            }
+            if (hit) {
+              sel.value = opt.value;
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              await sleep(280);
+              if (readDomModeFallback() === targetMode) {
+                ensureGameAutoOn(false);
+                return true;
+              }
+            }
+          }
+        }
+      } catch (eDom) {}
       return false;
     }
 
-    // 3. ƯU TIÊN KHUNG GIỜ: 4 mốc Boss Hoàng Kim (12:00, 15:30, 19:30, 22:00)
-    var activeBossSlot = forceOnlyTower ? null : getActiveBossHkSlot();
+    // 3. UU TIEN KHUNG GIO: 4 moc Boss Hoang Kim (12:00, 15:30, 19:30, 22:00)    var activeBossSlot = forceOnlyTower ? null : getActiveBossHkSlot();
     var savedBossPrev = bossHkPrevGet();
     if (activeBossSlot) {
       if (!savedBossPrev && mode && mode !== 'farm') {
@@ -4630,6 +3370,7 @@ class GameAutoPilot(
     //    (1) Nhiệm vụ (Dã Tẩu / Sát Thủ / Phong Lăng Độ) -> 'quest'
     //    (2) Phó Bản -> 'dg'
     //    (3) Ưu tiên hành động khi hết lượt -> 'farm' (+ Chọn map) hoặc 'tower' (Xa em ra / Bình thường)
+    var justSaved = !!(A.saveGraceUntil && now < A.saveGraceUntil);
     var dtMax = (t.max | 0) > 0 ? (t.max | 0) : 200;
     var dtCon = !forceOnlyTower && A.cfg.dt && lv >= 20 && !t.du && !dtStalled30m &&
       ((t.today | 0) < dtMax || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
@@ -4638,17 +3379,45 @@ class GameAutoPilot(
     var pbCon = !forceOnlyTower && A.cfg.pb && !pbXong() && !pbOver3h;
     var dailyDone = !dtCon && !stCon && !pldCon && !pbCon;
 
-    var hasFarmMapConfigured = !!(A.cfg.farmMap && A.cfg.farmMap.trim().length > 0);
-    var wantsAfterFarm = !!(A.cfg.afterDailyFarm || (A.cfg.afterDailyEnabled && !A.cfg.thap && (hasFarmMapConfigured || !A.cfg.thap)));
-    var afterEnabled = !forceOnlyTower && (!!A.cfg.afterDailyEnabled || (wantsAfterFarm && dailyDone));
-    var afterFarmActive = !forceOnlyTower && wantsAfterFarm && dailyDone;
-    var afterThapActive = afterEnabled && !wantsAfterFarm && !!A.cfg.thap && dailyDone;
+    var wantsAfterThap = !!(!A.cfg.afterDailyFarm && A.cfg.thap);
+    var wantsAfterFarm = !!(A.cfg.afterDailyFarm || (A.cfg.afterDailyEnabled && !wantsAfterThap));
+    var afterEnabled = !forceOnlyTower && !!(A.cfg.afterDailyEnabled || A.cfg.afterDailyFarm || A.cfg.thap);
+    var afterFarmActive = afterEnabled && wantsAfterFarm && dailyDone;
+    var afterThapActive = afterEnabled && wantsAfterThap && dailyDone;
     var afterThapXaEmRa = afterThapActive && (A.cfg.thapAfterMode === 'ORBIT');
+
+    if (afterEnabled && !dailyDone && justSaved && ready('after_daily_wait_note', 8000)) {
+      var pend = [];
+      if (dtCon) pend.push('Da Tau ' + dtToday + '/' + dtMax);
+      if (stCon) pend.push('Sat Thu (' + (I.lb | 0) + ')');
+      if (pldCon) pend.push('Phong Lang Do');
+      if (pbCon) pend.push('Pho Ban');
+      note('Dang cho xong luot (' + pend.join(', ') + ') truoc khi chuyen ' + (wantsAfterThap ? 'Leo Thap' : 'Luyen Cong'));
+    }
 
     if (afterThapXaEmRa && (inTowerRightNow || mode === 'tower')) {
       towerLockSet(true);
     } else if (!forceOnlyTower && !afterThapXaEmRa) {
       towerLockSet(false);
+    }
+
+    async function ensureReenterTower() {
+      var reOk = await api('cheDo', { m: 'tower' }, 6000);
+      if (!reOk || !reOk.ok) {
+        await switchMode('tower');
+      }
+      var enterBtns = document.querySelectorAll('button, [role="button"], .btn, a');
+      for (var eb = 0; eb < enterBtns.length; eb++) {
+        var bEl = enterBtns[eb];
+        if (!isVis(bEl) || bEl.disabled || bEl.id === 'mswBtn' || bEl.id === 'vlmAuto') continue;
+        if (bEl.closest && bEl.closest('#mswMenu, #tabs, #u20bar')) continue;
+        var bt = noAccent(bEl.textContent || '').replace(/\s+/g, ' ').trim();
+        if (bt === 'vao thap' || bt === 'leo thap' || bt === 'vao lai thap' || bt === 'khieu chien thap' || bt === 'thieu chien thap' || bt === 'bat dau leo thap') {
+          try { dispatchRealUiClick(bEl); } catch (eBt1) { try { bEl.click(); } catch (eBt2) {} }
+          break;
+        }
+      }
+      ensureGameAutoOn(false);
     }
 
     var towerLocked = forceOnlyTower || (afterThapXaEmRa && towerLockGet());
@@ -4665,58 +3434,47 @@ class GameAutoPilot(
 
     if (towerLocked) {
       if (I.dead) return;
-      if (isUserControlling(3500)) return;
+      if (!justSaved && isUserControlling(3500)) return;
       if (mode !== 'tower') {
-        if (!ready('mode_tower_lock', 5000)) return;
+        if (!justSaved && !ready('mode_tower_lock', 4500)) return;
         if (await switchMode('tower')) {
           A.pbOut = 0;
-          note('🗼 Leo Tháp (Xa em ra): chuyển Chế độ Leo Tháp');
+          A.cool.mode_tower_lock = Date.now() + 3000;
+          note('Chi Leo Thap: da chuyen sang Che do Leo Thap');
         }
         return;
       }
-      if (!inTowerRightNow && ready('tower_reenter', 6000)) {
-        var reOk = await api('cheDo', { m: 'tower' });
-        if (!reOk || !reOk.ok) {
-          await switchMode('tower');
-        }
-        var enterBtns = document.querySelectorAll('button, [role="button"]');
-        for (var eb = 0; eb < enterBtns.length; eb++) {
-          var bEl = enterBtns[eb];
-          if (!isVis(bEl) || bEl.disabled) continue;
-          var bt = noAccent(bEl.textContent || '');
-          if (bt === 'vao thap' || bt === 'leo thap' || bt === 'vao lai thap' || bt === 'thieu chien thap') {
-            try { bEl.click(); } catch (eBt) {}
-            break;
-          }
-        }
-        note('🗼 Leo Tháp: tự vào lại Tháp');
+      ensureGameAutoOn(false);
+      if (!inTowerRightNow && (justSaved || ready('tower_reenter', 5500))) {
+        A.cool.tower_reenter = Date.now() + 5500;
+        await ensureReenterTower();
+        note('Leo Thap: tu vao lai Thap');
       }
       return;
     }
 
     if (want && mode !== want) {
-      // Chỉ giữ nguyên nếu đang gục hoặc đang đánh Boss Sát Thủ hoặc đang trong trận Phó Bản thực sự
       if (I.dead || I.sat || I.dg) return;
-      // Nếu đang ở chế độ Leo Tháp nhưng kịch bản yêu cầu Luyện Công / Phó Bản / Nhiệm Vụ -> cho phép chuyển chế độ
-      if (!ranh() || !ready('mode_' + want, 3500)) return;
+      if (!justSaved && (!ranh() || !ready('mode_' + want, 3500))) return;
       var savedPrev = prev || mode;
       if (await switchMode(want)) {
         if (!prev && !afterFarmActive && !afterThapActive) prevSet(savedPrev);
         A.pbOut = 0;
+        A.cool['mode_' + want] = Date.now() + 3500;
         if (want === 'dg' && !A.pbStartedAt) A.pbStartedAt = now;
         if (want === 'tower' && (forceOnlyTower || afterThapXaEmRa)) towerLockSet(true);
         if (want === 'farm' && afterFarmActive) {
-          note('chuyển Chế độ: Luyện Công (hết lượt Dã Tẩu & Phó Bản)');
+          note('chuyen Che do: Luyen Cong (het luot hoat dong)');
           if (A.cfg.farmMap) {
-            await sleep(400);
+            await sleep(420);
             await selectTrainingMap(I, A.cfg.farmMap);
           }
         } else {
           note(want === 'dg'
-            ? 'chuyển Tự chạy Phó Bản (còn lượt)'
+            ? 'chuyen Tu chay Pho Ban (con luot)'
             : (want === 'quest'
-                ? ('chuyển Nhiệm Vụ (' + (dtCon ? ('Dã Tẩu ' + dtToday + '/' + dtMax) : (stCon ? 'Sát Thủ' : 'Phong Lăng Độ')) + ')')
-                : ('chuyển Leo Tháp (' + (afterThapXaEmRa ? 'Xa em ra' : 'Bình thường') + ')')));
+                ? ('chuyen Nhiem Vu (' + (dtCon ? ('Da Tau ' + dtToday + '/' + dtMax) : (stCon ? 'Sat Thu' : 'Phong Lang Do')) + ')')
+                : ('chuyen Leo Thap (' + (afterThapXaEmRa ? 'Xa em ra' : 'Binh thuong') + ')')));
         }
       }
     } else if (want && mode === want) {
@@ -4725,8 +3483,11 @@ class GameAutoPilot(
         if (!isAlreadyOnTrainingMap(I, A.cfg.farmMap)) {
           await selectTrainingMap(I, A.cfg.farmMap);
         }
-      }
-    } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
+      } else if (afterThapActive && mode === 'tower' && !inTowerRightNow && !I.dead && (justSaved || ready('tower_reenter', 5500))) {
+        A.cool.tower_reenter = Date.now() + 5500;
+        await ensureReenterTower();
+        note('Leo Thap (sau hoat dong): tu vao Thap');
+      }    } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
       if (I.dg || I.sat || !ranh() || !ready('mode_restore', 8000)) return;
       if (await switchMode(prev)) {
         prevSet(null);
@@ -4738,7 +3499,11 @@ class GameAutoPilot(
   }
 
   async function tick() {
-    if (A.busy || !A.cfg.on) return;
+    if (!A.cfg.on) return;
+    if (A.busy) {
+      if (A.saveGraceUntil && Date.now() < A.saveGraceUntil) A.pendingTick = true;
+      return;
+    }
     if (isUserControlling(1500)) return;
     var curTradeDay = vnTradeDay();
     if (curTradeDay !== A.lastTradeDay) {
@@ -4754,7 +3519,7 @@ class GameAutoPilot(
       A.immediate = true;
       A.immUntil = Date.now() + 180000;
       A.started = Date.now() - 60000;
-      note('00:00:01 (GMT+7): làm mới ngày mới → quét lại Dã Tẩu & Phó Bản');
+      note('00:00:01 (GMT+7): lam moi ngay moi -> quet lai Da Tau & Pho Ban');
     }
 
     var hasRecentSt = !!(A.st && A.st.o === 'game' && Date.now() - A.stT < 90000);
@@ -4769,7 +3534,7 @@ class GameAutoPilot(
     if (hasRecentSt && (A.st.v | 0) > 0 && (A.st.v | 0) < 990) {
       if (!A.gate) {
         A.gate = 1;
-        note('bản game ' + (A.st.v | 0) + ' < 990 — không chạy tự động');
+        note('ban game ' + (A.st.v | 0) + ' < 990 - khong chay tu dong');
       }
       return;
     }
@@ -4780,7 +3545,6 @@ class GameAutoPilot(
 
     A.busy = true;
     try {
-      // Bước 2 trước: kích hoạt Luyện Công / Phó Bản / Leo Tháp để nhân vật hoạt động rõ ràng
       var I0 = await info();
       if (!I0) return;
       try { await cheDo(I0); } catch (eChe) {}
@@ -4793,16 +3557,14 @@ class GameAutoPilot(
         var stDoneA = !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
         var pbDoneA = !(A.cfg.pb && !pbXong());
         var curM = readDomModeFallback() || Iafter.mode || 'farm';
-        var alreadySelectedThisSession = (A.lastMapSelected && normalizeMapCompareKey(A.lastMapSelected) === normalizeMapCompareKey(A.cfg.farmMap));
         if (!A.cfg.thapNeDon && (A.cfg.afterDailyFarm || A.cfg.afterDailyEnabled) &&
             !A.cfg.thap && A.cfg.farmMap && dtDoneA && stDoneA && pbDoneA &&
             curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
-            !alreadySelectedThisSession && !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
+            !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
         }
       } catch (eMapForce) {}
 
-      // Bước 3: khi nhân vật đang hoạt động, thực hiện đổi KNB, điểm danh, mở Phúc Duyên, đổi nguyên liệu ẩn
       var bgFns = [muaTheGiaoDich, qua, doiNguyenLieuThua, muaKnb, troThu, khan, suDungVatPhamTieuHao, daTau, muaLb];
       for (var i = 0; i < bgFns.length; i++) {
         if (!A.cfg.on) break;
@@ -4814,14 +3576,17 @@ class GameAutoPilot(
     } finally {
       A.busy = false;
       if (A.immUntil <= Date.now()) A.immediate = false;
+      if (A.pendingTick && A.cfg.on) {
+        A.pendingTick = false;
+        setTimeout(function () { tick().catch(function () {}); }, 180);
+      }
     }
   }
 
-  // ========================================================================= false
-  // LEO THÁP: LẤY TỌA ĐỘ TRUNG TÂM MAP LÀM ĐIỂM TẬP TRUNG, GIỮ AUTO GAME BẬT
-  // ========================================================================= false
-  // Chỉ dùng phím mũi tên điều hướng hoặc joystick (KHÔNG gửi W/A/S/D hay click canvas để tránh đổi chiêu)
-  var ORBIT_KEY_GROUPS = {
+  // =========================================================================
+  // LEO THAP: LAY TOA DO TRUNG TAM MAP LAM DIEM TAP TRUNG, GIU AUTO GAME BAT
+  // =========================================================================
+  // Chi dung phim mui ten dieu huong hoac joystick (KHONG gui W/A/S/D hay click canvas de tranh doi chieu)  var ORBIT_KEY_GROUPS = {
     up: [{ key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 }],
     down: [{ key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 }],
     left: [{ key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 }],
@@ -5547,7 +4312,7 @@ class GameAutoPilot(
   }
 
   function isTowerOrbitEnabled() {
-    return !!(A.cfg.on && (A.cfg.thapNeDon || (A.cfg.afterDailyEnabled && A.cfg.thap && A.cfg.thapAfterMode === 'ORBIT')));
+    return !!(A.cfg.on && (A.cfg.thapNeDon || (!A.cfg.afterDailyFarm && A.cfg.thap && A.cfg.thapAfterMode === 'ORBIT')));
   }
 
   function isOrbitEligible() {
