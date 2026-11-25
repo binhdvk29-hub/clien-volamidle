@@ -154,6 +154,98 @@ fun ControlSheet(
         }
     }
 
+    if (showLogDialog) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val tabPrefix = "[Tab ${tabIndex + 1}]"
+        val visibleLogs: List<String> = remember(gameLogs, filterCurrentTabOnly, tabPrefix) {
+            if (filterCurrentTabOnly) gameLogs.filter { it.contains(tabPrefix) } else gameLogs
+        }
+        AlertDialog(
+            onDismissRequest = { showLogDialog = false },
+            containerColor = Color(0xFF0F172A),
+            titleContentColor = Color(0xFFFDE68A),
+            textContentColor = TextStrong,
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "📜 Nhật ký Auto (${visibleLogs.size} dòng)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SegmentButton(
+                            label = "Tab ${tabIndex + 1}",
+                            selected = filterCurrentTabOnly,
+                            modifier = Modifier.weight(1f).height(28.dp),
+                            onClick = { filterCurrentTabOnly = true }
+                        )
+                        SegmentButton(
+                            label = "Tất cả",
+                            selected = !filterCurrentTabOnly,
+                            modifier = Modifier.weight(1f).height(28.dp),
+                            onClick = { filterCurrentTabOnly = false }
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 340.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF020617))
+                        .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
+                        .verticalScroll(rememberScrollState())
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (visibleLogs.isEmpty()) {
+                        Text(
+                            text = "Chưa có nhật ký hoạt động nào.",
+                            color = TextMuted,
+                            fontSize = 10.5.sp
+                        )
+                    } else {
+                        visibleLogs.forEach { line: String ->
+                            val lineColor = when {
+                                line.contains("[Loi", ignoreCase = true) || line.contains("chua dung duoc", ignoreCase = true) -> Color(0xFFFCA5A5)
+                                line.contains("[QHT]", ignoreCase = true) -> Color(0xFFFDE68A)
+                                line.contains("Leo Thap", ignoreCase = true) || line.contains("Leo Tháp", ignoreCase = true) -> Color(0xFF7DD3FC)
+                                else -> TextStrong
+                            }
+                            Text(
+                                text = line,
+                                color = lineColor,
+                                fontSize = 10.sp,
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = {
+                        val content = visibleLogs.joinToString("\n")
+                        if (content.isNotEmpty()) {
+                            val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                            cm?.setPrimaryClip(android.content.ClipData.newPlainText("vlm_logs", content))
+                            android.widget.Toast.makeText(ctx, "Đã sao chép ${visibleLogs.size} dòng nhật ký", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Text("Sao chép", color = Color(0xFF38BDF8), fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { onClearGameLogs() }) {
+                        Text("Xóa", color = Color(0xFFF87171), fontSize = 11.sp)
+                    }
+                    TextButton(onClick = { showLogDialog = false }) {
+                        Text("Đóng", color = Color(0xFFCBD5E1), fontSize = 11.sp)
+                    }
+                }
+            }
+        )
+    }
     Box(modifier = modifier.fillMaxSize()) {
         AnimatedVisibility(
             visible = isOpen,
@@ -916,98 +1008,6 @@ private fun TabCountStepper(
         }
     }
 
-    if (showLogDialog) {
-        val ctx = androidx.compose.ui.platform.LocalContext.current
-        val tabPrefix = "[Tab ${tabIndex + 1}]"
-        val visibleLogs = remember(gameLogs, filterCurrentTabOnly, tabPrefix) {
-            if (filterCurrentTabOnly) gameLogs.filter { it.contains(tabPrefix) } else gameLogs
-        }
-        AlertDialog(
-            onDismissRequest = { showLogDialog = false },
-            containerColor = Color(0xFF0F172A),
-            titleContentColor = Color(0xFFFDE68A),
-            textContentColor = TextStrong,
-            title = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = "📜 Nhật ký Auto (${visibleLogs.size} dòng)",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SegmentButton(
-                            label = "Tab ${tabIndex + 1}",
-                            selected = filterCurrentTabOnly,
-                            modifier = Modifier.weight(1f).height(28.dp),
-                            onClick = { filterCurrentTabOnly = true }
-                        )
-                        SegmentButton(
-                            label = "Tất cả",
-                            selected = !filterCurrentTabOnly,
-                            modifier = Modifier.weight(1f).height(28.dp),
-                            onClick = { filterCurrentTabOnly = false }
-                        )
-                    }
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 340.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF020617))
-                        .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(6.dp))
-                        .verticalScroll(rememberScrollState())
-                        .padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (visibleLogs.isEmpty()) {
-                        Text(
-                            text = "Chưa có nhật ký hoạt động nào.",
-                            color = TextMuted,
-                            fontSize = 10.5.sp
-                        )
-                    } else {
-                        visibleLogs.forEach { line ->
-                            val lineColor = when {
-                                line.contains("[Loi", ignoreCase = true) || line.contains("chua dung duoc", ignoreCase = true) -> Color(0xFFFCA5A5)
-                                line.contains("[QHT]", ignoreCase = true) -> Color(0xFFFDE68A)
-                                line.contains("Leo Thap", ignoreCase = true) || line.contains("Leo Tháp", ignoreCase = true) -> Color(0xFF7DD3FC)
-                                else -> TextStrong
-                            }
-                            Text(
-                                text = line,
-                                color = lineColor,
-                                fontSize = 10.sp,
-                                lineHeight = 13.sp
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = {
-                        val content = visibleLogs.joinToString("\n")
-                        if (content.isNotEmpty()) {
-                            val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                            cm?.setPrimaryClip(android.content.ClipData.newPlainText("vlm_logs", content))
-                            android.widget.Toast.makeText(ctx, "Đã sao chép ${visibleLogs.size} dòng nhật ký", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
-                        Text("Sao chép", color = Color(0xFF38BDF8), fontSize = 11.sp)
-                    }
-                    TextButton(onClick = { onClearGameLogs() }) {
-                        Text("Xóa", color = Color(0xFFF87171), fontSize = 11.sp)
-                    }
-                    TextButton(onClick = { showLogDialog = false }) {
-                        Text("Đóng", color = Color(0xFFCBD5E1), fontSize = 11.sp)
-                    }
-                }
-            }
-        )
-    }
 }
 
 @Composable
