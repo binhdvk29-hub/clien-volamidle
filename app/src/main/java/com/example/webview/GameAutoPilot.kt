@@ -437,7 +437,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-80"
+        const val SCRIPT_VER = "vlmauto-81"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -5032,52 +5032,74 @@ class GameAutoPilot(
   }
 
   function findGuildConfirmButton(excludeBtn) {
-    var dialogRoots = [
-      document.getElementById('cfModal'),
-      document.getElementById('confirmModal'),
-      document.getElementById('cModal'),
-      document.querySelector('.confirm'),
-      document.querySelector('[data-confirm]'),
-      document.querySelector('[role="dialog"]'),
-      document.querySelector('[aria-modal="true"]'),
-      document.querySelector('.swal2-container'),
-      document.body
-    ];
+    var inStealth = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
+    var isRectVisible = function (el) {
+      if (!el || !el.isConnected) return false;
+      try {
+        var cur = el;
+        while (cur && cur !== document.body && cur !== document.documentElement) {
+          if (cur.classList && cur.classList.contains('hidden')) return false;
+          cur = cur.parentElement;
+        }
+        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (st) {
+          if (st.display === 'none') return false;
+          if (!inStealth && st.visibility === 'hidden') return false;
+        }
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        if (!r || r.width < 16 || r.height < 12) return false;
+        return true;
+      } catch (eR) { return isVis(el); }
+    };
+
+    var all = document.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"], a, div, span');
     var best = null;
     var bestScore = -1;
-    for (var s = 0; s < dialogRoots.length; s++) {
-      var sr = dialogRoots[s];
-      if (!sr || !isVis(sr)) continue;
-      var inDialog = (sr !== document.body);
-      var btns = sr.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"], a');
-      var cap = Math.min(btns.length, 220);
-      for (var i = 0; i < cap; i++) {
-        var el = btns[i];
-        if (!el || el === excludeBtn || el.disabled || !isVis(el)) continue;
-        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
-        if (el.closest && el.closest('#tabs, #u20bar, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var t = cleanUiLabel(el.textContent || el.value || '');
-        if (!t || t.length > 26) continue;
-        if (t === 'huy' || t === 'huy bo' || t === 'dong' || t === 'dong lai' || t === 'khong' || t === 'bo qua') continue;
-        var score = 0;
-        if (t === 'dong y') { score = 320; var pBox = el.parentElement && el.parentElement.parentElement ? cleanUiLabel(el.parentElement.parentElement.textContent || '') : ''; if (pBox.indexOf('tin vat') >= 0 || pBox.indexOf('cong hien') >= 0 || pBox.indexOf('huy') >= 0) score = 500; }
-        else if (t.indexOf('dong y') === 0) score = 260;
-        else if (t === 'xac nhan') score = 220;
-        else if (t === 'chap nhan') score = 200;
-        else if (t === 'ok') score = 150;
-        if (score > 0) {
-          if (inDialog) score += 80;
-          if (score > bestScore) {
-            bestScore = score;
-            best = el;
-          }
+    // Quet nguoc tu cuoi DOM len (popup xac nhan luon nam cuoi body) & khong cat nguong 220 nut
+    for (var i = all.length - 1; i >= 0; i--) {
+      var el = all[i];
+      if (!el || el === excludeBtn || el.disabled) continue;
+      if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+      if ((el.tagName === 'DIV' || el.tagName === 'SPAN') && el.children && el.children.length > 2) continue;
+      if (el.closest && el.closest('#tabs, #u20bar, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+      if (!isRectVisible(el)) continue;
+
+      var t = cleanUiLabel(el.textContent || el.value || '');
+      if (!t || t.length > 24) continue;
+      if (t === 'huy' || t === 'huy bo' || t === 'dong' || t === 'dong lai' || t === 'khong' || t === 'bo qua') continue;
+
+      var score = 0;
+      if (t === 'dong y') score = 400;
+      else if (t.indexOf('dong y') === 0) score = 320;
+      else if (t === 'xac nhan') score = 260;
+      else if (t === 'chap nhan') score = 220;
+      else if (t === 'ok') score = 150;
+      if (score <= 0) continue;
+
+      if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button') score += 60;
+
+      var cur = el.parentElement;
+      for (var d = 0; d < 4 && cur && cur !== document.body; d++) {
+        var pTxt = cleanUiLabel(cur.textContent || '');
+        if (pTxt.length > 360) break;
+        if (pTxt.indexOf('tin vat') >= 0 || pTxt.indexOf('cong hien') >= 0 || pTxt.indexOf('thien bao kho') >= 0) {
+          score += 500;
+          break;
         }
+        if (pTxt.indexOf('huy') >= 0 && pTxt.indexOf('dong y') >= 0) {
+          score += 300;
+          break;
+        }
+        cur = cur.parentElement;
       }
-      if (best && inDialog) return best;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = el;
+      }
     }
     return best;
   }
-
   async function muaTinVatThienBaoKho(I) {
     if (!A.cfg.on || !A.cfg.tbkTinVat) return false;
     if (dayGet('tbkTv2') >= 1) return false;
@@ -5255,15 +5277,19 @@ class GameAutoPilot(
       try { if (buyBtn.scrollIntoView) buyBtn.scrollIntoView({ block: 'center' }); } catch (eScr) {}
       await sleep(80);
       try { buyBtn.click(); } catch (eM0) {}
-      try { dispatchRealUiClick(buyBtn); } catch (eM1) {}
 
-      // Cho popup xac nhan -> bam Dong y (toi da 2s)
+      // Cho popup xac nhan -> bam Dong y (toi da 2.5s)
       var confirmBtn = null;
-      var waitCf = Date.now() + 2000;
+      var retriedBuy = false;
+      var waitCf = Date.now() + 2500;
       while (Date.now() < waitCf) {
         await sleep(100);
         confirmBtn = findGuildConfirmButton(buyBtn);
         if (confirmBtn) break;
+        if (!retriedBuy && Date.now() > waitCf - 1850) {
+          retriedBuy = true;
+          try { dispatchRealUiClick(buyBtn); } catch (eM1) {}
+        }
       }
 
       if (!confirmBtn) {
@@ -5272,9 +5298,18 @@ class GameAutoPilot(
       }
 
       try { confirmBtn.click(); } catch (eCf0) {}
-      try { dispatchRealUiClick(confirmBtn); } catch (eCf1) {}
-      await sleep(650);
-
+      await sleep(420);
+      var stillThere = findGuildConfirmButton(buyBtn);
+      if (stillThere) {
+        try { dispatchRealUiClick(stillThere); } catch (eCf1) {}
+        await sleep(450);
+      }
+      var stillAfter2 = findGuildConfirmButton(buyBtn);
+      if (stillAfter2) {
+        note('[TBK] Da bam Dong y (' + (stillAfter2.tagName || '') + '#' + (stillAfter2.id || '') + ') nhung hop thoai van con');
+        return false;
+      }
+      await sleep(300);
       var checkRoot = document.getElementById('modal') || getGuildRoot() || document.body;
       var checkTxt = cleanUiLabel(checkRoot ? checkRoot.textContent : '');
       if (checkTxt.indexOf('khong du') >= 0 || checkTxt.indexOf('thieu diem') >= 0 || checkTxt.indexOf('that bai') >= 0) {
