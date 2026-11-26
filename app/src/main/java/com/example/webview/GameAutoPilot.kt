@@ -437,7 +437,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-77"
+        const val SCRIPT_VER = "vlmauto-78"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -2042,80 +2042,186 @@ class GameAutoPilot(
     return null;
   }
 
+  function cleanUiLabel(raw) {
+    return noAccent(String(raw || ''))
+      .replace(/\(\s*\d+(?:\s*\/\s*\d+)?\s*\)/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function findVisibleBagRootNow() {
+    var md = document.getElementById('modal');
+    if (md && !md.classList.contains('hidden')) {
+      var mb = document.getElementById('mBody') || md;
+      var mt = cleanUiLabel(mb.textContent || '');
+      if (mt.indexOf('hanh trang') >= 0 || mt.indexOf('tui do') >= 0 ||
+          (mt.indexOf('vat pham') >= 0 && (mt.indexOf('trang bi') >= 0 || mt.indexOf('que hoa') >= 0 || mt.indexOf('tien thao') >= 0))) {
+        return { root: mb, md: md, mode: 'modal' };
+      }
+    }
+    var paneIds = [
+      't-inv', 't-bag', 't-tui', 'p-inv', 'p-bag', 'p-tui',
+      'tab-inv', 'tab-bag', 'tab-tui', 'invTab', 'bagTab', 'tuiTab',
+      'invPane', 'bagPane', 'tuiPane', 'invPanel', 'bagPanel',
+      'u20inv', 'u20bagPane', 'u20tui', 'u20sheet', 'u20drawer', 'u20panel', 'inv', 'bag', 'tui'
+    ];
+    for (var pi = 0; pi < paneIds.length; pi++) {
+      var pe = document.getElementById(paneIds[pi]);
+      if (pe && isVis(pe)) {
+        return { root: pe, md: md, mode: 'tab' };
+      }
+    }
+    var activePanes = document.querySelectorAll(
+      '[data-pane="inv"], [data-pane="bag"], [data-pane="tui"], ' +
+      '.tab-pane.active, .pane.on, .tab-content > .active, .sheet.open, .drawer.open'
+    );
+    for (var ai = 0; ai < activePanes.length; ai++) {
+      var ap = activePanes[ai];
+      if (!ap || !isVis(ap)) continue;
+      if (ap.querySelector && ap.querySelector('canvas, #tabs, #u20bar')) continue;
+      var at = cleanUiLabel(ap.textContent || '');
+      if (at.indexOf('hanh trang') >= 0 || at.indexOf('tui do') >= 0 ||
+          at.indexOf('que hoa') >= 0 || at.indexOf('tien thao') >= 0 ||
+          (at.indexOf('vat pham') >= 0 && at.indexOf('trang bi') >= 0)) {
+        return { root: ap, md: md, mode: 'tab' };
+      }
+    }
+    return null;
+  }
+
   function collectHiddenBagTriggers() {
     var md = document.getElementById('modal');
     var out = [];
     var push = function (el) {
-      if (!el || out.indexOf(el) >= 0) return;
-      if (md && md.contains(el)) return;
-      if (el.closest && el.closest('#chatLines, #u20lines, #logBox, #u20log, #chatBox')) return;
-      if (!isVis(el) || el.disabled) return;
-      out.push(el);
+      if (!el) return;
+      var target = el;
+      if (target.tagName && (target.tagName === 'SPAN' || target.tagName === 'DIV' || target.tagName === 'I' || target.tagName === 'SVG')) {
+        var parentBtn = target.closest ? target.closest('button, [role="button"], [role="tab"], a, .btn, #u20bar > *, #tabs > *') : null;
+        if (parentBtn) target = parentBtn;
+      }
+      if (!target || out.indexOf(target) >= 0) return;
+      if (md && !md.classList.contains('hidden') && md.contains(target)) return;
+      if (target.id === 'vlmAuto' || target.id === 'mswBtn') return;
+      if (target.closest && target.closest('#mswMenu, #chatLines, #u20lines, #logBox, #u20log, #chatBox')) return;
+      if (!isVis(target) || target.disabled) return;
+      out.push(target);
     };
-    var bagIds = ['u20bag', 'bagBtn', 'tuiBtn', 'invBtn', 'bBag', 'btnBag'];
+
+    var isBagLabel = function (lbl) {
+      if (!lbl || lbl.length > 26) return false;
+      return lbl === 'hanh trang' || lbl === 'hanh tran' || lbl.indexOf('hanh tran') >= 0 ||
+        lbl === 'tui do' || lbl === 'tui' || lbl === 'hanh ly' || lbl === 'kho do';
+    };
+
+    // 1. Uu tien ID chuan
+    var bagIds = ['u20bag', 'bagBtn', 'tuiBtn', 'invBtn', 'bBag', 'btnBag', 'tabInv', 'tabBag', 'navBag', 'navInv'];
     for (var i = 0; i < bagIds.length; i++) push(document.getElementById(bagIds[i]));
+
+    // 2. Uu tien nut trong thanh dieu huong (#u20bar, #tabs, nav)
+    var navEls = document.querySelectorAll('#u20bar > *, #u20bar button, #u20bar a, #tabs > *, #tabs button, #tabs a, nav button, .nav button, .tabbar button, #u20pop button, .u20-pop button, .more-menu button');
+    for (var ni = 0; ni < navEls.length; ni++) {
+      var ne = navEls[ni];
+      var nt = cleanUiLabel((ne.textContent || '') + ' ' + (ne.getAttribute('title') || '') + ' ' + (ne.getAttribute('aria-label') || ''));
+      var dt = String(ne.getAttribute('data-tab') || ne.getAttribute('data-open') || ne.getAttribute('data-t') || ne.getAttribute('data-nav') || '').toLowerCase();
+      if (isBagLabel(nt) || dt === 'bag' || dt === 'inv' || dt === 'tui' || dt === 't-inv' || dt === 't-bag') {
+        push(ne);
+      }
+    }
+
+    // 3. Cac nut / the co chu Hanh Trang / Hanh Tran / Tui Do
+    var allBtns = document.querySelectorAll('button, [role="button"], [role="tab"], a, .btn, [onclick]');
+    for (var ai = 0; ai < allBtns.length; ai++) {
+      var bt = cleanUiLabel((allBtns[ai].textContent || '') + ' ' + (allBtns[ai].getAttribute('title') || '') + ' ' + (allBtns[ai].getAttribute('aria-label') || ''));
+      if (isBagLabel(bt)) push(allBtns[ai]);
+    }
+
+    // 4. Data attribute ro rang (tranh [onclick*="inv"] bat nham invite)
     var attrEls = document.querySelectorAll(
-      '[data-open="bag"], [data-tab="bag"], [data-tab="inv"], [data-tab="t-inv"], ' +
-      '[data-tab*="inv" i], [data-tab*="bag" i], [data-t="inv"], [data-t="bag"], ' +
-      '[data-nav="bag"], [data-act="bag"], [onclick*="inv" i], [onclick*="bag" i], ' +
-      '[onclick*="tui" i], [title*="Hành trang" i], [aria-label*="Hành trang" i]'
+      '[data-open="bag"], [data-open="inv"], [data-open="tui"], ' +
+      '[data-tab="bag"], [data-tab="inv"], [data-tab="tui"], [data-tab="t-inv"], [data-tab="t-bag"], ' +
+      '[data-t="inv"], [data-t="bag"], [data-t="tui"], [data-nav="bag"], [data-act="bag"], ' +
+      '[title*="Hành trang" i], [aria-label*="Hành trang" i]'
     );
     for (var a = 0; a < attrEls.length; a++) push(attrEls[a]);
-    var allBtns = document.querySelectorAll('button, [role="button"], [role="tab"], a, .btn, [onclick], #u20bar > *, #tabs > *');
-    for (var ai = 0; ai < allBtns.length; ai++) {
-      var bt = stripCountText(allBtns[ai].textContent || allBtns[ai].getAttribute('title') || allBtns[ai].getAttribute('aria-label') || '');
-      if (bt === 'hanh trang' || bt.indexOf('hanh tran') === 0 || bt === 'tui do' || bt === 'tui') push(allBtns[ai]);
-    }
+
+    // 5. Fallback div/span la
     var leafEls = document.querySelectorAll('div, span');
-    for (var li = 0; li < leafEls.length; li++) {
+    var capLeaf = Math.min(leafEls.length, 420);
+    for (var li = 0; li < capLeaf; li++) {
       if (leafEls[li].children && leafEls[li].children.length > 3) continue;
-      var lt = stripCountText(leafEls[li].textContent || '');
-      if (lt === 'hanh trang' || lt.indexOf('hanh tran') === 0 || lt === 'tui do') push(leafEls[li]);
+      var lt = cleanUiLabel(leafEls[li].textContent || '');
+      if (isBagLabel(lt)) push(leafEls[li]);
     }
     return out;
   }
 
   async function openHiddenBagModal() {
+    A._bagDiag = '';
+    var already = findVisibleBagRootNow();
+    if (already && already.root) {
+      return { root: already.root, md: already.md, mode: 'already_open', prevTabBtn: null, moreBtn: null, bagBtn: null, hiddenInline: null };
+    }
+
     var md = document.getElementById('modal');
     var bagCands = collectHiddenBagTriggers();
-    var bagBtn = bagCands.length > 0 ? bagCands[0] : null;
     var openedMoreBtn = null;
-    if (!bagBtn) {
+    if (bagCands.length === 0) {
       var moreBtn = document.getElementById('u20more') || document.getElementById('moreBtn') || document.getElementById('btnMore');
+      if (!moreBtn) {
+        var mEls = document.querySelectorAll('#u20bar button, #tabs button, button, [role="button"]');
+        for (var mi = 0; mi < mEls.length; mi++) {
+          var mt = cleanUiLabel(mEls[mi].textContent || '');
+          if ((mt === 'them' || mt === 'menu' || mt === 'khac') && isVis(mEls[mi]) && !mEls[mi].disabled) {
+            moreBtn = mEls[mi];
+            break;
+          }
+        }
+      }
       if (moreBtn && isVis(moreBtn) && !moreBtn.disabled) {
         openedMoreBtn = moreBtn;
-        moreBtn.click();
-        await sleep(200);
+        try { dispatchRealUiClick(moreBtn); } catch (eM) { try { moreBtn.click(); } catch (eM2) {} }
+        await sleep(240);
         bagCands = collectHiddenBagTriggers();
-        bagBtn = bagCands.length > 0 ? bagCands[0] : null;
       }
     }
-    if (!bagBtn) return null;
+
+    if (bagCands.length === 0) {
+      try {
+        var navSample = [];
+        var nList = document.querySelectorAll('#u20bar > *, #tabs > *, button');
+        for (var ns = 0; ns < Math.min(nList.length, 16); ns++) {
+          if (!isVis(nList[ns])) continue;
+          var lb = cleanUiLabel(nList[ns].textContent || nList[ns].id || '');
+          if (lb && lb.length <= 18) navSample.push(lb);
+        }
+        A._bagDiag = 'no_btn[' + navSample.slice(0, 8).join('|') + ']';
+      } catch (eDiag0) {}
+      return null;
+    }
 
     var prevTabBtn = document.querySelector('#tabs .on, #tabs .active, #tabs [aria-selected="true"], #u20bar .on, #u20bar .active');
-    var paneIds = ['t-inv', 't-bag', 'p-inv', 'p-bag', 'invTab', 'bagTab', 'invPane', 'bagPane', 'invPanel', 'bagPanel', 'u20inv', 'u20bagPane', 'u20sheet', 'u20drawer', 'u20panel', 'inv', 'bag'];
 
     var findFallbackBagRoot = function () {
-      var winW = window.innerWidth || 800;
-      var winH = window.innerHeight || 480;
       var cands = document.querySelectorAll('.modal, .popup, .drawer, .sheet, .panel, [role="dialog"], [aria-modal="true"], div, section');
       var best = null;
       var bestArea = 999999999;
-      var cap = Math.min(cands.length, 480);
+      var cap = Math.min(cands.length, 520);
       for (var ci = 0; ci < cap; ci++) {
         var el = cands[ci];
-        if (!el || !isVis(el) || el === document.body || el === document.documentElement || el.id === 'vlmAuto') continue;
+        if (!el || !isVis(el) || el === document.body || el === document.documentElement) continue;
+        if (el.id === 'vlmAuto' || el.id === 'app' || el.id === 'root' || el.id === 'game' || el.id === 'wrap') continue;
         if (el.closest && el.closest('#tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
+        if (el.querySelector && el.querySelector('canvas, #tabs, #u20bar')) continue;
         var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        if (!rect || rect.width < 160 || rect.height < 120) continue;
-        if (rect.width >= winW * 0.98 && rect.height >= winH * 0.96) continue;
-        var tx = noAccent(el.textContent || '');
-        if (!tx || tx.length < 18) continue;
+        if (!rect || rect.width < 150 || rect.height < 110) continue;
+        var tx = cleanUiLabel(el.textContent || '');
+        if (!tx || tx.length < 14) continue;
         var score = 0;
         if (tx.indexOf('hanh trang') >= 0 || tx.indexOf('tui do') >= 0) score += 2;
         if (tx.indexOf('vat pham') >= 0 || tx.indexOf('tieu hao') >= 0 || tx.indexOf('trang bi') >= 0) score += 1;
-        if (tx.indexOf('que hoa') >= 0 || tx.indexOf('tien thao') >= 0 || tx.indexOf('su dung') >= 0 || tx.indexOf('hanh trang trong') >= 0) score += 2;
-        if (score >= 3) {
+        if (tx.indexOf('que hoa') >= 0 || tx.indexOf('tien thao') >= 0 || tx.indexOf('su dung') >= 0 || tx.indexOf('dung') >= 0 || tx.indexOf('hanh trang trong') >= 0) score += 2;
+        if (score >= 2) {
           var area = rect.width * rect.height;
           if (area < bestArea) { bestArea = area; best = el; }
         }
@@ -2123,43 +2229,50 @@ class GameAutoPilot(
       return best;
     };
 
-    try { bagBtn.click(); } catch (eClick) {
-      try { dispatchRealUiClick(bagBtn); } catch (eClick2) { return null; }
+    var maxTry = Math.min(bagCands.length, 3);
+    for (var ti = 0; ti < maxTry; ti++) {
+      var bagBtn = bagCands[ti];
+      try { bagBtn.click(); } catch (eClick) {
+        try { dispatchRealUiClick(bagBtn); } catch (eClick2) { continue; }
+      }
+
+      var retriedRealClick = false;
+      var waitEnd = Date.now() + 1700;
+      while (Date.now() < waitEnd) {
+        if (md && !md.classList.contains('hidden')) {
+          await sleep(150);
+          return { root: document.getElementById('mBody') || md, md: md, mode: 'modal', prevTabBtn: null, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: null };
+        }
+        var foundVis = findVisibleBagRootNow();
+        if (foundVis && foundVis.root) {
+          await sleep(150);
+          return { root: foundVis.root, md: md, mode: foundVis.mode, prevTabBtn: prevTabBtn, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: null };
+        }
+        if (!retriedRealClick && Date.now() > waitEnd - 1150) {
+          retriedRealClick = true;
+          try { dispatchRealUiClick(bagBtn); } catch (eClick3) {}
+        }
+        if (Date.now() > waitEnd - 850) {
+          var fbRoot = findFallbackBagRoot();
+          if (fbRoot) {
+            var savedStyle = { opacity: fbRoot.style.opacity, pointerEvents: fbRoot.style.pointerEvents };
+            try { fbRoot.style.opacity = '0.001'; fbRoot.style.pointerEvents = 'none'; } catch (eH) {}
+            await sleep(130);
+            return { root: fbRoot, md: md, mode: 'fallback', prevTabBtn: prevTabBtn, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: savedStyle };
+          }
+        }
+        await sleep(80);
+      }
     }
 
-    var retriedRealClick = false;
-    var waitEnd = Date.now() + 2400;
-    while (Date.now() < waitEnd) {
-      if (md && !md.classList.contains('hidden')) {
-        await sleep(160);
-        return { root: document.getElementById('mBody') || md, md: md, mode: 'modal', prevTabBtn: null, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: null };
-      }
-      for (var pi = 0; pi < paneIds.length; pi++) {
-        var pe = document.getElementById(paneIds[pi]);
-        if (pe && isVis(pe)) {
-          await sleep(160);
-          return { root: pe, md: md, mode: 'tab', prevTabBtn: prevTabBtn, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: null };
-        }
-      }
-      if (!retriedRealClick && Date.now() > waitEnd - 1700) {
-        retriedRealClick = true;
-        try { dispatchRealUiClick(bagBtn); } catch (eClick3) {}
-      }
-      if (Date.now() > waitEnd - 1500) {
-        var fbRoot = findFallbackBagRoot();
-        if (fbRoot) {
-          var savedStyle = { opacity: fbRoot.style.opacity, pointerEvents: fbRoot.style.pointerEvents };
-          try { fbRoot.style.opacity = '0.001'; fbRoot.style.pointerEvents = 'none'; } catch (eH) {}
-          await sleep(140);
-          return { root: fbRoot, md: md, mode: 'fallback', prevTabBtn: prevTabBtn, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: savedStyle };
-        }
-      }
-      await sleep(80);
-    }
+    try {
+      var firstLbl = cleanUiLabel(bagCands[0].textContent || bagCands[0].id || '');
+      A._bagDiag = 'clicked=' + firstLbl + ',cands=' + bagCands.length;
+    } catch (eDiag1) {}
     return null;
   }
-
   async function closeHiddenBagModal(ctx) {
+    if (ctx && ctx.mode === 'already_open') return;
     if (ctx && ctx.mode === 'fallback' && ctx.root) {
       try {
         var clBtn = ctx.root.querySelector('#mClose, .close, [data-close], button[aria-label*="Close" i]');
@@ -2207,7 +2320,7 @@ class GameAutoPilot(
     var ctx = null;
     try {
       ctx = await openHiddenBagModal();
-      if (!ctx || !ctx.root) return { scanned: false, used: false, reason: 'cannot_open_bag' };
+      if (!ctx || !ctx.root) return { scanned: false, used: false, reason: 'cannot_open_bag' + (A._bagDiag ? ':' + A._bagDiag : '') };
 
       var readyEnd = Date.now() + 1400;
       var bagRendered = false;
@@ -4683,6 +4796,53 @@ class GameAutoPilot(
     }
   }
 
+  function findGuildConfirmButton(excludeBtn) {
+    var dialogRoots = [
+      document.getElementById('cfModal'),
+      document.getElementById('confirmModal'),
+      document.getElementById('cModal'),
+      document.querySelector('.confirm'),
+      document.querySelector('[data-confirm]'),
+      document.querySelector('[role="dialog"]'),
+      document.querySelector('[aria-modal="true"]'),
+      document.querySelector('.swal2-container'),
+      document.body
+    ];
+    var best = null;
+    var bestScore = -1;
+    for (var s = 0; s < dialogRoots.length; s++) {
+      var sr = dialogRoots[s];
+      if (!sr || !isVis(sr)) continue;
+      var inDialog = (sr !== document.body);
+      var btns = sr.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"], a');
+      var cap = Math.min(btns.length, 220);
+      for (var i = 0; i < cap; i++) {
+        var el = btns[i];
+        if (!el || el === excludeBtn || el.disabled || !isVis(el)) continue;
+        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if (el.closest && el.closest('#tabs, #u20bar, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+        var t = cleanUiLabel(el.textContent || el.value || '');
+        if (!t || t.length > 26) continue;
+        if (t === 'huy' || t === 'huy bo' || t === 'dong' || t === 'dong lai' || t === 'khong' || t === 'bo qua') continue;
+        var score = 0;
+        if (t === 'dong y') score = 320;
+        else if (t.indexOf('dong y') === 0) score = 260;
+        else if (t === 'xac nhan') score = 220;
+        else if (t === 'chap nhan') score = 200;
+        else if (t === 'ok') score = 150;
+        if (score > 0) {
+          if (inDialog) score += 80;
+          if (score > bestScore) {
+            bestScore = score;
+            best = el;
+          }
+        }
+      }
+      if (best && inDialog) return best;
+    }
+    return best;
+  }
+
   async function muaTinVatThienBaoKho(I) {
     if (!A.cfg.on || !A.cfg.tbkTinVat) return false;
     if (dayGet('tbkTv') >= 1) return false;
@@ -4694,24 +4854,28 @@ class GameAutoPilot(
     var openedMoreBtn = null;
 
     var findBangHoiBtn = function () {
-      var ids = ['guildBtn', 'bangBtn', 'btnBang', 'u20guild', 'u20bang'];
+      var ids = ['guildBtn', 'bangBtn', 'btnBang', 'u20guild', 'u20bang', 'tabGuild', 'tabBang'];
       for (var ii = 0; ii < ids.length; ii++) {
         var g = document.getElementById(ids[ii]);
         if (g && isVis(g) && !g.disabled) return g;
       }
-      var all = document.querySelectorAll('#tabs button, #tabs a, #u20bar button, #u20bar a, #u20pop button, .u20-pop button, .more-menu button, button, [role="button"], [role="tab"], a');
+      var attr = document.querySelectorAll('[data-tab*="guild" i], [data-tab*="bang" i], [data-open*="guild" i], [data-open*="bang" i]');
+      for (var ai = 0; ai < attr.length; ai++) {
+        if (isVis(attr[ai]) && !attr[ai].disabled) return attr[ai];
+      }
+      var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, #u20pop button, .u20-pop button, .more-menu button, button, [role="button"], [role="tab"], a');
       var cap = Math.min(all.length, 320);
       for (var i = 0; i < cap; i++) {
         var el = all[i];
         if (!el || !isVis(el) || el.disabled || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
         if (el.closest && el.closest('#mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var t = stripCountText(el.textContent || '');
-        if (t === 'bang hoi' || t.indexOf('bang hoi') === 0 || t === 'bang') return el;
+        var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
+        if (t === 'bang hoi' || t.indexOf('bang hoi') >= 0 || t === 'bang h' || t === 'bang') return el;
       }
       return null;
     };
 
-    lockModal(25000);
+    lockModal(28000);
     stealthObj().enter();
     try {
       var bangBtn = findBangHoiBtn();
@@ -4719,23 +4883,25 @@ class GameAutoPilot(
         var moreBtn = document.getElementById('u20more') || document.getElementById('moreBtn') || document.getElementById('btnMore');
         if (moreBtn && isVis(moreBtn) && !moreBtn.disabled) {
           openedMoreBtn = moreBtn;
-          moreBtn.click();
-          await sleep(220);
+          try { dispatchRealUiClick(moreBtn); } catch (eMo) { try { moreBtn.click(); } catch (eMo2) {} }
+          await sleep(260);
           bangBtn = findBangHoiBtn();
         }
       }
       if (!bangBtn) {
-        note('[TBK] Khong tim thay tab Bang Hoi de mua Tin vat');
+        note('[TBK] Khong tim thay nut Bang Hoi de doi Tin vat');
         return false;
       }
 
-      try { dispatchRealUiClick(bangBtn); } catch (eB1) { try { bangBtn.click(); } catch (eB2) {} }
-      await sleep(360);
+      try { bangBtn.click(); } catch (eB0) {}
+      await sleep(180);
+      try { dispatchRealUiClick(bangBtn); } catch (eB1) {}
+      await sleep(320);
 
       var getGuildRoot = function () {
         var md = document.getElementById('modal');
         if (md && !md.classList.contains('hidden')) return document.getElementById('mBody') || md;
-        var pIds = ['t-guild', 't-bang', 'p-guild', 'p-bang', 'guildTab', 'bangTab', 'guildPane', 'bangPane'];
+        var pIds = ['t-guild', 't-bang', 'p-guild', 'p-bang', 'tab-guild', 'tab-bang', 'guildTab', 'bangTab', 'guildPane', 'bangPane', 'u20guildPane'];
         for (var pi = 0; pi < pIds.length; pi++) {
           var pe = document.getElementById(pIds[pi]);
           if (pe && isVis(pe)) return pe;
@@ -4743,117 +4909,148 @@ class GameAutoPilot(
         return document.body;
       };
 
-      var clickSubTab = async function (keywords) {
-        var root = getGuildRoot();
-        if (!root) return false;
-        var btns = root.querySelectorAll('button, [role="tab"], [role="button"], .tab, a');
-        var cap = Math.min(btns.length, 260);
-        for (var i = 0; i < cap; i++) {
-          var b = btns[i];
-          if (!b || !isVis(b) || b.disabled || b.id === 'vlmAuto' || b.id === 'mswBtn') continue;
-          var bt = stripCountText(b.textContent || '');
-          for (var k = 0; k < keywords.length; k++) {
-            if (bt === keywords[k] || bt.indexOf(keywords[k]) === 0) {
-              try { dispatchRealUiClick(b); } catch (eK1) { try { b.click(); } catch (eK2) {} }
-              await sleep(320);
-              return true;
+      var waitAndClickSubTab = async function (keywords, maxWaitMs) {
+        var deadline = Date.now() + (maxWaitMs || 1500);
+        while (Date.now() < deadline) {
+          var root = getGuildRoot();
+          if (root) {
+            var els = root.querySelectorAll('button, [role="tab"], [role="button"], .tab, a, div, span');
+            var cap = Math.min(els.length, 320);
+            for (var i = 0; i < cap; i++) {
+              var b = els[i];
+              if (!b || !isVis(b) || b.disabled || b.id === 'vlmAuto' || b.id === 'mswBtn') continue;
+              if (b.closest && b.closest('#tabs, #u20bar, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+              if ((b.tagName === 'DIV' || b.tagName === 'SPAN') && b.children && b.children.length > 2) continue;
+              var bt = cleanUiLabel(b.textContent || '');
+              if (!bt || bt.length > 24) continue;
+              for (var k = 0; k < keywords.length; k++) {
+                if (bt === keywords[k] || bt.indexOf(keywords[k]) === 0) {
+                  try { b.click(); } catch (eK0) {}
+                  try { dispatchRealUiClick(b); } catch (eK1) {}
+                  await sleep(320);
+                  return true;
+                }
+              }
             }
           }
+          await sleep(110);
         }
         return false;
       };
 
-      // Bang Hoi -> Cua hang -> Vat pham -> Tin vat Thien Bao Kho
-      await clickSubTab(['cua hang', 'shop bang', 'tiem bang']);
-      await clickSubTab(['vat pham', 'dao cu', 'tieu hao', 'tat ca']);
-
-      var root = getGuildRoot();
-      if (!root) return false;
-      var nodes = root.querySelectorAll('.kc, .shoprow, .qrow, .item, tr, li, div, span, p');
-      var matches = [];
-      for (var ni = 0; ni < nodes.length; ni++) {
-        var el = nodes[ni];
-        if (!isVis(el)) continue;
-        var meta = noAccent(extractNodeMeta(el));
-        if (!meta || meta.length > 420) continue;
-        if (meta.indexOf('tin vat thien bao kho') >= 0 || (meta.indexOf('tin vat') >= 0 && meta.indexOf('bao kho') >= 0)) {
-          matches.push({ el: el, len: meta.length });
-        }
+      // Bang hoi -> Cua hang -> Vat pham
+      var clickedShop = await waitAndClickSubTab(['cua hang', 'shop bang', 'tiem bang'], 1600);
+      if (!clickedShop) {
+        note('[TBK] Da mo Bang Hoi nhung khong thay muc Cua hang');
+        return false;
       }
-      matches.sort(function (a, b) { return a.len - b.len; });
+      await waitAndClickSubTab(['vat pham', 'dao cu', 'tieu hao'], 1400);
 
+      // Cho hien thi Tin vat Thien Bao Kho (toi da 1.6s)
       var buyBtn = null;
       var alreadyBought = false;
-      for (var mi = 0; mi < matches.length; mi++) {
-        var cur = matches[mi].el;
-        for (var depth = 0; depth < 5 && cur && cur !== root && cur !== document.body; depth++) {
-          var curTxt = noAccent((cur.textContent || '').replace(/\s+/g, ' ').trim());
-          if (curTxt.length > 360) break;
-          if (curTxt.indexOf('da mua') >= 0 || curTxt.indexOf('het hang') >= 0 || curTxt.indexOf('0/1') >= 0) {
-            alreadyBought = true;
-          }
-          var rowBtns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
-          for (var rb = 0; rb < rowBtns.length; rb++) {
-            var rBtn = rowBtns[rb];
-            if (!isVis(rBtn)) continue;
-            var rbt = stripCountText(rBtn.textContent || '');
-            if (rbt === 'da mua' || rbt === 'het' || rbt === 'het hang') {
-              alreadyBought = true;
-              break;
-            }
-            if (!rBtn.disabled && (rbt === 'mua' || rbt.indexOf('mua') === 0 || rbt === 'doi')) {
-              buyBtn = rBtn;
-              break;
+      var waitItem = Date.now() + 1600;
+      while (Date.now() < waitItem) {
+        var root = getGuildRoot();
+        if (root) {
+          var nodes = root.querySelectorAll('.kc, .shoprow, .qrow, .item, tr, li, div, span, p');
+          var matches = [];
+          for (var ni = 0; ni < nodes.length; ni++) {
+            var el = nodes[ni];
+            if (!isVis(el)) continue;
+            if (el.closest && el.closest('#tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
+            var meta = cleanUiLabel(extractNodeMeta(el));
+            if (!meta || meta.length > 440) continue;
+            if (meta.indexOf('tin vat thien bao kho') >= 0 || (meta.indexOf('tin vat') >= 0 && meta.indexOf('bao kho') >= 0)) {
+              matches.push({ el: el, len: meta.length });
             }
           }
-          if (buyBtn || alreadyBought) break;
-          cur = cur.parentElement;
+          matches.sort(function (a, b) { return a.len - b.len; });
+
+          for (var mi = 0; mi < matches.length; mi++) {
+            var cur = matches[mi].el;
+            for (var depth = 0; depth < 6 && cur && cur !== root && cur !== document.body; depth++) {
+              var curTxt = cleanUiLabel(cur.textContent || '');
+              if (curTxt.length > 480) break;
+              if (curTxt.indexOf('da doi') >= 0 || curTxt.indexOf('da mua') >= 0 || curTxt.indexOf('het hang') >= 0 || curTxt.indexOf('0 1') >= 0) {
+                alreadyBought = true;
+              }
+              var rowBtns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
+              var fallbackMua = null;
+              for (var rb = 0; rb < rowBtns.length; rb++) {
+                var rBtn = rowBtns[rb];
+                if (!isVis(rBtn)) continue;
+                var rbt = cleanUiLabel(rBtn.textContent || '');
+                if (rbt === 'da doi' || rbt === 'da mua' || rbt === 'het' || rbt === 'het hang') {
+                  alreadyBought = true;
+                  break;
+                }
+                if (!rBtn.disabled) {
+                  if (rbt === 'doi' || rbt.indexOf('doi ') === 0) {
+                    buyBtn = rBtn;
+                    break;
+                  }
+                  if (!fallbackMua && (rbt === 'mua' || rbt.indexOf('mua ') === 0)) {
+                    fallbackMua = rBtn;
+                  }
+                }
+              }
+              if (!buyBtn && fallbackMua) buyBtn = fallbackMua;
+              if (buyBtn || alreadyBought) break;
+              cur = cur.parentElement;
+            }
+            if (buyBtn || alreadyBought) break;
+          }
         }
         if (buyBtn || alreadyBought) break;
+        await sleep(120);
       }
 
       if (alreadyBought) {
         dayAdd('tbkTv', 1);
-        note('[TBK] Da mua Tin vat Thien Bao Kho hom nay');
+        note('[TBK] Da doi Tin vat Thien Bao Kho hom nay');
         return false;
       }
       if (!buyBtn) {
-        note('[TBK] Khong tim thay nut Mua Tin vat Thien Bao Kho (Bang Hoi -> Cua hang -> Vat pham)');
+        note('[TBK] Khong tim thay Tin vat Thien Bao Kho / nut Doi (Bang hoi -> Cua hang -> Vat pham)');
         return false;
       }
 
-      try { dispatchRealUiClick(buyBtn); } catch (eM1) { try { buyBtn.click(); } catch (eM2) {} }
-      var qtyInp = null;
-      var waitInp = Date.now() + 1800;
-      while (Date.now() < waitInp) {
-        qtyInp = findKtcBuyQtyInput(buyBtn);
-        if (qtyInp) break;
-        await sleep(90);
-      }
+      try { if (buyBtn.scrollIntoView) buyBtn.scrollIntoView({ block: 'center' }); } catch (eScr) {}
+      await sleep(80);
+      try { buyBtn.click(); } catch (eM0) {}
+      try { dispatchRealUiClick(buyBtn); } catch (eM1) {}
 
-      if (qtyInp) {
-        fillInp(qtyInp, '1');
+      // Cho popup xac nhan -> bam Dong y (toi da 2s)
+      var confirmBtn = null;
+      var waitCf = Date.now() + 2000;
+      while (Date.now() < waitCf) {
         await sleep(100);
-        var confirmBtn = findKtcBuyConfirmButton(qtyInp, buyBtn);
-        if (!confirmBtn) return false;
-        confirmBtn.click();
-        await sleep(550);
-      } else {
-        var confirmNoInp = findKtcBuyConfirmButton(null, buyBtn);
-        if (confirmNoInp) confirmNoInp.click();
-        await sleep(550);
+        confirmBtn = findGuildConfirmButton(buyBtn);
+        if (confirmBtn) break;
       }
 
-      var checkTxt = noAccent((document.getElementById('modal') || root).textContent || '');
-      if (checkTxt.indexOf('khong du') >= 0 || checkTxt.indexOf('that bai') >= 0) {
-        note('[TBK] Chua mua duoc Tin vat Thien Bao Kho (khong du diem/tien te)');
+      if (!confirmBtn) {
+        note('[TBK] Da bam Doi nhung khong thay nut Dong y xac nhan');
+        return false;
+      }
+
+      try { confirmBtn.click(); } catch (eCf0) {}
+      try { dispatchRealUiClick(confirmBtn); } catch (eCf1) {}
+      await sleep(650);
+
+      var checkRoot = document.getElementById('modal') || getGuildRoot() || document.body;
+      var checkTxt = cleanUiLabel(checkRoot ? checkRoot.textContent : '');
+      if (checkTxt.indexOf('khong du') >= 0 || checkTxt.indexOf('thieu diem') >= 0 || checkTxt.indexOf('that bai') >= 0) {
+        A.cool.tbk_tinvat = Date.now() + 600000;
+        note('[TBK] Chua doi duoc Tin vat (khong du diem cong hien/tien te)');
         return false;
       }
 
       dayAdd('tbkTv', 1);
       tbkClearXong();
       A.tbkFailCount = 0;
-      note('Da mua Tin vat Thien Bao Kho (+60p -> toi da 120p)');
+      note('Da doi Tin vat Thien Bao Kho (Bang hoi -> Cua hang -> Vat pham -> Doi -> Dong y)');
       return true;
     } finally {
       await closeModalCleanly(document.getElementById('modal'));
@@ -5359,11 +5556,17 @@ class GameAutoPilot(
         }
       } catch (eMapForce) {}
 
-      var bgFns = [muaTheGiaoDich, qua, doiNguyenLieuThua, muaKnb, troThu, khan, suDungVatPhamTieuHao, daTau, muaLb];
+      var runSeq = (A.cfgSeq | 0);
+      var bgFns = [suDungVatPhamTieuHao, muaTinVatThienBaoKho, qua, muaTheGiaoDich, doiNguyenLieuThua, muaKnb, troThu, khan, daTau, muaLb];
       for (var i = 0; i < bgFns.length; i++) {
-        if (!A.cfg.on) break;
+        if (!A.cfg.on || (A.cfgSeq | 0) !== runSeq) {
+          A.pendingTick = true;
+          break;
+        }
         var Icur = (await info()) || I0;
-        try { await bgFns[i](Icur); } catch (eStep) {}
+        try { await bgFns[i](Icur); } catch (eStep) {
+          if (ready('err_bg_' + i, 30000)) note('[Loi step ' + i + '] ' + (eStep && eStep.message ? eStep.message : eStep));
+        }
       }
       publishLiveTelemetry('');
     } catch (e) {
