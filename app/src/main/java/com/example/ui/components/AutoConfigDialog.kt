@@ -256,61 +256,110 @@ fun AutoConfigDialog(
                     AutoCheckRow("Tự chạy phó bản: Chế độ Phó Bản tới khi hết lượt, rồi Dã Tẩu, rồi về chế độ cũ", draft.pb) {
                         draft = draft.copy(pb = it)
                     }
-                    AutoCheckRow(
-                        label = "Ưu tiên hành động khi hết lượt Dã Tẩu, Phó Bản",
-                        checked = draft.afterDailyEnabled,
-                        testTag = "auto_check_afterDailyEnabled"
-                    ) { enabled ->
-                        val hasSub = draft.afterDailyFarm || draft.thap
-                        draft = draft.copy(
-                            afterDailyEnabled = enabled,
-                            afterDailyFarm = if (enabled && !hasSub) true else draft.afterDailyFarm
-                        )
-                    }
-                    AfterDailyActionSelector(
-                        enabled = draft.afterDailyEnabled,
-                        afterDailyFarm = draft.afterDailyFarm,
-                        farmMap = draft.farmMap,
-                        afterDailyThap = draft.thap,
-                        thapAfterMode = draft.thapAfterMode,
-                        onToggleFarm = { checked ->
-                            draft = draft.copy(
-                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
-                                afterDailyFarm = checked,
-                                thap = if (checked) false else draft.thap
-                            )
-                        },
-                        onSelectMap = { mapName ->
-                            draft = draft.copy(
-                                afterDailyEnabled = if (mapName.isNotBlank()) true else draft.afterDailyEnabled,
-                                afterDailyFarm = if (mapName.isNotBlank()) true else draft.afterDailyFarm,
-                                thap = if (mapName.isNotBlank()) false else draft.thap,
-                                farmMap = mapName
-                            )
-                        },
-                        onToggleThap = { checked ->
-                            draft = draft.copy(
-                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
-                                thap = checked,
-                                afterDailyFarm = if (checked) false else draft.afterDailyFarm
-                            )
-                        },
-                        onSelectThapMode = { mode ->
-                            draft = draft.copy(
-                                afterDailyEnabled = true,
-                                thap = true,
-                                afterDailyFarm = false,
-                                thapAfterMode = mode
+                    val isTbkChecked = draft.thap || draft.thapNeDon
+                    val normalizedTbkMode = AutoConfig.normalizeThapAfterMode(draft.thapAfterMode)
+                    val isTbkOrbit = isTbkChecked && normalizedTbkMode == AutoConfig.THAP_MODE_ORBIT
+
+                    // Thiên Bảo Khố (đẩy lên giữa Tự chạy phó bản và Ưu tiên hành động khi hết lượt)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .testTag("auto_tbk_section"),
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF0F172A),
+                        border = BorderStroke(1.dp, if (isTbkChecked) Color(0xFF10B981) else Color(0xFF334155))
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .heightIn(min = 44.dp)
+                                        .clickable {
+                                            val nextOn = !isTbkChecked
+                                            draft = draft.copy(thap = nextOn, thapNeDon = false)
+                                        }
+                                        .testTag("auto_check_thapNeDon"),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isTbkChecked,
+                                        onCheckedChange = { checked ->
+                                            draft = draft.copy(thap = checked, thapNeDon = false)
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = Color(0xFF10B981),
+                                            uncheckedColor = Color(0xFF64748B)
+                                        )
+                                    )
+                                    Text(
+                                        text = "Thiên Bảo Khố",
+                                        color = if (isTbkChecked) Color.White else Color(0xFFCBD5E1),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (isTbkChecked) FontWeight.Bold else FontWeight.Medium,
+                                        maxLines = 1
+                                    )
+                                }
+
+                                val tbkModes = listOf(
+                                    Triple(AutoConfig.THAP_MODE_ORBIT, "Xa em ra", "auto_thap_mode_orbit"),
+                                    Triple(AutoConfig.THAP_MODE_NORMAL, "Bình thường", "auto_thap_mode_normal")
+                                )
+                                tbkModes.forEach { (modeKey, modeLabel, tag) ->
+                                    val isSel = isTbkChecked && normalizedTbkMode == modeKey
+                                    val shape = RoundedCornerShape(6.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 36.dp)
+                                            .clip(shape)
+                                            .background(if (isSel) Color(0xFF065F46) else Color(0xFF1E293B))
+                                            .border(
+                                                1.dp,
+                                                if (isSel) Color(0xFF10B981) else Color(0xFF475569),
+                                                shape
+                                            )
+                                            .clickable {
+                                                draft = draft.copy(
+                                                    thap = true,
+                                                    thapNeDon = false,
+                                                    thapAfterMode = modeKey
+                                                )
+                                            }
+                                            .testTag(tag),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = modeLabel,
+                                            color = if (isSel) Color.White else Color(0xFF94A3B8),
+                                            fontSize = 9.5.sp,
+                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = "Hoạt động ngày (60p/ngày; 120p nếu có Tín vật). Chạy sau Dã Tẩu & Phó Bản.",
+                                color = if (isTbkChecked) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
                             )
                         }
-                    )
-                    AutoCheckRow(
-                        label = "Chỉ Leo Tháp",
-                        checked = draft.thapNeDon,
-                        testTag = "auto_check_thapNeDon"
-                    ) {
-                        draft = draft.copy(thapNeDon = it)
                     }
+
+                    AutoCheckRow(
+                        label = "Mua Tín vật Thiên Bảo Khố (+60p: Bang Hội → Cửa hàng → Vật phẩm)",
+                        checked = draft.tbkTinVat,
+                        testTag = "auto_check_tbkTinVat"
+                    ) {
+                        draft = draft.copy(tbkTinVat = it)
+                    }
+
                     MainSkill9xSelector(
                         sectRaw = currentSectRaw,
                         selectedSkillId = draft.thapMainSkill,
@@ -324,10 +373,42 @@ fun AutoConfigDialog(
                     )
                     OrbitStyleSelector(
                         selectedStyle = draft.thapNeDonStyle,
-                        isOrbitEnabled = draft.thapNeDon,
+                        isOrbitEnabled = isTbkOrbit,
                         onSelect = { style -> draft = draft.copy(thapNeDonStyle = style) }
                     )
-                    AutoCheckRow("Nhận quà Điểm danh + Mốc cấp", draft.qua) {
+
+                    AutoCheckRow(
+                        label = "Ưu tiên hành động khi hết lượt Dã Tẩu, Phó Bản, Thiên Bảo Khố",
+                        checked = draft.afterDailyEnabled,
+                        testTag = "auto_check_afterDailyEnabled"
+                    ) { enabled ->
+                        draft = draft.copy(
+                            afterDailyEnabled = enabled,
+                            afterDailyFarm = if (enabled) true else draft.afterDailyFarm
+                        )
+                    }
+                    AfterDailyActionSelector(
+                        enabled = draft.afterDailyEnabled,
+                        afterDailyFarm = draft.afterDailyFarm,
+                        farmMap = draft.farmMap,
+                        afterDailyThap = false,
+                        thapAfterMode = draft.thapAfterMode,
+                        onToggleFarm = { checked ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
+                                afterDailyFarm = checked
+                            )
+                        },
+                        onSelectMap = { mapName ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (mapName.isNotBlank()) true else draft.afterDailyEnabled,
+                                afterDailyFarm = if (mapName.isNotBlank()) true else draft.afterDailyFarm,
+                                farmMap = mapName
+                            )
+                        },
+                        onToggleThap = {},
+                        onSelectThapMode = {}
+                    )                    AutoCheckRow("Nhận quà Điểm danh + Mốc cấp", draft.qua) {
                         draft = draft.copy(qua = it)
                     }
                     AutoCheckRow("Khấn tượng mỗi ngày (+20% kinh nghiệm 8 giờ)", draft.khan) {
@@ -457,19 +538,19 @@ fun AutoConfigDialog(
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
-                                text = "Lưu ý tiền tệ & Chế độ Chỉ Leo Tháp",
+                                text = "Thứ tự hoạt động & Thiên Bảo Khố",
                                 color = Color(0xFFFCA5A5),
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "• Ưu tiên hành động khi hết lượt: chọn Luyện Công + map để tự về map đã chọn, hoặc chọn Leo Tháp (Xa em ra = bật né đòn vòng tròn; Bình thường = chỉ auto ingame).\n• Chỉ Leo Tháp: dù đang làm gì cũng lập tức chuyển sang Chế độ: Leo Tháp (tự vào lại khi Rớt Tháp / mất kết nối).",
+                                text = "• Thứ tự khi tích đủ: Dã Tẩu → Phó Bản → Thiên Bảo Khố (60p/ngày; 120p nếu mua Tín vật) → Luyện Công (chọn map).\n• Trong Thiên Bảo Khố: Xa em ra = bật chạy vòng tròn né đòn; Bình thường = auto ingame. Khi cần đổi chế độ sớm sẽ tự bấm Rời → Bấm lại để rời.",
                                 color = Color(0xFFCBD5E1),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                             Text(
-                                text = "Quỹ đạo chạy vòng tròn chỉ hoạt động trong Thông Thiên Tháp (bước 20° quanh mục tiêu: bán kính 90 cho chiêu Đánh gần, 400 cho chiêu Đánh xa; vượt tầng lập tức chạy về tâm map).",
+                                text = "Quỹ đạo chạy vòng tròn chỉ hoạt động trong Thiên Bảo Khố (bước 20° quanh mục tiêu: bán kính 90 cho chiêu Đánh gần, 400 cho chiêu Đánh xa; vượt tầng lập tức chạy về tâm map).",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -601,7 +682,7 @@ private fun AfterDailyActionSelector(
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
             Text(
                 text = if (enabled) {
-                    "Quét nhiệm vụ & Phó Bản còn lại — xong hết sẽ chạy mục đã chọn:"
+                    "Xong Dã Tẩu, Phó Bản & Thiên Bảo Khố sẽ tự chuyển Luyện Công + map:"
                 } else {
                     "Tích dòng trên để bật tự quét và chuyển sang hành động dưới:"
                 },
@@ -739,70 +820,6 @@ private fun AfterDailyActionSelector(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Hàng 2: Leo Tháp + Xa em ra + Bình thường
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .heightIn(min = 44.dp)
-                        .clickable { onToggleThap(!afterDailyThap) }
-                        .testTag("auto_check_afterDailyThap"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = afterDailyThap,
-                        onCheckedChange = onToggleThap,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color(0xFF10B981),
-                            uncheckedColor = Color(0xFF64748B)
-                        )
-                    )
-                    Text(
-                        text = "Leo Tháp",
-                        color = if (afterDailyThap) Color.White else Color(0xFFCBD5E1),
-                        fontSize = 10.sp,
-                        fontWeight = if (afterDailyThap) FontWeight.Bold else FontWeight.Normal,
-                        maxLines = 1
-                    )
-                }
-
-                val thapModes = listOf(
-                    Triple(AutoConfig.THAP_MODE_ORBIT, "Xa em ra", "auto_thap_mode_orbit"),
-                    Triple(AutoConfig.THAP_MODE_NORMAL, "Bình thường", "auto_thap_mode_normal")
-                )
-                thapModes.forEach { (modeKey, modeLabel, tag) ->
-                    val isSel = afterDailyThap && normalizedThapMode == modeKey
-                    val shape = RoundedCornerShape(6.dp)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 38.dp)
-                            .clip(shape)
-                            .background(if (isSel) Color(0xFF065F46) else Color(0xFF1E293B))
-                            .border(
-                                1.dp,
-                                if (isSel) Color(0xFF10B981) else Color(0xFF475569),
-                                shape
-                            )
-                            .clickable { onSelectThapMode(modeKey) }
-                            .testTag(tag),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = modeLabel,
-                            color = if (isSel) Color.White else Color(0xFF94A3B8),
-                            fontSize = 9.5.sp,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
         }
     }
 }

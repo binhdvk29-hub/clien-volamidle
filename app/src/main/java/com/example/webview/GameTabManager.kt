@@ -206,7 +206,7 @@ class GameTabManager(
     fun saveAutoConfigOnly(tabIndex: Int, json: String?) {
         autoPilot.saveConfigOnly(tabIndex, json)
         val cfg = autoPilot.currentConfig(tabIndex)
-        appendGameLog(tabIndex, "Luu cau hinh Tab ${tabIndex + 1} (auto=${if (cfg.on) "BAT" else "TAT"}, chiLeoThap=${cfg.thapNeDon}, sauHD=${if (cfg.thap) "LeoThap" else if (cfg.afterDailyFarm) "LuyenCong:" + cfg.farmMap else "Tat"}, QHT=${cfg.qht}/${cfg.qhtMua})")
+        appendGameLog(tabIndex, "Luu Tab ${tabIndex + 1} (auto=${if (cfg.on) "BAT" else "TAT"}, TBK=${if (cfg.thap || cfg.thapNeDon) cfg.thapAfterMode else "Tat"}, tinVat=${cfg.tbkTinVat}, LC=${if (cfg.afterDailyEnabled || cfg.afterDailyFarm) cfg.farmMap else "Tat"}, QHT=${cfg.qht}/${cfg.qhtMua})")
     }
 
     fun updateAutoConfig(tabIndex: Int, json: String?, immediate: Boolean = true) {

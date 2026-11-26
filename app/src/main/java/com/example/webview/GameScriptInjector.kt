@@ -1,4 +1,4 @@
-package com.example.webview
+﻿package com.example.webview
 
 import org.json.JSONObject
 
@@ -1155,7 +1155,7 @@ object GameScriptInjector {
                     const hbMatch = bodyText.match(/(?:Hồng\s*bao|Bao\s*lì\s*xì)\s*:?\s*(\d+)/i) || bodyText.match(/🧧\s*:?\s*(\d+)/i);
                     if (hbMatch) hongBao = hbMatch[1];
 
-                    const thapMatch = bodyText.match(/(?:Kỷ\s*lục\s*tầng\s*tháp|Tầng\s*tháp|Tháp)\s*:?\s*([^\n,]{1,20})/i);
+                    const thapMatch = bodyText.match(/(?:Kỷ\s*lục\s*tầng\s*tháp|Thiên\s*Bảo\s*Khố|Tầng\s*tháp|Tháp)\s*:?\s*([^\n,]{1,20})/i);
                     if (thapMatch) thapRecord = cleanText(thapMatch[1]);
 
                     const bossMatch = bodyText.match(/(?:Boss\s*Hoàng\s*Kim|Boss\s*HK)\s*:?\s*(\d+)/i);
@@ -1707,7 +1707,7 @@ object GameScriptInjector {
                 if (targetNoAccent === 'nhiem vu') modeId = 'quest';
                 else if (targetNoAccent === 'pho ban') modeId = 'dg';
                 else if (targetNoAccent === 'luyen cong') modeId = 'farm';
-                else if (targetNoAccent === 'leo thap') modeId = 'tower';
+                else if (targetNoAccent === 'leo thap' || targetNoAccent === 'thien bao kho' || targetNoAccent === 'bao kho') modeId = 'tower';
 
                 function clickModeMenuItem() {
                     if (!modeId) return false;
