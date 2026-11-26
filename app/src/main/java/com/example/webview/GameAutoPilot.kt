@@ -443,7 +443,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-83"
+        const val SCRIPT_VER = "vlmauto-84"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1144,7 +1144,15 @@ class GameAutoPilot(
 
   var dayWho = function () {
     try {
-      if (A.st && A.st.ten) return String(A.st.ten);
+      if (A.st && A.st.ten) {
+        A._lastCharWho = String(A.st.ten);
+        return A._lastCharWho;
+      }
+      if (A.info && (A.info.ten || A.info.name)) {
+        A._lastCharWho = String(A.info.ten || A.info.name);
+        return A._lastCharWho;
+      }
+      if (A._lastCharWho) return A._lastCharWho;
     } catch (e) {}
     return '';
   };
@@ -1171,6 +1179,13 @@ class GameAutoPilot(
     } catch (e) { return false; }
   };
 
+  var dayClear = function (k) {
+    try {
+      localStorage.removeItem(dayKey(k));
+      localStorage.removeItem('vlm_auto_' + k);
+    } catch (e) {}
+  };
+
   var dayAdd = function (k, n) {
     try {
       if (!isFinite(n) || n < 0) return false;
@@ -1179,6 +1194,13 @@ class GameAutoPilot(
         JSON.stringify({ d: dayIdForKey(k), n: Math.min(max, dayGet(k) + Math.floor(Math.min(n, max))) }));
       return true;
     } catch (e) { return false; }
+  };
+
+  var dayClear = function (k) {
+    try {
+      localStorage.removeItem(dayKey(k));
+      localStorage.removeItem('vlm_auto_' + k);
+    } catch (e) {}
   };
 
   function normalizeOrbitStyleJs(raw) {
@@ -1199,6 +1221,7 @@ class GameAutoPilot(
     try {
       var c = (typeof j === 'string') ? JSON.parse(j) : (j || {});
       var __prevFarmKey = (A.cfg && A.cfg.farmMap) ? normalizeMapCompareKey(A.cfg.farmMap) : '';
+      var __prevEvJson = JSON.stringify((A.cfg && A.cfg.doiNguyenLieu) || []);
       A.cfg = Object.assign({}, DEF, c || {});
       A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
       A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
@@ -1217,6 +1240,22 @@ class GameAutoPilot(
       A.cfg.tbkTinVat = !!A.cfg.tbkTinVat;
       A.cfg.bangLbdt = !!A.cfg.bangLbdt;
       A.cfg.bangPd = !!A.cfg.bangPd;
+      if (JSON.stringify(A.cfg.doiNguyenLieu || []) !== __prevEvJson) dayClear('evAllDone');
+      if ((A.cfg.knbMua | 0) > demKnb()) dayClear('knbDone');
+      if ((A.cfg.lbMua | 0) > dayGet('lb')) dayClear('lbDone');
+      delete A.cool.khan;
+      delete A.cool.qua;
+      delete A.cool.ldt;
+      delete A.cool.pd_open;
+      delete A.cool.lb;
+      delete A.cool.tt;
+      delete A.cool.knb;
+      delete A.cool.theGd;
+      delete A.cool.evHongBao;
+      delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
+      delete A.cool.tbk_enter;
+      A._lastDailyScanSig = '';
       A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
       A.cfg.thapNeDon = !!A.cfg.thapNeDon;
       A.cfg.thapNeDonStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
@@ -1657,6 +1696,13 @@ class GameAutoPilot(
       return localStorage.getItem(towerLockKey()) === '1' || localStorage.getItem('vlm_auto_tower_lock') === '1';
     } catch (e) { return false; }
   };
+
+  var dayClear = function (k) {
+    try {
+      localStorage.removeItem(dayKey(k));
+      localStorage.removeItem('vlm_auto_' + k);
+    } catch (e) {}
+  };
   var towerLockSet = function (on) {
     try {
       var k = towerLockKey();
@@ -1779,11 +1825,17 @@ class GameAutoPilot(
   }
 
   async function khan(I) {
-    if (!A.cfg.khan || I.khan || I.dg || I.tower || I.sat || I.dead || !ranh() || !ready('khan', 5 * 60000)) return;
+    if (!A.cfg.khan) return;
+    if (I && I.khan) { dayAdd('khanDone', 1); return; }
+    if (dayGet('khanDone') > 0) return;
+    if (I.dg || I.tower || I.sat || I.dead || !ranh() || !ready('khan', 90000)) return;
     var r = await api('khan', {}, 60000);
     if (r && r.ok && r.xong) {
       var I2 = await info();
-      if (I2 && I2.khan) note('khấn tượng: +20% kinh nghiệm 8 giờ');
+      if (I2 && I2.khan) {
+        dayAdd('khanDone', 1);
+        note('khấn tượng: +20% kinh nghiệm 8 giờ (xong hôm nay)');
+      }
     }
   }
 
@@ -3177,30 +3229,44 @@ class GameAutoPilot(
   }
 
   async function daTau(I) {
-    if (!A.cfg.dt || (I.lvl | 0) < 20 || need(I) <= 0 || !ready('ldt', 45000)) return;
-
-    if (A.cfg.ldtMua) {
-      var got = 0, doi = false;
-      for (var i = 0; i < 3; i++) {
-        var n = Math.min(need(I), Math.max(0, (I.ldtMax | 0) - (I.ldtMua | 0)));
-        if (n <= 0) break;
-        var r = await api('muaKtc', { k: 'ldt', n: n });
-        var I2 = await info();
-        if (I2) I = I2;
-        if (r && r.ok && r.n > 0) got += r.n;
-        if (r && r.ok && r.n >= n) break;
-        if (doi || !(A.cfg.k2k > 0)) break;
-        doi = true;
-        var gia = (I.gia && I.gia.ldt) || 20;
-        var can = (n - (r.n | 0)) * gia - (I.knbk | 0);
-        if (!await k2k(can)) break;
-        var I3 = await info();
-        if (I3) I = I3;
-      }
-      if (got) note('mua ' + got + ' Lệnh Bài Dã Tẩu (KNB khóa)');
+    if ((I.lvl | 0) < 20) return;
+    if ((I.ldtMax | 0) > 0 && (I.ldtMua | 0) >= (I.ldtMax | 0)) {
+      dayAdd('ldtMuaDone', 1);
     }
 
-    if (A.cfg.pd) {
+    // 1. Mua Lenh Bai Da Tau bang KNB khoa (Ky Tran Cac) - chot xong khi dat max/ngay
+    if (A.cfg.ldtMua && dayGet('ldtMuaDone') < 1) {
+      var remKtc0 = Math.max(0, (I.ldtMax | 0) - (I.ldtMua | 0));
+      var wantN0 = A.cfg.dt ? Math.min(need(I), remKtc0) : remKtc0;
+      if (wantN0 > 0 && ready('ldt', 35000)) {
+        var got = 0, doi = false;
+        for (var i = 0; i < 3; i++) {
+          var remKtc = Math.max(0, (I.ldtMax | 0) - (I.ldtMua | 0));
+          var n = A.cfg.dt ? Math.min(need(I), remKtc) : remKtc;
+          if (n <= 0) break;
+          var r = await api('muaKtc', { k: 'ldt', n: n });
+          var I2 = await info();
+          if (I2) I = I2;
+          if (r && r.ok && r.n > 0) got += r.n;
+          if ((I.ldtMax | 0) > 0 && (I.ldtMua | 0) >= (I.ldtMax | 0)) {
+            dayAdd('ldtMuaDone', 1);
+            break;
+          }
+          if (r && r.ok && r.n >= n) break;
+          if (doi || !(A.cfg.k2k > 0)) break;
+          doi = true;
+          var gia = (I.gia && I.gia.ldt) || 20;
+          var can = (n - (r && r.n ? (r.n | 0) : 0)) * gia - (I.knbk | 0);
+          if (!await k2k(can)) break;
+          var I3 = await info();
+          if (I3) I = I3;
+        }
+        if (got) note('mua ' + got + ' Lệnh Bài Dã Tẩu (KNB khóa)');
+      }
+    }
+
+    // 2. Binh Phuc Duyen Lo + Ruong Phuc Duyen - doc lap voi Da Tau/need(I), co la mo ngay
+    if (A.cfg.pd && ready('pd_open', 25000)) {
       var p = I.pdl || {};
       if (p && ((p.cho | 0) >= 10 || (p.l && p.l.some(function (n) { return n > 0; })))) {
         var r4 = await api('pdl');
@@ -3226,7 +3292,6 @@ class GameAutoPilot(
       if (mo > 0) note('mở hết ' + mo + ' Rương Phúc Duyên');
     }
   }
-
   async function muaLb(I) {
     var cap = A.cfg.lbMua | 0;
     if (!A.cfg.st || cap <= 0 || (I.lb | 0) > 0 || (I.lvl | 0) < 20 || !ready('lb', 3 * 60000)) return;
@@ -3241,7 +3306,7 @@ class GameAutoPilot(
 
   async function doiNguyenLieuThua(I) {
     var items = A.cfg.doiNguyenLieu || [];
-    if (items.length === 0) return;
+    if (items.length === 0 || dayGet('evAllDone') > 0) return;
 
     var canChay = function () {
       if (!A.cfg.on || !ranh()) return false;
@@ -3397,6 +3462,8 @@ class GameAutoPilot(
         return;
       }
 
+      var evSeen = 0;
+      var evAllMax = true;
       for (var q = 0; q < items.length; q++) {
         var ten = items[q];
         if (!canChay()) break;
@@ -3446,6 +3513,19 @@ class GameAutoPilot(
         if (count > 0) {
           note('Da doi ' + count + ' ' + ten + ' (Su kien Giang Sinh)');
         }
+        var dAfter = dem(nutTheoTen(ten));
+        if (dAfter !== null) {
+          evSeen++;
+          if (dAfter.n < dAfter.mx) evAllMax = false;
+        } else {
+          evAllMax = false;
+        }
+      }
+      if (evSeen === items.length && evAllMax) {
+        dayAdd('evAllDone', 1);
+        note('[SuKien] Da doi du 100% cac muc da chon hom nay -> bo qua toi 00:00');
+      } else if (evSeen > 0) {
+        A.cool.evHongBao = Date.now() + 8 * 60000;
       }
     } finally {
       await closeModalCleanly(md);
@@ -3980,6 +4060,7 @@ class GameAutoPilot(
 
   async function muaKnb(I) {
     var cap = A.cfg.knbMua | 0;
+    if (dayGet('knbDone') > 0) return;
     if (knbGhiLoi || !A.cfg.on || cap <= 0 || (I.lvl | 0) < 20 || !ranh()) return;
     // Mua KNB độc lập (không phụ thuộc Thẻ Giao Dịch), thực hiện từ 00:05 GMT+7 trở đi
     if (I.dg || I.tower || I.sat || I.dead) return;
@@ -3987,7 +4068,7 @@ class GameAutoPilot(
     var daMua = demKnb();
     var con = Math.min(cap - daMua, KNB_NGAY - daMua, KNB_NGAY);
     if (typeof I.knbCon === 'number' && isFinite(I.knbCon)) con = Math.min(con, Math.max(0, I.knbCon | 0));
-    if (con <= 0) return;
+    if (con <= 0) { dayAdd('knbDone', 1); return; }
 
     var vi = viKnb(I);
     if (vi === null) return;
@@ -4033,6 +4114,7 @@ class GameAutoPilot(
     if (that > 0) {
       var soLuong = (that * KNB_GIA).toLocaleString('vi-VN');
       note('mua ẩn trọn vẹn ' + that + ' KNB (' + soLuong + ' lượng)');
+      if (demKnb() >= Math.min(cap, KNB_NGAY) || (I2 && typeof I2.knbCon === 'number' && I2.knbCon <= 0)) dayAdd('knbDone', 1);
     } else if (ready('knbIm', 15 * 60000)) {
       note('Kỳ Trân Các: đã bấm mua nhưng chưa thấy KNB tăng — kiểm tra lại');
     }
@@ -5946,11 +6028,6 @@ class GameAutoPilot(
       dayAdd('pbx', 1);
       A.pbStartedAt = 0;
       A.pbOut = 0;
-      A.tbkFailCount = 0;
-      delete A.cool.tbk_tinvat;
-      delete A.cool.tbk_use_tinvat;
-      delete A.cool.evHongBao;
-      delete A.cool.tbk_enter;
       note('Phó Bản quá 3 giờ không dứt → nhả về lịch bình thường (10p quét lại)');
     } else if (A.cfg.pb && !pbXong()) {
       var pbHetApi = (typeof I.pbCon === 'number' && I.pbCon <= 0) ||
@@ -5961,11 +6038,6 @@ class GameAutoPilot(
       if (pbHetApi) {
         dayAdd('pbx', 1);
         A.pbOut = 0;
-      A.tbkFailCount = 0;
-      delete A.cool.tbk_tinvat;
-      delete A.cool.tbk_use_tinvat;
-      delete A.cool.evHongBao;
-      delete A.cool.tbk_enter;
         A.pbStartedAt = 0;
         note('xong phó bản hôm nay → chuyển tiếp hoạt động');
       } else {
@@ -5975,21 +6047,11 @@ class GameAutoPilot(
         A.pbSeen = now;
         if (mode !== 'dg' || trong || I.dead || I.sat || !ltOk || !lien) {
           A.pbOut = 0;
-      A.tbkFailCount = 0;
-      delete A.cool.tbk_tinvat;
-      delete A.cool.tbk_use_tinvat;
-      delete A.cool.evHongBao;
-      delete A.cool.tbk_enter;
         } else if (!A.pbOut) {
           A.pbOut = now;
         } else if (now - A.pbOut > 15000) {
           dayAdd('pbx', 1);
           A.pbOut = 0;
-      A.tbkFailCount = 0;
-      delete A.cool.tbk_tinvat;
-      delete A.cool.tbk_use_tinvat;
-      delete A.cool.evHongBao;
-      delete A.cool.tbk_enter;
           A.pbStartedAt = 0;
           note('xong phó bản hôm nay (hết lượt) → chuyển tiếp hoạt động');
         }
@@ -6337,6 +6399,110 @@ class GameAutoPilot(
     }
   }
 
+  function syncDailyDoneFlags(I) {
+    if (!I) return;
+    try {
+      if (I.khan === true) dayAdd('khanDone', 1);
+      if ((I.ldtMax | 0) > 0 && (I.ldtMua | 0) >= (I.ldtMax | 0)) dayAdd('ldtMuaDone', 1);
+      var knbCap = A.cfg.knbMua | 0;
+      if (knbCap > 0) {
+        var knbDoneNow = demKnb() >= Math.min(knbCap, KNB_NGAY) || (typeof I.knbCon === 'number' && isFinite(I.knbCon) && I.knbCon <= 0);
+        if (knbDoneNow) dayAdd('knbDone', 1);
+      }
+      var lbCap = A.cfg.lbMua | 0;
+      if (A.cfg.st && lbCap > 0) {
+        var lbDoneNow = dayGet('lb') >= lbCap || ((I.lbMax | 0) > 0 && (I.lbMua | 0) >= (I.lbMax | 0));
+        if (lbDoneNow) dayAdd('lbDone', 1);
+      }
+      if (A.cfg.pb && !pbXong()) {
+        var pbHetNow = (typeof I.pbCon === 'number' && I.pbCon <= 0) ||
+          (typeof I.dgCon === 'number' && I.dgCon <= 0) ||
+          (typeof I.dgLeft === 'number' && I.dgLeft <= 0) ||
+          (I.pb && typeof I.pb.con === 'number' && I.pb.con <= 0);
+        if (pbHetNow) dayAdd('pbx', 1);
+      }
+    } catch (eSync) {}
+  }
+
+  function buildDailyChecklistReport(I) {
+    var todo = [];
+    var acts = [];
+    var done = [];
+    var lv = (I && (I.lvl | 0) > 0) ? (I.lvl | 0) : 100;
+
+    if (A.cfg.qua) {
+      var q = (I && I.qua) || {};
+      if (q.login || q.lvms) todo.push('Qua');
+      else done.push('Qua');
+    }
+    if (A.cfg.khan) {
+      if (dayGet('khanDone') > 0 || (I && I.khan)) done.push('Khan');
+      else todo.push('Khan');
+    }
+    if (A.cfg.ldtMua && lv >= 20) {
+      var remLdt = Math.max(0, ((I && I.ldtMax) | 0) - ((I && I.ldtMua) | 0));
+      if (dayGet('ldtMuaDone') > 0 || ((I && (I.ldtMax | 0) > 0) && remLdt <= 0)) done.push('LBDT-KTC');
+      else if (!A.cfg.dt || need(I) > 0) todo.push('LBDT-KTC');
+    }
+    if (A.cfg.tbkTinVat || A.cfg.bangLbdt || A.cfg.bangPd) {
+      var bangPend = [];
+      if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) bangPend.push('TV');
+      if (A.cfg.bangLbdt && dayGet('bangLbdt') < 1) bangPend.push('LB');
+      if (A.cfg.bangPd && dayGet('bangPd') < 1) bangPend.push('PD');
+      if (bangPend.length > 0) todo.push('Bang(' + bangPend.join('+') + ')');
+      else done.push('BangHoi');
+    }
+    if (A.cfg.theGiaoDich) {
+      if (dayGet('theGd') >= 1) done.push('TheGD');
+      else todo.push('TheGD');
+    }
+    if ((A.cfg.knbMua | 0) > 0 && lv >= 20) {
+      if (dayGet('knbDone') > 0) done.push('KNB');
+      else todo.push('KNB');
+    }
+    if (A.cfg.doiNguyenLieu && A.cfg.doiNguyenLieu.length > 0) {
+      if (dayGet('evAllDone') > 0) done.push('SuKien');
+      else todo.push('SuKien');
+    }
+    if (A.cfg.st && (A.cfg.lbMua | 0) > 0 && lv >= 20) {
+      if (dayGet('lbDone') > 0) done.push('LB-ST');
+      else todo.push('LB-ST');
+    }
+
+    if (A.cfg.dt && lv >= 20) {
+      var t = (I && I.dt) || {};
+      var dtMax = (t.max | 0) > 0 ? (t.max | 0) : 200;
+      var dtCon = !!(I && I.ok && I.dt) && !t.du && ((t.today | 0) < dtMax || (((I.ldt | 0) > 0) && ((t.con | 0) > 0)));
+      if (dtCon) acts.push('DaTau(' + (t.today | 0) + '/' + dtMax + ')');
+      else if (I && I.ok && I.dt) done.push('DaTau');
+    }
+    if (A.cfg.pb) {
+      if (pbXong()) done.push('PhoBan');
+      else acts.push('PhoBan');
+    }
+    if (A.cfg.thap || A.cfg.thapNeDon) {
+      if (tbkXong()) done.push('TBK');
+      else acts.push('TBK');
+    }
+
+    var sig = todo.join(',') + '|' + acts.join(',') + '|' + done.join(',');
+    return { todo: todo, acts: acts, done: done, sig: sig };
+  }
+
+  function logDailyChecklist(I, force) {
+    try {
+      var rep = buildDailyChecklistReport(I);
+      if (!force && rep.sig === A._lastDailyScanSig) return;
+      if (!force && !ready('daily_scan_log', 12000)) return;
+      A._lastDailyScanSig = rep.sig;
+      var parts = [];
+      if (rep.todo.length) parts.push('Viec ngay: ' + rep.todo.join(', '));
+      if (rep.acts.length) parts.push('HD con: ' + rep.acts.join(' -> '));
+      if (rep.done.length) parts.push('Da xong (bo qua): ' + rep.done.join(', '));
+      if (parts.length) note('[Quet ngay] ' + parts.join(' | '));
+    } catch (eLog) {}
+  }
+
   async function tick() {
     if (!A.cfg.on) return;
     if (A.busy) {
@@ -6355,10 +6521,24 @@ class GameAutoPilot(
     if (curDay !== A.lastDay) {
       A.lastDay = curDay;
       resetDay(true);
+      delete A.cool.khan;
+      delete A.cool.qua;
+      delete A.cool.ldt;
+      delete A.cool.pd_open;
+      delete A.cool.lb;
+      delete A.cool.tt;
+      delete A.cool.knb;
+      delete A.cool.theGd;
+      delete A.cool.evHongBao;
+      delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
+      delete A.cool.tbk_enter;
+      A._lastDailyScanSig = '';
+      A.tbkFailCount = 0;
       A.immediate = true;
       A.immUntil = Date.now() + 180000;
       A.started = Date.now() - 60000;
-      note('00:00:01 (GMT+7): lam moi ngay moi -> quet lai Da Tau & Pho Ban');
+      note('00:00:01 (GMT+7): sang ngay moi -> mo khoa va quet lai toan bo hoat dong ngay');
     }
 
     var hasRecentSt = !!(A.st && A.st.o === 'game' && Date.now() - A.stT < 90000);
@@ -6386,36 +6566,88 @@ class GameAutoPilot(
     try {
       var I0 = await info();
       if (!I0) return;
-      try { await cheDo(I0); } catch (eChe) { note('[Loi cheDo] ' + (eChe && eChe.message ? eChe.message : eChe)); }
+      syncDailyDoneFlags(I0);
+      logDailyChecklist(I0, !!(A.saveGraceUntil && Date.now() < A.saveGraceUntil));
+
+      var runSeq = (A.cfgSeq | 0);
+      var safeStep = async function (fn, tag) {
+        if (!A.cfg.on || (A.cfgSeq | 0) !== runSeq) {
+          A.pendingTick = true;
+          return false;
+        }
+        var Ic = (await info()) || I0;
+        syncDailyDoneFlags(Ic);
+        try { await fn(Ic); } catch (eStep) {
+          if (ready('err_' + tag, 30000)) note('[Loi ' + tag + '] ' + (eStep && eStep.message ? eStep.message : eStep));
+        }
+        return true;
+      };
+
+      // BUOC 1: Viec nhe chay qua API (khong can modal, chay moi luc)
+      var apiTasks = [
+        [qua, 'qua'],
+        [troThu, 'troThu'],
+        [daTau, 'daTau'],
+        [muaLb, 'muaLb']
+      ];
+      for (var ai = 0; ai < apiTasks.length; ai++) {
+        if (!await safeStep(apiTasks[ai][0], apiTasks[ai][1])) break;
+      }
+
+      // BUOC 2: Viec ngay can mo bang/modal -> chay TRUOC khi chui vao Pho Ban / Thien Bao Kho de khong bi bo sot
+      var Ipre = (await info()) || I0;
+      syncDailyDoneFlags(Ipre);
+      var inBusyZone = !!(Ipre.dg || Ipre.tower || Ipre.sat || Ipre.dead || isInTowerNow());
+      if (!inBusyZone && A.cfg.on && (A.cfgSeq | 0) === runSeq) {
+        var modalTasks = [
+          [suDungVatPhamTieuHao, 'buff'],
+          [khan, 'khan'],
+          [muaVaDungTinVatThienBaoKho, 'bangHoi'],
+          [muaTheGiaoDich, 'theGd'],
+          [muaKnb, 'knb'],
+          [doiNguyenLieuThua, 'suKien']
+        ];
+        for (var mi = 0; mi < modalTasks.length; mi++) {
+          if (!await safeStep(modalTasks[mi][0], modalTasks[mi][1])) break;
+        }
+        // Neu vua doi LBDT/Goi Phuc Duyen tu Bang Hoi -> mo Phuc Duyen / mua bo sung ngay
+        if (A.cfg.pd && A.cfg.on && (A.cfgSeq | 0) === runSeq) {
+          delete A.cool.pd_open;
+          await safeStep(daTau, 'pdAfterBang');
+        }
+      }
+
+      // BUOC 3: Chuyen & duy tri 3 hoat dong chinh theo thu tu: Da Tau -> Pho Ban -> Thien Bao Kho -> Luyen Cong
+      if (A.cfg.on && (A.cfgSeq | 0) === runSeq) {
+        var Imode = (await info()) || Ipre;
+        syncDailyDoneFlags(Imode);
+        try { await cheDo(Imode); } catch (eChe) {
+          note('[Loi cheDo] ' + (eChe && eChe.message ? eChe.message : eChe));
+        }
+      }
+
       if (!A.cfg.on) return;
+
+      // BUOC 4: Xac nhan ve dung map Luyen Cong sau khi xong ca Da Tau + Pho Ban + Thien Bao Kho
       try {
         var Iafter = (await info()) || I0;
+        syncDailyDoneFlags(Iafter);
         var dtA = Iafter.dt || {};
         var lvA = (Iafter.lvl | 0) > 0 ? (Iafter.lvl | 0) : 100;
         var dtDoneA = !(A.cfg.dt && lvA >= 20 && !dtA.du && ((dtA.today | 0) < ((dtA.max | 0) > 0 ? (dtA.max | 0) : 200) || ((Iafter.ldt | 0) > 0 && (dtA.con | 0) > 0)));
         var stDoneA = !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
         var pbDoneA = !(A.cfg.pb && !pbXong());
+        var tbkDoneA = !((A.cfg.thap || A.cfg.thapNeDon) && !tbkXong());
         var curM = readDomModeFallback() || Iafter.mode || 'farm';
-        if (!A.cfg.thapNeDon && (A.cfg.afterDailyFarm || A.cfg.afterDailyEnabled) &&
-            !A.cfg.thap && A.cfg.farmMap && dtDoneA && stDoneA && pbDoneA &&
-            curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead &&
+        if ((A.cfg.afterDailyFarm || A.cfg.afterDailyEnabled) &&
+            A.cfg.farmMap && dtDoneA && stDoneA && pbDoneA && tbkDoneA &&
+            curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead && !isInTowerNow() &&
             !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
         }
+        logDailyChecklist(Iafter, false);
       } catch (eMapForce) {}
 
-      var runSeq = (A.cfgSeq | 0);
-      var bgFns = [suDungVatPhamTieuHao, muaVaDungTinVatThienBaoKho, qua, muaTheGiaoDich, doiNguyenLieuThua, muaKnb, troThu, khan, daTau, muaLb];
-      for (var i = 0; i < bgFns.length; i++) {
-        if (!A.cfg.on || (A.cfgSeq | 0) !== runSeq) {
-          A.pendingTick = true;
-          break;
-        }
-        var Icur = (await info()) || I0;
-        try { await bgFns[i](Icur); } catch (eStep) {
-          if (ready('err_bg_' + i, 30000)) note('[Loi step ' + i + '] ' + (eStep && eStep.message ? eStep.message : eStep));
-        }
-      }
       publishLiveTelemetry('');
     } catch (e) {
     } finally {
