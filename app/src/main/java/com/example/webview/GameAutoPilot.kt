@@ -443,7 +443,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-85"
+        const val SCRIPT_VER = "vlmauto-86"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1593,6 +1593,14 @@ class GameAutoPilot(
     return (window.__vlmModalLockUntil || 0) > Date.now();
   }
 
+  async function waitModalLockFree(maxWaitMs) {
+    var deadline = Date.now() + (maxWaitMs || 8000);
+    while (isModalLocked() && Date.now() < deadline) {
+      await sleep(140);
+    }
+    return !isModalLocked();
+  }
+
   function lockModal(ms) {
     window.__vlmModalLockUntil = Date.now() + (ms || 15000);
   }
@@ -1733,31 +1741,41 @@ class GameAutoPilot(
   };
 
   async function api(act, arg, ms) {
-    arg = arg || {};
-    ms = ms || 45000;
-    var md = document.getElementById('modal');
-    var guardStealth = (act !== 'info' && act !== 'cheDo' && !isModalLocked() && (!md || md.classList.contains('hidden')));
-    if (guardStealth) stealthObj().enter();
-    var b = document.createElement('button');
-    b.id = 'vlmAuto';
-    b.type = 'button';
-    b.style.display = 'none';
-    b.dataset.act = act;
-    b.dataset.arg = JSON.stringify(arg);
-    (document.body || document.documentElement).appendChild(b);
-    try {
-      b.click();
-      var end = Date.now() + ms;
-      while (!b.dataset.xong && Date.now() < end) await sleep(120);
-      if (!b.dataset.xong) return { ok: false, why: 'hết giờ' };
-      try { return JSON.parse(b.dataset.kq || '{}'); } catch (e) { return { ok: false, why: 'kết quả lạ' }; }
-    } finally {
-      try { b.remove(); } catch (e) {}
-      if (guardStealth) {
-        await closeModalCleanly(md);
-        stealthObj().leave();
+    var runOne = async function () {
+      arg = arg || {};
+      ms = ms || 45000;
+      var waitOldEnd = Date.now() + 5000;
+      while (document.getElementById('vlmAuto') && Date.now() < waitOldEnd) {
+        await sleep(90);
       }
-    }
+      var md = document.getElementById('modal');
+      var guardStealth = (act !== 'info' && act !== 'cheDo' && !isModalLocked() && (!md || md.classList.contains('hidden')));
+      if (guardStealth) stealthObj().enter();
+      var b = document.createElement('button');
+      b.id = 'vlmAuto';
+      b.type = 'button';
+      b.style.display = 'none';
+      b.dataset.act = act;
+      b.dataset.arg = JSON.stringify(arg);
+      (document.body || document.documentElement).appendChild(b);
+      try {
+        b.click();
+        var end = Date.now() + ms;
+        while (!b.dataset.xong && Date.now() < end) await sleep(120);
+        if (!b.dataset.xong) return { ok: false, why: 'hết giờ' };
+        try { return JSON.parse(b.dataset.kq || '{}'); } catch (e) { return { ok: false, why: 'kết quả lạ' }; }
+      } finally {
+        try { b.remove(); } catch (e) {}
+        if (guardStealth) {
+          await closeModalCleanly(md);
+          stealthObj().leave();
+        }
+      }
+    };
+    var prev = window.__vlmApiQueue || Promise.resolve();
+    var next = prev.then(runOne, runOne);
+    window.__vlmApiQueue = next.then(function () {}, function () {});
+    return next;
   }
 
   function readDomModeFallback() {
@@ -4129,16 +4147,33 @@ class GameAutoPilot(
     if (!A.cfg.on || (A.cfg.knbMua | 0) <= 0) return;
     var cap = Math.min(A.cfg.knbMua | 0, KNB_NGAY);
     if (demKnb() >= cap) return;
-    A.knbSyncUntil = Date.now() + 35000;
-    delete A.cool.knb;
-    for (var attempt = 0; attempt < 2; attempt++) {
-      if (!A.cfg.on || demKnb() >= cap) break;
-      var I = await info();
-      if (!I || I.dg || I.tower || I.sat || I.dead) break;
+    var waitBusyEnd = Date.now() + 12000;
+    while (A.busy && Date.now() < waitBusyEnd) {
+      await sleep(200);
+    }
+    if (A.busy) {
+      A.pendingTick = true;
+      return;
+    }
+    A.busy = true;
+    try {
+      A.knbSyncUntil = Date.now() + 35000;
       delete A.cool.knb;
-      await muaKnb(I);
-      if (demKnb() >= cap) break;
-      await sleep(1500);
+      for (var attempt = 0; attempt < 2; attempt++) {
+        if (!A.cfg.on || demKnb() >= cap) break;
+        var I = await info();
+        if (!I || I.dg || I.tower || I.sat || I.dead) break;
+        delete A.cool.knb;
+        await muaKnb(I);
+        if (demKnb() >= cap) break;
+        await sleep(1500);
+      }
+    } finally {
+      A.busy = false;
+      if (A.pendingTick) {
+        A.pendingTick = false;
+        setTimeout(function () { tick().catch(function () {}); }, 250);
+      }
     }
   }
 
@@ -5886,12 +5921,28 @@ class GameAutoPilot(
       unlockModal();
     }
   }
-  async function dungTinVatThienBaoKho(I) {
+  async function dungTinVatThienBaoKho(I, forceAfterBuy) {
     if (!A.cfg.on || !A.cfg.tbkTinVat) return false;
     if (dayGet('tbkTvUse') >= 1) return false;
     if (I && (I.dead || I.dg || I.sat)) return false;
-    if (!canRunHiddenConsumable()) return false;
-    if (!ready('tbk_use_tinvat', 30000)) return false;
+    if (isModalLocked()) await waitModalLockFree(5000);
+    if (forceAfterBuy) {
+      var mdWaitEnd = Date.now() + 1800;
+      while (Date.now() < mdWaitEnd) {
+        var mdPre = document.getElementById('modal');
+        if (!mdPre || mdPre.classList.contains('hidden')) break;
+        await closeModalCleanly(mdPre);
+        await sleep(120);
+      }
+      if (isAuthOrProtectedModalOpen()) {
+        note('[TBK] Tam hoan dung Tin vat vi dang mo hop thoai dang nhap/bao ve');
+        return false;
+      }
+    } else if (!canRunHiddenConsumable()) {
+      return false;
+    }
+    if (!forceAfterBuy && !ready('tbk_use_tinvat', 30000)) return false;
+    if (forceAfterBuy) A.cool.tbk_use_tinvat = Date.now() + 15000;
 
     var inStealthCheck = function () {
       return !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
@@ -5915,41 +5966,74 @@ class GameAutoPilot(
       } catch (eSh) { return isVis(el); }
     };
 
-    var findTbkSection = function () {
-      var nodes = document.querySelectorAll('div, section, li, tr, p, span');
-      var matches = [];
-      var cap = Math.min(nodes.length, 900);
-      for (var i = 0; i < cap; i++) {
-        var el = nodes[i];
-        if (!el || !isElemShown(el)) continue;
-        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
-        if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #vlmAuto')) continue;
-        var lbl = cleanUiLabel(el.textContent || '');
-        if (!lbl || lbl.length > 360) continue;
-        if (lbl.indexOf('tin vat thien bao kho') >= 0 || (lbl.indexOf('tin vat') >= 0 && lbl.indexOf('bao kho') >= 0)) {
-          matches.push({ el: el, len: lbl.length });
-        }
+    var getQuestRoot = function () {
+      var md = document.getElementById('modal');
+      if (md && !md.classList.contains('hidden')) return document.getElementById('mBody') || md;
+      var pIds = ['t-quest', 'p-quest', 'questPane', 'questTab', 'nvPane'];
+      for (var pi = 0; pi < pIds.length; pi++) {
+        var pe = document.getElementById(pIds[pi]);
+        if (pe && isElemShown(pe)) return pe;
       }
-      matches.sort(function (a, b) { return a.len - b.len; });
+      return null;
+    };
 
-      for (var mi = 0; mi < matches.length; mi++) {
-        var cur = matches[mi].el;
-        var fallbackSec = cur;
-        for (var d = 0; d < 5 && cur && cur !== document.body && cur !== document.documentElement; d++) {
-          if (cur.querySelector && cur.querySelector('canvas, #tabs, #u20bar')) break;
-          var cTxt = cleanUiLabel(cur.textContent || '');
-          if (cTxt.length > 720) break;
-          fallbackSec = cur;
-          var btns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
-          for (var bi = 0; bi < btns.length; bi++) {
-            var bt = cleanUiLabel(btns[bi].textContent || '');
-            if (bt === 'dung' || bt === 'bam lai de dung' || bt.indexOf('bam lai de dung') >= 0 || bt === 'su dung') {
-              return cur;
-            }
+    var isUseLabel = function (t) {
+      if (!t || t.length > 36) return false;
+      if (t.indexOf('bam lai') >= 0 || t.indexOf('an lai') >= 0 || t.indexOf('huy') >= 0 || t.indexOf('dong') >= 0) return false;
+      return t === 'dung' || t === 'su dung' || t === 'dung ngay' ||
+        /^dung\s*\(?\s*\d+\s*\)?$/.test(t) ||
+        /^su\s*dung\s*\(?\s*\d+\s*\)?$/.test(t) ||
+        t.indexOf('dung tin vat') === 0 ||
+        t.indexOf('dung +60') === 0;
+    };
+
+    var isConfirmUseLabel = function (t) {
+      if (!t || t.length > 44) return false;
+      return t === 'bam lai de dung' || t.indexOf('bam lai de dung') >= 0 ||
+        t === 'an lai de dung' || t.indexOf('an lai de dung') >= 0 ||
+        t.indexOf('xac nhan dung') >= 0;
+    };
+
+    var findTbkSection = function () {
+      var qRoot = getQuestRoot();
+      var roots = qRoot ? [qRoot, document] : [document];
+      for (var ri = 0; ri < roots.length; ri++) {
+        var root = roots[ri];
+        var nodes = root.querySelectorAll('div, section, li, tr, p, span');
+        var matches = [];
+        var cap = (root === document) ? Math.min(nodes.length, 3000) : nodes.length;
+        for (var i = 0; i < cap; i++) {
+          var el = nodes[i];
+          if (!el || !isElemShown(el)) continue;
+          if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+          if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #vlmAuto')) continue;
+          var lbl = cleanUiLabel(el.textContent || '');
+          if (!lbl || lbl.length > 360) continue;
+          if (lbl.indexOf('tin vat thien bao kho') >= 0 || (lbl.indexOf('tin vat') >= 0 && lbl.indexOf('bao kho') >= 0)) {
+            matches.push({ el: el, len: lbl.length });
           }
-          cur = cur.parentElement;
         }
-        if (fallbackSec) return fallbackSec;
+        matches.sort(function (a, b) { return a.len - b.len; });
+
+        for (var mi = 0; mi < matches.length; mi++) {
+          var cur = matches[mi].el;
+          var fallbackSec = cur;
+          for (var d = 0; d < 5 && cur && cur !== document.body && cur !== document.documentElement; d++) {
+            if (cur.querySelector && cur.querySelector('canvas, #tabs, #u20bar')) break;
+            var cTxt = cleanUiLabel(cur.textContent || '');
+            if (cTxt.length > 720) break;
+            fallbackSec = cur;
+            var btns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
+            for (var bi = 0; bi < btns.length; bi++) {
+              var bt = cleanUiLabel(btns[bi].textContent || '');
+              if (isUseLabel(bt) || isConfirmUseLabel(bt)) {
+                return cur;
+              }
+            }
+            cur = cur.parentElement;
+          }
+          if (fallbackSec) return fallbackSec;
+        }
       }
       return null;
     };
@@ -5983,12 +6067,18 @@ class GameAutoPilot(
           if (!b || !isElemShown(b)) continue;
           if (b.id === 'vlmAuto' || b.id === 'mswBtn') continue;
           var t = cleanUiLabel(b.textContent || '');
-          if (t === 'bam lai de dung' || t.indexOf('bam lai de dung') >= 0 || t === 'an lai de dung') {
+          if (isConfirmUseLabel(t)) {
             return { el: b, isConfirm: true, disabled: !!b.disabled };
           }
-          if (!confirmOnly && (t === 'dung' || t === 'dung 1' || t === 'su dung')) {
+          if (!confirmOnly && isUseLabel(t)) {
             return { el: b, isConfirm: false, disabled: !!b.disabled };
           }
+        }
+      }
+      if (confirmOnly) {
+        var cfModalBtn = findGuildConfirmButton(null);
+        if (cfModalBtn && isElemShown(cfModalBtn) && !cfModalBtn.disabled) {
+          return { el: cfModalBtn, isConfirm: true, disabled: false };
         }
       }
       return null;
@@ -6000,37 +6090,57 @@ class GameAutoPilot(
         var q = document.getElementById(ids[ii]);
         if (q && isElemShown(q) && !q.disabled) return q;
       }
-      var attr = document.querySelectorAll('[data-tab*="quest" i], [data-tab*="nv" i], [data-open*="quest" i]');
+      var attr = document.querySelectorAll('[data-tab*="quest" i], [data-tab*="nv" i], [data-open*="quest" i], [title*="Nhiệm vụ" i], [aria-label*="Nhiệm vụ" i]');
       for (var ai = 0; ai < attr.length; ai++) {
         if (isElemShown(attr[ai]) && !attr[ai].disabled) return attr[ai];
       }
-      var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, #u20pop button, .u20-pop button, .more-menu button, button, [role="button"], [role="tab"], a');
-      var cap = Math.min(all.length, 320);
-      for (var i = 0; i < cap; i++) {
-        var el = all[i];
-        if (!el || !isElemShown(el) || el.disabled) continue;
-        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
-        if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
-        if (t === 'nhiem vu') return el;
+      var prioSelectors = ['#u20bar > *, #u20bar button, #tabs > *, #tabs button, #u20pop button, .u20-pop button, .more-menu button', 'button, [role="button"], [role="tab"], a'];
+      for (var ps = 0; ps < prioSelectors.length; ps++) {
+        var all = document.querySelectorAll(prioSelectors[ps]);
+        var cap = Math.min(all.length, 600);
+        for (var i = 0; i < cap; i++) {
+          var el = all[i];
+          if (!el || !isElemShown(el) || el.disabled) continue;
+          if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+          if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+          var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
+          if (t === 'nhiem vu') return el;
+        }
       }
       return null;
     };
 
     var findTbkTileBtn = function () {
-      var els = document.querySelectorAll('button, [role="button"], [role="tab"], .tab, a, div, span');
-      var cap = Math.min(els.length, 460);
-      for (var i = 0; i < cap; i++) {
-        var el = els[i];
-        if (!el || !isElemShown(el) || el.disabled) continue;
-        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
-        if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #vlmAuto')) continue;
-        if ((el.tagName === 'DIV' || el.tagName === 'SPAN') && el.children && el.children.length > 3) continue;
-        var t = cleanUiLabel(el.textContent || '');
-        if (t === 'thien bao kho') {
-          var pBtn = el.closest ? el.closest('button, [role="button"], [role="tab"], a') : null;
-          return (pBtn && isElemShown(pBtn) && !pBtn.disabled) ? pBtn : el;
+      var qRoot = getQuestRoot();
+      var roots = qRoot ? [qRoot, document] : [document];
+      for (var ri = 0; ri < roots.length; ri++) {
+        var root = roots[ri];
+        var els = root.querySelectorAll('button, [role="tab"], [role="button"], .tab, .qtab, li, a, div, span');
+        var cap = (root === document) ? Math.min(els.length, 2500) : els.length;
+        var best = null;
+        var bestScore = -1;
+        for (var i = 0; i < cap; i++) {
+          var el = els[i];
+          if (!el || !isElemShown(el) || el.disabled) continue;
+          if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+          if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #vlmAuto')) continue;
+          if ((el.tagName === 'DIV' || el.tagName === 'SPAN') && el.children && el.children.length > 3) continue;
+          var t = cleanUiLabel(el.textContent || '');
+          if (!t || t.length > 56) continue;
+          if (t.indexOf('vao thien bao kho') >= 0 || t.indexOf('tin vat') >= 0 || t.indexOf('huy theo doi') >= 0) continue;
+          if (t === 'thien bao kho' || t.indexOf('thien bao kho ') === 0) {
+            var pBtn = el.closest ? (el.closest('button, [role="button"], [role="tab"], li, a') || el) : el;
+            if (!pBtn || !isElemShown(pBtn) || pBtn.disabled) continue;
+            var pLbl = cleanUiLabel(pBtn.textContent || '');
+            if (pLbl.length > 68 || pLbl.indexOf('huy theo doi') >= 0 || pLbl.indexOf('hom nay') >= 0) continue;
+            var score = (t === 'thien bao kho' ? 200 : 140) + (pBtn.tagName === 'BUTTON' || pBtn.getAttribute('role') === 'tab' ? 50 : 0);
+            if (score > bestScore) {
+              bestScore = score;
+              best = pBtn;
+            }
+          }
         }
+        if (best) return best;
       }
       return null;
     };
@@ -6216,9 +6326,14 @@ class GameAutoPilot(
     if (A.cfg.on && A.cfg.tbkTinVat && dayGet('tbkTvUse') < 1) {
       if (boughtTv) {
         delete A.cool.tbk_use_tinvat;
-        await sleep(260);
+        await sleep(450);
       }
-      var usedTv = await dungTinVatThienBaoKho(I);
+      var usedTv = await dungTinVatThienBaoKho(I, !!boughtTv);
+      if (boughtTv && !usedTv && A.cfg.on && dayGet('tbkTvUse') < 1) {
+        await sleep(900);
+        delete A.cool.tbk_use_tinvat;
+        usedTv = await dungTinVatThienBaoKho(I, true);
+      }
       return !!(boughtTv || usedTv);
     }
     return boughtTv;

@@ -1728,6 +1728,9 @@ object GameScriptInjector {
 
                     var host = document.body || document.documentElement;
                     if (!host) return false;
+                    if (document.getElementById('vlmAuto')) {
+                        return 'BUSY_VLM_AUTO:' + titleCaseMode;
+                    }
 
                     var btn = document.createElement('button');
                     btn.id = 'vlmAuto';

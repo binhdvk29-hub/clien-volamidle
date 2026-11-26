@@ -1531,6 +1531,7 @@ class GameTabManager(
         @JavascriptInterface
         fun onInGameDetected(idx: Int) {
             mainHandler.post {
+                if (tabIndex !in 0 until tabCount || !isTabActive[tabIndex]) return@post
                 lastScanHeartbeatMs[tabIndex] = System.currentTimeMillis()
                 setTabState(tabIndex, TabLifecycleState.IN_GAME)
                 updateStatus(tabIndex, "🟢 Đã vào game")
