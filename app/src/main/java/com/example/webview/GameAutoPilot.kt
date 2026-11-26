@@ -443,7 +443,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-82"
+        const val SCRIPT_VER = "vlmauto-83"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1247,6 +1247,7 @@ class GameAutoPilot(
       A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
       delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
       A.koWaitingRecovery = false;
@@ -1296,6 +1297,7 @@ class GameAutoPilot(
       A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
       delete A.cool.evHongBao;
       delete A.cool.tbk_enter; A.pbSeen = 0; A.gate = 0; A.cool = {};
       try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl0) {}
@@ -4849,7 +4851,7 @@ class GameAutoPilot(
 
   function isTbkTimeExhaustedInDom(I) {
     try {
-      var hasTinVat = (dayGet('tbkTv2') > 0);
+      var hasTinVat = (dayGet('tbkTvUse') > 0);
       if (I) {
         if (typeof I.tbkCon === 'number' && I.tbkCon <= 0) return true;
         if (typeof I.towerCon === 'number' && I.towerCon <= 0) return true;
@@ -4998,7 +5000,7 @@ class GameAutoPilot(
       }
 
       var fullTxt = noAccent(root.textContent || '');
-      var hasTinVat = (dayGet('tbkTv2') > 0);
+      var hasTinVat = (dayGet('tbkTvUse') > 0);
       if (fullTxt.indexOf('120/120') >= 0 || (!hasTinVat && fullTxt.indexOf('60/60') >= 0) ||
           fullTxt.indexOf('het gio') >= 0 || fullTxt.indexOf('het thoi gian') >= 0) {
         return { entered: false, exhausted: true };
@@ -5576,6 +5578,343 @@ class GameAutoPilot(
       unlockModal();
     }
   }
+  async function dungTinVatThienBaoKho(I) {
+    if (!A.cfg.on || !A.cfg.tbkTinVat) return false;
+    if (dayGet('tbkTvUse') >= 1) return false;
+    if (I && (I.dead || I.dg || I.sat)) return false;
+    if (!canRunHiddenConsumable()) return false;
+    if (!ready('tbk_use_tinvat', 30000)) return false;
+
+    var inStealthCheck = function () {
+      return !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
+    };
+
+    var isElemShown = function (el) {
+      if (!el || !el.isConnected) return false;
+      try {
+        var cur = el;
+        while (cur && cur !== document.body && cur !== document.documentElement) {
+          if (cur.classList && cur.classList.contains('hidden')) return false;
+          cur = cur.parentElement;
+        }
+        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (st) {
+          if (st.display === 'none') return false;
+          if (!inStealthCheck() && st.visibility === 'hidden') return false;
+        }
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        return !!(r && r.width >= 14 && r.height >= 10);
+      } catch (eSh) { return isVis(el); }
+    };
+
+    var findTbkSection = function () {
+      var nodes = document.querySelectorAll('div, section, li, tr, p, span');
+      var matches = [];
+      var cap = Math.min(nodes.length, 900);
+      for (var i = 0; i < cap; i++) {
+        var el = nodes[i];
+        if (!el || !isElemShown(el)) continue;
+        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #vlmAuto')) continue;
+        var lbl = cleanUiLabel(el.textContent || '');
+        if (!lbl || lbl.length > 360) continue;
+        if (lbl.indexOf('tin vat thien bao kho') >= 0 || (lbl.indexOf('tin vat') >= 0 && lbl.indexOf('bao kho') >= 0)) {
+          matches.push({ el: el, len: lbl.length });
+        }
+      }
+      matches.sort(function (a, b) { return a.len - b.len; });
+
+      for (var mi = 0; mi < matches.length; mi++) {
+        var cur = matches[mi].el;
+        var fallbackSec = cur;
+        for (var d = 0; d < 5 && cur && cur !== document.body && cur !== document.documentElement; d++) {
+          if (cur.querySelector && cur.querySelector('canvas, #tabs, #u20bar')) break;
+          var cTxt = cleanUiLabel(cur.textContent || '');
+          if (cTxt.length > 720) break;
+          fallbackSec = cur;
+          var btns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
+          for (var bi = 0; bi < btns.length; bi++) {
+            var bt = cleanUiLabel(btns[bi].textContent || '');
+            if (bt === 'dung' || bt === 'bam lai de dung' || bt.indexOf('bam lai de dung') >= 0 || bt === 'su dung') {
+              return cur;
+            }
+          }
+          cur = cur.parentElement;
+        }
+        if (fallbackSec) return fallbackSec;
+      }
+      return null;
+    };
+
+    var parseTbkSecState = function (secEl) {
+      if (!secEl) return { usedToday: false, cnt: -1 };
+      var na = noAccent(secEl.textContent || '').replace(/\s+/g, ' ').trim();
+      var pNa = na;
+      if (secEl.parentElement) {
+        var pt = noAccent(secEl.parentElement.textContent || '').replace(/\s+/g, ' ').trim();
+        if (pt.length < 950) pNa = pt;
+      }
+      var usedToday = /hom\s*nay\s*1\s*\/\s*1/i.test(na) ||
+        /\/\s*120\s*phut/i.test(pNa) ||
+        /120\s*\/\s*120/i.test(pNa);
+      var mCnt = /tin\s*vat\s*thien\s*bao\s*kho\s*:?\s*(\d+)/i.exec(na);
+      var cnt = mCnt ? Number(mCnt[1]) : -1;
+      return { usedToday: usedToday, cnt: cnt };
+    };
+
+    var findTbkUseBtnIn = function (secEl, confirmOnly) {
+      if (!secEl) return null;
+      var scopes = [secEl];
+      if (secEl.parentElement && (secEl.parentElement.textContent || '').length < 950) {
+        scopes.push(secEl.parentElement);
+      }
+      for (var si = 0; si < scopes.length; si++) {
+        var btns = scopes[si].querySelectorAll('button, [role="button"], a');
+        for (var i = 0; i < btns.length; i++) {
+          var b = btns[i];
+          if (!b || !isElemShown(b)) continue;
+          if (b.id === 'vlmAuto' || b.id === 'mswBtn') continue;
+          var t = cleanUiLabel(b.textContent || '');
+          if (t === 'bam lai de dung' || t.indexOf('bam lai de dung') >= 0 || t === 'an lai de dung') {
+            return { el: b, isConfirm: true, disabled: !!b.disabled };
+          }
+          if (!confirmOnly && (t === 'dung' || t === 'dung 1' || t === 'su dung')) {
+            return { el: b, isConfirm: false, disabled: !!b.disabled };
+          }
+        }
+      }
+      return null;
+    };
+
+    var findQuestTabBtn = function () {
+      var ids = ['questBtn', 'nvBtn', 'btnQuest', 'btnNv', 'u20quest', 'u20nv', 'tabQuest', 'tabNv'];
+      for (var ii = 0; ii < ids.length; ii++) {
+        var q = document.getElementById(ids[ii]);
+        if (q && isElemShown(q) && !q.disabled) return q;
+      }
+      var attr = document.querySelectorAll('[data-tab*="quest" i], [data-tab*="nv" i], [data-open*="quest" i]');
+      for (var ai = 0; ai < attr.length; ai++) {
+        if (isElemShown(attr[ai]) && !attr[ai].disabled) return attr[ai];
+      }
+      var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, #u20pop button, .u20-pop button, .more-menu button, button, [role="button"], [role="tab"], a');
+      var cap = Math.min(all.length, 320);
+      for (var i = 0; i < cap; i++) {
+        var el = all[i];
+        if (!el || !isElemShown(el) || el.disabled) continue;
+        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+        var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
+        if (t === 'nhiem vu') return el;
+      }
+      return null;
+    };
+
+    var findTbkTileBtn = function () {
+      var els = document.querySelectorAll('button, [role="button"], [role="tab"], .tab, a, div, span');
+      var cap = Math.min(els.length, 460);
+      for (var i = 0; i < cap; i++) {
+        var el = els[i];
+        if (!el || !isElemShown(el) || el.disabled) continue;
+        if (el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #vlmAuto')) continue;
+        if ((el.tagName === 'DIV' || el.tagName === 'SPAN') && el.children && el.children.length > 3) continue;
+        var t = cleanUiLabel(el.textContent || '');
+        if (t === 'thien bao kho') {
+          var pBtn = el.closest ? el.closest('button, [role="button"], [role="tab"], a') : null;
+          return (pBtn && isElemShown(pBtn) && !pBtn.disabled) ? pBtn : el;
+        }
+      }
+      return null;
+    };
+
+    var prevTabBtn = document.querySelector('#tabs .on, #tabs .active, #tabs [aria-selected="true"], #u20bar .on, #u20bar .active');
+    var openedMoreBtn = null;
+    var nvBtn = null;
+    var wasAlreadyOpen = !!findTbkSection();
+
+    lockModal(22000);
+    stealthObj().enter();
+    try {
+      var sec = findTbkSection();
+      if (!sec) {
+        var tilePre = findTbkTileBtn();
+        if (!tilePre) {
+          nvBtn = findQuestTabBtn();
+          if (!nvBtn) {
+            var moreBtn = document.getElementById('u20more') || document.getElementById('moreBtn') || document.getElementById('btnMore');
+            if (moreBtn && isElemShown(moreBtn) && !moreBtn.disabled) {
+              openedMoreBtn = moreBtn;
+              try { moreBtn.click(); } catch (eMo0) {}
+              await sleep(240);
+              nvBtn = findQuestTabBtn();
+            }
+          }
+          if (!nvBtn) {
+            note('[TBK] Khong tim thay nut Nhiem vu de dung Tin vat');
+            return false;
+          }
+          try { nvBtn.click(); } catch (eNv0) {}
+          var retriedNv = false;
+          var wNv = Date.now() + 1600;
+          while (Date.now() < wNv) {
+            await sleep(110);
+            sec = findTbkSection();
+            tilePre = findTbkTileBtn();
+            if (sec || tilePre) break;
+            if (!retriedNv && Date.now() > wNv - 1050) {
+              retriedNv = true;
+              try { dispatchRealUiClick(nvBtn); } catch (eNv1) {}
+            }
+          }
+        }
+
+        if (!sec && tilePre) {
+          try { if (tilePre.scrollIntoView) tilePre.scrollIntoView({ block: 'center' }); } catch (eSc0) {}
+          await sleep(70);
+          try { tilePre.click(); } catch (eTl0) {}
+          var retriedTl = false;
+          var wTl = Date.now() + 1600;
+          while (Date.now() < wTl) {
+            await sleep(110);
+            sec = findTbkSection();
+            if (sec) break;
+            if (!retriedTl && Date.now() > wTl - 1050) {
+              retriedTl = true;
+              try { dispatchRealUiClick(tilePre); } catch (eTl1) {}
+            }
+          }
+        }
+      }
+
+      if (!sec) {
+        note('[TBK] Da mo Nhiem vu nhung khong thay muc Tin vat Thien Bao Kho');
+        return false;
+      }
+
+      var st0 = parseTbkSecState(sec);
+      if (st0.usedToday) {
+        dayAdd('tbkTvUse', 1);
+        tbkClearXong();
+        A.tbkFailCount = 0;
+        note('[TBK] Da dung Tin vat Thien Bao Kho hom nay (120p)');
+        return true;
+      }
+      if (st0.cnt === 0) {
+        note('[TBK] Chua co Tin vat Thien Bao Kho (0 cai) de dung');
+        return false;
+      }
+
+      var u1 = findTbkUseBtnIn(sec, false);
+      if (!u1 || !u1.el || u1.disabled) {
+        var stChk = parseTbkSecState(sec);
+        if (stChk.usedToday) {
+          dayAdd('tbkTvUse', 1);
+          tbkClearXong();
+          A.tbkFailCount = 0;
+          return true;
+        }
+        note('[TBK] Khong tim thay nut Dung Tin vat dang hoat dong');
+        return false;
+      }
+
+      var u2 = null;
+      if (u1.isConfirm) {
+        u2 = u1;
+      } else {
+        try { if (u1.el.scrollIntoView) u1.el.scrollIntoView({ block: 'center' }); } catch (eSc1) {}
+        await sleep(80);
+        try { u1.el.click(); } catch (eU1a) {}
+
+        var retriedU1 = false;
+        var wCf = Date.now() + 2000;
+        while (Date.now() < wCf) {
+          await sleep(100);
+          var curSec1 = findTbkSection() || sec;
+          if (parseTbkSecState(curSec1).usedToday) {
+            dayAdd('tbkTvUse', 1);
+            tbkClearXong();
+            A.tbkFailCount = 0;
+            note('Da dung Tin vat Thien Bao Kho (+60p -> 120p/ngay)');
+            return true;
+          }
+          u2 = findTbkUseBtnIn(curSec1, true);
+          if (u2 && u2.el) break;
+          if (!retriedU1 && Date.now() > wCf - 1350) {
+            retriedU1 = true;
+            var u1Now = findTbkUseBtnIn(curSec1, false);
+            if (u1Now && u1Now.el && !u1Now.isConfirm) {
+              try { dispatchRealUiClick(u1Now.el); } catch (eU1b) {}
+            }
+          }
+        }
+      }
+
+      if (!u2 || !u2.el) {
+        note('[TBK] Da bam Dung nhung khong thay nut Bam lai de dung');
+        return false;
+      }
+
+      try { u2.el.click(); } catch (eU2a) {}
+      var retriedU2 = false;
+      var confirmed = false;
+      var wDone = Date.now() + 2400;
+      while (Date.now() < wDone) {
+        await sleep(120);
+        var curSec2 = findTbkSection() || sec;
+        var st2 = parseTbkSecState(curSec2);
+        var uNow2 = findTbkUseBtnIn(curSec2, false);
+        if (st2.usedToday || (st0.cnt > 0 && st2.cnt >= 0 && st2.cnt < st0.cnt) || (uNow2 && !uNow2.isConfirm && uNow2.disabled)) {
+          confirmed = true;
+          break;
+        }
+        if (!retriedU2 && Date.now() > wDone - 1750 && uNow2 && uNow2.isConfirm && uNow2.el) {
+          retriedU2 = true;
+          try { dispatchRealUiClick(uNow2.el); } catch (eU2b) {}
+        }
+      }
+
+      if (!confirmed) {
+        note('[TBK] Da bam Bam lai de dung nhung chua thay cap nhat 120p, se thu lai');
+        return false;
+      }
+
+      dayAdd('tbkTvUse', 1);
+      tbkClearXong();
+      A.tbkFailCount = 0;
+      note('Da dung Tin vat Thien Bao Kho (+60p -> tong 120p/ngay)');
+      return true;
+    } finally {
+      await closeModalCleanly(document.getElementById('modal'));
+      if (!wasAlreadyOpen) {
+        if (prevTabBtn && prevTabBtn.isConnected && isVis(prevTabBtn)) {
+          try { prevTabBtn.click(); } catch (ePr2) {}
+        } else if (nvBtn && nvBtn.isConnected && findTbkSection()) {
+          try { nvBtn.click(); } catch (eFold) {}
+        }
+      }
+      if (openedMoreBtn && openedMoreBtn.isConnected) {
+        try {
+          var pop = document.querySelector('#u20pop, .u20-pop, .u20-more, .more-menu, [data-more-pop]');
+          if (pop && isVis(pop)) openedMoreBtn.click();
+        } catch (eMp2) {}
+      }
+      stealthObj().leave();
+      unlockModal();
+    }
+  }
+
+  async function muaVaDungTinVatThienBaoKho(I) {
+    var boughtTv = await muaTinVatThienBaoKho(I);
+    if (A.cfg.on && A.cfg.tbkTinVat && dayGet('tbkTvUse') < 1) {
+      if (boughtTv) {
+        delete A.cool.tbk_use_tinvat;
+        await sleep(260);
+      }
+      var usedTv = await dungTinVatThienBaoKho(I);
+      return !!(boughtTv || usedTv);
+    }
+    return boughtTv;
+  }
   async function cheDo(I) {
     var now = Date.now();
     var lv = (I.lvl | 0) > 0 ? (I.lvl | 0) : 100;
@@ -5609,6 +5948,7 @@ class GameAutoPilot(
       A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
       delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
       note('Phó Bản quá 3 giờ không dứt → nhả về lịch bình thường (10p quét lại)');
@@ -5623,6 +5963,7 @@ class GameAutoPilot(
         A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
       delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
         A.pbStartedAt = 0;
@@ -5636,6 +5977,7 @@ class GameAutoPilot(
           A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
       delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
         } else if (!A.pbOut) {
@@ -5645,6 +5987,7 @@ class GameAutoPilot(
           A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.tbk_use_tinvat;
       delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
           A.pbStartedAt = 0;
@@ -5853,11 +6196,9 @@ class GameAutoPilot(
     var tbkOrbit = !!(tbkEnabled && A.cfg.thapAfterMode === 'ORBIT');
 
     if (tbkEnabled && !tbkXong() && isTbkTimeExhaustedInDom(I)) {
-      if (A.cfg.tbkTinVat && dayGet('tbkTv2') < 1) {
-        var boughtTv = await muaTinVatThienBaoKho(I);
-        if (boughtTv) {
-          try { await scanAndUseOneFromHiddenBagDom('tbktv'); } catch (eUseTv) {}
-        } else {
+      if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) {
+        var okTv = await muaVaDungTinVatThienBaoKho(I);
+        if (!okTv) {
           dayAdd('tbkx', 1);
           note('Het 60p Thien Bao Kho hom nay -> chuyen Luyen Cong');
         }
@@ -5890,11 +6231,8 @@ class GameAutoPilot(
     }
 
     async function enterThienBaoKho() {
-      if (A.cfg.tbkTinVat && dayGet('tbkTv2') < 1) {
-        var boughtPre = await muaTinVatThienBaoKho(I);
-        if (boughtPre) {
-          try { await scanAndUseOneFromHiddenBagDom('tbktv'); } catch (ePreTv) {}
-        }
+      if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) {
+        await muaVaDungTinVatThienBaoKho(I);
       }
       // Cach 1: qua nut Che Do (Thien Bao Kho / Leo Thap)
       var swOk = await switchMode('tower');
@@ -5942,12 +6280,9 @@ class GameAutoPilot(
         A.cool.tbk_enter = Date.now() + 6000;
         var entRes = await enterThienBaoKho();
         if (entRes && entRes.exhausted) {
-          if (A.cfg.tbkTinVat && dayGet('tbkTv2') < 1) {
-            var boughtLate = await muaTinVatThienBaoKho(I);
-            if (boughtLate) {
-              try { await scanAndUseOneFromHiddenBagDom('tbktv'); } catch (eLateTv) {}
-              return;
-            }
+          if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) {
+            var okLate = await muaVaDungTinVatThienBaoKho(I);
+            if (okLate) return;
           }
           dayAdd('tbkx', 1);
           A.tbkFailCount = 0;
@@ -6070,7 +6405,7 @@ class GameAutoPilot(
       } catch (eMapForce) {}
 
       var runSeq = (A.cfgSeq | 0);
-      var bgFns = [suDungVatPhamTieuHao, muaTinVatThienBaoKho, qua, muaTheGiaoDich, doiNguyenLieuThua, muaKnb, troThu, khan, daTau, muaLb];
+      var bgFns = [suDungVatPhamTieuHao, muaVaDungTinVatThienBaoKho, qua, muaTheGiaoDich, doiNguyenLieuThua, muaKnb, troThu, khan, daTau, muaLb];
       for (var i = 0; i < bgFns.length; i++) {
         if (!A.cfg.on || (A.cfgSeq | 0) !== runSeq) {
           A.pendingTick = true;

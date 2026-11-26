@@ -430,7 +430,7 @@ fun AutoConfigDialog(
                                 }
                             }
                             Text(
-                                text = "Tín vật TBK (+60p) • Lệnh Bài Dã Tẩu (×10) • Gói 10 Phúc Duyên (×10)",
+                                text = "Tín vật TBK (tự mua + dùng +60p) • Lệnh Bài Dã Tẩu (×10) • Gói 10 Phúc Duyên (×10)",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 8.5.sp,
                                 modifier = Modifier.padding(top = 3.dp)
