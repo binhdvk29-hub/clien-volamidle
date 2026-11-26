@@ -437,7 +437,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-78"
+        const val SCRIPT_VER = "vlmauto-80"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1239,6 +1239,7 @@ class GameAutoPilot(
       A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
       A.koWaitingRecovery = false;
       if (A.cfg.afterDailyFarm || (A.cfg.afterDailyEnabled && !A.cfg.thap)) {
@@ -1287,6 +1288,7 @@ class GameAutoPilot(
       A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.evHongBao;
       delete A.cool.tbk_enter; A.pbSeen = 0; A.gate = 0; A.cool = {};
       try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl0) {}
       try { if (typeof bossHkPrevSet === 'function') bossHkPrevSet(null); } catch (eBh0) {}
@@ -2050,12 +2052,63 @@ class GameAutoPilot(
       .trim();
   }
 
+  function isBagPanelText(rawTxt) {
+    var raw = String(rawTxt || '');
+    var t = cleanUiLabel(raw);
+    if (!t) return false;
+    var hasMoRong = t.indexOf('mo rong') >= 0;
+    var hasSort = t.indexOf('moi nhat') >= 0 || t.indexOf('sap xep') >= 0 || t.indexOf('pham chat') >= 0;
+    var hasCur = (t.indexOf('ng luong') >= 0 || t.indexOf('ngan luong') >= 0) &&
+                 (t.indexOf('kim ng bao') >= 0 || t.indexOf('knb khoa') >= 0);
+    var hasCap = /\b\d{1,3}\s*\/\s*\d{2,3}\b/.test(raw);
+    if (hasMoRong && (hasCur || hasCap || hasSort)) return true;
+    if (hasCap && hasCur) return true;
+    return false;
+  }
+
+  function findInlineBagByMoRong() {
+    try {
+      var btns = document.querySelectorAll('button, [role="button"], a, span, div');
+      var cap = Math.min(btns.length, 420);
+      var moRongEl = null;
+      for (var i = 0; i < cap; i++) {
+        var el = btns[i];
+        if (!el || !isVis(el) || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if ((el.tagName === 'DIV' || el.tagName === 'SPAN') && el.children && el.children.length > 2) continue;
+        if (el.closest && el.closest('#modal, #tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
+        if (cleanUiLabel(el.textContent || '') === 'mo rong') {
+          moRongEl = el;
+          break;
+        }
+      }
+      if (!moRongEl) return null;
+      var cur = moRongEl.parentElement;
+      var best = null;
+      for (var d = 0; d < 7 && cur && cur !== document.body && cur !== document.documentElement; d++) {
+        if (cur.querySelector && cur.querySelector('canvas')) break;
+        if (cur.id === 'app' || cur.id === 'root' || cur.id === 'game') break;
+        var tx = cur.textContent || '';
+        if (isBagPanelText(tx)) {
+          best = cur;
+        }
+        cur = cur.parentElement;
+      }
+      return best;
+    } catch (eMr) {}
+    return null;
+  }
+
   function findVisibleBagRootNow() {
     var md = document.getElementById('modal');
+    var inlineBag = findInlineBagByMoRong();
+    if (inlineBag && isVis(inlineBag)) {
+      return { root: inlineBag, md: md, mode: 'tab' };
+    }
     if (md && !md.classList.contains('hidden')) {
       var mb = document.getElementById('mBody') || md;
-      var mt = cleanUiLabel(mb.textContent || '');
-      if (mt.indexOf('hanh trang') >= 0 || mt.indexOf('tui do') >= 0 ||
+      var rawMb = mb.textContent || '';
+      var mt = cleanUiLabel(rawMb);
+      if (isBagPanelText(rawMb) || mt.indexOf('hanh trang') >= 0 || mt.indexOf('tui do') >= 0 ||
           (mt.indexOf('vat pham') >= 0 && (mt.indexOf('trang bi') >= 0 || mt.indexOf('que hoa') >= 0 || mt.indexOf('tien thao') >= 0))) {
         return { root: mb, md: md, mode: 'modal' };
       }
@@ -2080,8 +2133,9 @@ class GameAutoPilot(
       var ap = activePanes[ai];
       if (!ap || !isVis(ap)) continue;
       if (ap.querySelector && ap.querySelector('canvas, #tabs, #u20bar')) continue;
-      var at = cleanUiLabel(ap.textContent || '');
-      if (at.indexOf('hanh trang') >= 0 || at.indexOf('tui do') >= 0 ||
+      var rawAp = ap.textContent || '';
+      var at = cleanUiLabel(rawAp);
+      if (isBagPanelText(rawAp) || at.indexOf('hanh trang') >= 0 || at.indexOf('tui do') >= 0 ||
           at.indexOf('que hoa') >= 0 || at.indexOf('tien thao') >= 0 ||
           (at.indexOf('vat pham') >= 0 && at.indexOf('trang bi') >= 0)) {
         return { root: ap, md: md, mode: 'tab' };
@@ -2089,7 +2143,6 @@ class GameAutoPilot(
     }
     return null;
   }
-
   function collectHiddenBagTriggers() {
     var md = document.getElementById('modal');
     var out = [];
@@ -2300,6 +2353,7 @@ class GameAutoPilot(
   }
   function isBagSlotOrContentRendered(root) {
     if (!root) return false;
+    if (isBagPanelText(root.textContent || '')) return true;
     var hasItemNodes = !!root.querySelector(
       '.qrow, .item, .bag-item, .inv-item, .item-slot, .eq-item, ' +
       '[data-bag], [data-inv], [data-iid], [data-slot], [data-item], #invTabs, #bagTabs, .bag-tabs'
@@ -2312,10 +2366,121 @@ class GameAutoPilot(
       /hanh trang\s*\(\s*0\s*\//.test(t);
   }
 
+  function isPlainStackCount(raw) {
+    var s = String(raw || '').trim();
+    if (!s || s.length > 5) return false;
+    for (var k = 0; k < s.length; k++) {
+      var c = s.charCodeAt(k);
+      if (c < 48 || c > 57) return false;
+    }
+    return Number(s) > 0;
+  }
+
+  function getSlotVisualSig(slotEl) {
+    if (!slotEl) return '';
+    try {
+      var img = slotEl.tagName === 'IMG' ? slotEl : (slotEl.querySelector ? slotEl.querySelector('img') : null);
+      if (img) {
+        var src = String(img.getAttribute('src') || img.src || '');
+        if (src) return 'img:' + src.slice(-96);
+      }
+      var bg = (slotEl.style && slotEl.style.backgroundImage) ? String(slotEl.style.backgroundImage) : '';
+      if (!bg && window.getComputedStyle) {
+        bg = String(window.getComputedStyle(slotEl).backgroundImage || '');
+      }
+      if (bg && bg !== 'none') return 'bg:' + bg.slice(-96);
+      var did = slotEl.getAttribute('data-id') || slotEl.getAttribute('data-iid') || slotEl.getAttribute('data-item') || '';
+      if (did) return 'id:' + did;
+    } catch (eSig) {}
+    return '';
+  }
+
+  function findOpenItemDetailPopup(bagRoot) {
+    var scopes = [
+      document.getElementById('itemModal'),
+      document.getElementById('detailModal'),
+      document.getElementById('modal'),
+      document.getElementById('cfModal'),
+      document.getElementById('confirmModal'),
+      document.getElementById('cModal'),
+      document.querySelector('[role="dialog"]'),
+      document.querySelector('[aria-modal="true"]'),
+      document.querySelector('.item-detail'),
+      document.querySelector('.popup')
+    ];
+    for (var i = 0; i < scopes.length; i++) {
+      var sc = scopes[i];
+      if (!sc || !isVis(sc) || sc === bagRoot) continue;
+      if (sc.classList && sc.classList.contains('hidden')) continue;
+      var txt = cleanUiLabel(sc.textContent || '');
+      if (!txt || txt.length < 6) continue;
+      if (txt.indexOf('dung 1') >= 0 || txt.indexOf('dung het') >= 0 || txt.indexOf('tach ra') >= 0 ||
+          txt.indexOf('que hoa') >= 0 || txt.indexOf('tien thao') >= 0 || txt.indexOf('tin vat') >= 0 ||
+          txt.indexOf('su dung') >= 0 || txt.indexOf('gia ky tran cac') >= 0) {
+        return sc;
+      }
+    }
+    return null;
+  }
+
+  async function closeItemDetailPopupOnly(popupEl) {
+    if (!popupEl || !isVis(popupEl)) return;
+    try {
+      var closeBtn = popupEl.querySelector('#mClose, .close, [data-close], button[aria-label*="Close" i]');
+      if (!closeBtn) {
+        var btns = popupEl.querySelectorAll('button, [role="button"], span, div');
+        for (var i = 0; i < btns.length; i++) {
+          var b = btns[i];
+          if (!isVis(b) || (b.children && b.children.length > 1)) continue;
+          var rt = String(b.textContent || '').trim();
+          var ct = cleanUiLabel(rt);
+          if (rt === '\u00d7' || rt === '\u2715' || rt === '\u2716' || ct === 'x' || ct === 'dong' || ct === 'huy') {
+            closeBtn = b;
+            break;
+          }
+        }
+      }
+      if (closeBtn && isVis(closeBtn)) {
+        try { closeBtn.click(); } catch (eC0) {}
+      } else {
+        await closeModalCleanly(document.getElementById('modal'));
+      }
+    } catch (eCl) {}
+    var wEnd = Date.now() + 360;
+    while (Date.now() < wEnd) {
+      if (!popupEl.isConnected || !isVis(popupEl) || (popupEl.classList && popupEl.classList.contains('hidden'))) break;
+      await sleep(45);
+    }
+  }
+
+  function recordConsumableLocalTimer(kind) {
+    try {
+      if (kind !== 'qht') return;
+      var until = Date.now() + 59 * 60 * 1000;
+      A.qhtUsedUntil = until;
+      var who = dayWho();
+      localStorage.setItem('vlm_auto_' + (who ? who + '_' : '') + 'qhtUntil', String(until));
+    } catch (eTm) {}
+  }
+
+  function isQhtLocalTimerActive() {
+    try {
+      var now = Date.now();
+      if (A.qhtUsedUntil && now < A.qhtUsedUntil) return true;
+      var who = dayWho();
+      var saved = Number(localStorage.getItem('vlm_auto_' + (who ? who + '_' : '') + 'qhtUntil') || '0');
+      if (saved && now < saved) {
+        A.qhtUsedUntil = saved;
+        return true;
+      }
+    } catch (eTm2) {}
+    return false;
+  }
+
   async function scanAndUseOneFromHiddenBagDom(kind) {
     if (!canRunHiddenConsumable()) return { scanned: false, used: false, reason: 'busy_or_modal' };
 
-    lockModal(18000);
+    lockModal(22000);
     stealthObj().enter();
     var ctx = null;
     try {
@@ -2333,7 +2498,7 @@ class GameAutoPilot(
       }
       if (!bagRendered) {
         var txtLen = (ctx.root.textContent || '').trim().length;
-        if (txtLen > 16 && (ctx.root.querySelectorAll('button, tr, li, div, img').length > 0)) {
+        if (txtLen > 12 && (ctx.root.querySelectorAll('button, tr, li, div, img').length > 0)) {
           bagRendered = true;
         } else {
           return { scanned: false, used: false, reason: 'bag_not_rendered' };
@@ -2341,9 +2506,11 @@ class GameAutoPilot(
       }
 
       var isUseBtnLabel = function (bTxt) {
-        var t = stripCountText(bTxt || '');
-        if (!t || t.indexOf('het') >= 0 || t.indexOf('tat ca') >= 0 || t.indexOf('ban') >= 0 || t.indexOf('bo') >= 0 || t.indexOf('vut') >= 0) return false;
-        return t === 'dung' || t === 'dung 1' || t === 'dung ngay' ||
+        var t = cleanUiLabel(bTxt || '');
+        if (!t || t.indexOf('het') >= 0 || t.indexOf('tat ca') >= 0 || t.indexOf('ban') >= 0 ||
+            t.indexOf('bo') >= 0 || t.indexOf('vut') >= 0 || t.indexOf('tach') >= 0 ||
+            t.indexOf('cho') >= 0 || t.indexOf('thu') >= 0 || t.indexOf('kho') >= 0) return false;
+        return t === 'dung 1' || t === 'dung' || t === 'dung ngay' ||
           t === 'su dung' || t === 'su dung 1' || t === 'an' || t === 'uong' || t === 'mo';
       };
 
@@ -2357,161 +2524,165 @@ class GameAutoPilot(
       var findUseBtnInScope = function (scopeEl) {
         if (!scopeEl || !isVis(scopeEl)) return null;
         var btns = scopeEl.querySelectorAll('button, [role="button"], a');
+        var fallback = null;
         for (var j = 0; j < btns.length; j++) {
           if (!isVis(btns[j]) || btns[j].disabled) continue;
-          if (isUseBtnLabel(btns[j].textContent || '')) return btns[j];
+          var lbl = cleanUiLabel(btns[j].textContent || '');
+          if (lbl === 'dung 1' || lbl === 'su dung 1') return btns[j];
+          if (!fallback && isUseBtnLabel(btns[j].textContent || '')) fallback = btns[j];
         }
-        return null;
+        return fallback;
       };
 
-      var findDetailUseBtn = function () {
-        var scopes = [
-          document.getElementById('itemModal'),
-          document.getElementById('detailModal'),
-          document.getElementById('cfModal'),
-          document.getElementById('confirmModal'),
-          document.getElementById('cModal'),
-          document.querySelector('[role="dialog"]'),
-          document.querySelector('[aria-modal="true"]'),
-          document.querySelector('.item-detail'),
-          document.querySelector('.tooltip'),
-          document.querySelector('.popup')
-        ];
-        for (var si = 0; si < scopes.length; si++) {
-          var sc = scopes[si];
-          if (!sc || !isVis(sc)) continue;
-          var btn = findUseBtnInScope(sc);
-          if (btn) return btn;
+      var tryUseInsidePopup = async function (popupEl, slotSig) {
+        if (!popupEl || !isVis(popupEl)) return false;
+        var pTxt = noAccent(popupEl.textContent || '');
+        if (!matchConsumableRowText(pTxt, kind) || hasOtherConsumable(pTxt)) return false;
+        var uBtn = findUseBtnInScope(popupEl);
+        if (!uBtn) return false;
+        if (slotSig) {
+          if (!A._slotSigCache) A._slotSigCache = {};
+          A._slotSigCache[kind] = slotSig;
         }
-        var mdEl = document.getElementById('modal');
-        if (mdEl && isVis(mdEl) && mdEl !== ctx.root) {
-          var mdTxt = noAccent(mdEl.textContent || '');
-          if (matchConsumableRowText(mdTxt, kind)) {
-            var mdBtn = findUseBtnInScope(mdEl);
-            if (mdBtn) return mdBtn;
-          }
+        try { uBtn.click(); } catch (eU0) {}
+        try { dispatchRealUiClick(uBtn); } catch (eU1) {}
+        await sleep(360);
+        // Neu co hop thoai xac nhan phu thi bam Xac nhan / Dong y
+        var cf = findGuildConfirmButton(uBtn);
+        if (cf && isVis(cf)) {
+          try { cf.click(); } catch (eU2) {}
+          await sleep(280);
         }
-        return null;
+        recordConsumableLocalTimer(kind);
+        await closeItemDetailPopupOnly(popupEl);
+        return true;
       };
 
-      var findMatchedRowAndBtn = function (rootEl) {
-        var allNodes = rootEl.querySelectorAll('.qrow, .item, .bag-item, .inv-item, .item-slot, [data-bag], [data-inv], [data-iid], [data-slot], [data-item], tr, li, div, span, p, button, img');
-        var matches = [];
-        for (var ri = 0; ri < allNodes.length; ri++) {
-          var el = allNodes[ri];
-          if (!isVis(el)) continue;
-          var meta = noAccent(extractNodeMeta(el));
-          if (!matchConsumableRowText(meta, kind)) continue;
-          if (hasOtherConsumable(meta)) continue;
-          matches.push({ el: el, len: meta.length });
-        }
-        matches.sort(function (a, b) { return a.len - b.len; });
-        for (var mi = 0; mi < matches.length; mi++) {
-          var cur = matches[mi].el;
-          var bestCard = cur;
-          for (var depth = 0; depth < 5 && cur && cur !== rootEl && cur !== document.body; depth++) {
-            var curTxt = noAccent((cur.textContent || '').replace(/\s+/g, ' ').trim());
-            if (curTxt.length > 360 || hasOtherConsumable(curTxt)) break;
-            var allBtns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
-            var useCount = 0;
-            var foundBtn = null;
-            for (var bi = 0; bi < allBtns.length; bi++) {
-              if (!isVis(allBtns[bi]) || allBtns[bi].disabled) continue;
-              if (isUseBtnLabel(allBtns[bi].textContent || '')) {
-                useCount++;
-                if (!foundBtn) foundBtn = allBtns[bi];
-              }
-            }
-            if (useCount === 1 && foundBtn) {
-              return { row: cur, useBtn: foundBtn };
-            }
-            if (useCount > 1) break;
-            bestCard = cur;
-            cur = cur.parentElement;
-          }
-          if (bestCard) return { row: bestCard, useBtn: null };
-        }
-        return { row: null, useBtn: null };
-      };
+      // PASS 1: Khop nhanh qua metadata (title / data-* / text / img alt)
+      var allNodes = ctx.root.querySelectorAll('.qrow, .item, .bag-item, .inv-item, .item-slot, [data-bag], [data-inv], [data-iid], [data-slot], [data-item], tr, li, div, span, p, button, img');
+      var matches = [];
+      for (var ri = 0; ri < allNodes.length; ri++) {
+        var el = allNodes[ri];
+        if (!isVis(el)) continue;
+        var meta = noAccent(extractNodeMeta(el));
+        if (!matchConsumableRowText(meta, kind)) continue;
+        if (hasOtherConsumable(meta)) continue;
+        matches.push({ el: el, len: meta.length });
+      }
+      matches.sort(function (a, b) { return a.len - b.len; });
 
-      var tabCands = [null, 'tat ca', 'vat pham', 'tieu hao', 'duoc pham', 'thuoc', 'dao cu', 'khac'];
-      var anyTabScanned = false;
-      for (var tIdx = 0; tIdx < tabCands.length; tIdx++) {
-        if (tabCands[tIdx]) {
-          var tb = matchConsumableTabBtn(ctx.root, [tabCands[tIdx]]);
-          if (!tb) continue;
-          if (!tb.classList.contains('active') && !tb.classList.contains('on') && tb.getAttribute('aria-selected') !== 'true') {
-            tb.click();
-            await sleep(240);
-          }
+      for (var mi = 0; mi < Math.min(matches.length, 4); mi++) {
+        var targetEl = matches[mi].el;
+        var directUse = null;
+        var cur = targetEl;
+        for (var depth = 0; depth < 4 && cur && cur !== ctx.root && cur !== document.body; depth++) {
+          var curTxt = noAccent((cur.textContent || '').replace(/\s+/g, ' ').trim());
+          if (curTxt.length > 320 || hasOtherConsumable(curTxt)) break;
+          directUse = findUseBtnInScope(cur);
+          if (directUse) break;
+          cur = cur.parentElement;
         }
-        anyTabScanned = true;
-        var hit = findMatchedRowAndBtn(ctx.root);
-        var matchedRow = hit.row;
-        var useBtn = hit.useBtn;
-
-        if (!useBtn && matchedRow) {
-          try { matchedRow.click(); } catch (eClick) {}
-          try { dispatchRealUiClick(matchedRow); } catch (eClick2) {}
-          var detailWaitEnd = Date.now() + 1200;
-          while (Date.now() < detailWaitEnd) {
-            await sleep(90);
-            useBtn = findDetailUseBtn();
-            if (!useBtn) {
-              var reHit = findMatchedRowAndBtn(ctx.root);
-              if (reHit.useBtn) useBtn = reHit.useBtn;
-            }
-            if (useBtn) break;
-          }
+        if (directUse) {
+          try { directUse.click(); } catch (eD0) {}
+          await sleep(350);
+          recordConsumableLocalTimer(kind);
+          return { scanned: true, used: true, reason: 'used_inline' };
         }
-
-        if (useBtn && !useBtn.disabled) {
-          try { useBtn.click(); } catch (eU1) { try { dispatchRealUiClick(useBtn); } catch (eU2) {} }
-          var postClickEnd = Date.now() + 1100;
-          var handledConfirm = false;
-          while (Date.now() < postClickEnd) {
-            await sleep(100);
-            var inps = document.querySelectorAll(
-              '#modal input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), ' +
-              '#cfModal input, #confirmModal input, #cModal input, .confirm input, [role="dialog"] input:not([type="hidden"])'
-            );
-            var filledQty = false;
-            for (var p = 0; p < inps.length; p++) {
-              if (isVis(inps[p]) && !inps[p].disabled && !inps[p].readOnly) {
-                fillInp(inps[p], '1');
-                filledQty = true;
-                await sleep(100);
-                break;
-              }
-            }
-            var okBtns = document.querySelectorAll(
-              '#modal button, #modal [role="button"], #cfModal button, #confirmModal button, ' +
-              '#cModal button, .confirm button, [role="dialog"] button, [aria-modal="true"] button'
-            );
-            for (var ob = 0; ob < okBtns.length; ob++) {
-              if (!isVis(okBtns[ob]) || okBtns[ob].disabled || okBtns[ob] === useBtn) continue;
-              var obt = stripCountText(okBtns[ob].textContent || '');
-              if ((filledQty && isUseBtnLabel(obt)) || obt === 'xac nhan' || obt === 'dong y' || obt === 'doi' || obt === 'ok') {
-                okBtns[ob].click();
-                handledConfirm = true;
-                await sleep(320);
-                break;
-              }
-            }
-            if (handledConfirm) break;
+        try { targetEl.click(); } catch (eT0) {}
+        try { dispatchRealUiClick(targetEl); } catch (eT1) {}
+        var pWait = Date.now() + 750;
+        var pop = null;
+        while (Date.now() < pWait) {
+          pop = findOpenItemDetailPopup(ctx.root);
+          if (pop) break;
+          await sleep(75);
+        }
+        if (pop) {
+          if (await tryUseInsidePopup(pop, getSlotVisualSig(targetEl))) {
+            return { scanned: true, used: true, reason: 'used_meta_popup' };
           }
-          await sleep(240);
-          return { scanned: true, used: true, reason: 'ok' };
+          await closeItemDetailPopupOnly(pop);
         }
       }
-      return { scanned: anyTabScanned && bagRendered, used: false, reason: 'not_in_bag' };
+
+      // PASS 2: Do luoi o bieu tuong (Hanh trang dang icon + so xep chong)
+      var collectStackableSlots = function (rootEl) {
+        var list = [];
+        var seenEl = [];
+        var nodes = rootEl.querySelectorAll('div, button, li, span, a');
+        var cap = Math.min(nodes.length, 600);
+        for (var i = 0; i < cap; i++) {
+          var n = nodes[i];
+          if (!n || !isVis(n) || n === rootEl) continue;
+          if (n.children && n.children.length > 5) continue;
+          var r = n.getBoundingClientRect ? n.getBoundingClientRect() : null;
+          if (!r || r.width < 26 || r.width > 96 || r.height < 26 || r.height > 96) continue;
+          if (Math.abs(r.width - r.height) > 26) continue;
+          var rawT = String(n.textContent || '').trim();
+          if (!isPlainStackCount(rawT)) continue;
+          var hasVisual = !!(n.querySelector && n.querySelector('img, canvas, svg')) ||
+            (n.style && n.style.backgroundImage && n.style.backgroundImage !== 'none');
+          if (!hasVisual && window.getComputedStyle) {
+            var bgImg = window.getComputedStyle(n).backgroundImage;
+            if (bgImg && bgImg !== 'none') hasVisual = true;
+          }
+          if (!hasVisual) continue;
+          var clickNode = n;
+          if (clickNode.parentElement && clickNode.parentElement !== rootEl) {
+            var pr = clickNode.parentElement.getBoundingClientRect ? clickNode.parentElement.getBoundingClientRect() : null;
+            if (pr && pr.width <= 96 && pr.height <= 96 && isPlainStackCount(clickNode.parentElement.textContent || '')) {
+              clickNode = clickNode.parentElement;
+            }
+          }
+          if (seenEl.indexOf(clickNode) >= 0) continue;
+          seenEl.push(clickNode);
+          list.push({ el: clickNode, sig: getSlotVisualSig(clickNode), cnt: Number(rawT) || 0 });
+        }
+        return list;
+      };
+
+      var slots = collectStackableSlots(ctx.root);
+      var cachedSig = (A._slotSigCache && A._slotSigCache[kind]) ? A._slotSigCache[kind] : '';
+      if (cachedSig && slots.length > 1) {
+        slots.sort(function (a, b) {
+          return (b.sig === cachedSig ? 1 : 0) - (a.sig === cachedSig ? 1 : 0);
+        });
+      }
+
+      var probedSigs = {};
+      var probedCount = 0;
+      var maxProbe = 28;
+      for (var si = 0; si < slots.length && probedCount < maxProbe; si++) {
+        var sl = slots[si];
+        if (sl.sig && sl.sig !== cachedSig && probedSigs[sl.sig]) continue;
+        if (sl.sig) probedSigs[sl.sig] = true;
+        probedCount++;
+
+        try { sl.el.click(); } catch (eSl0) {
+          try { dispatchRealUiClick(sl.el); } catch (eSl1) { continue; }
+        }
+        var popEnd = Date.now() + 420;
+        var pop2 = null;
+        while (Date.now() < popEnd) {
+          pop2 = findOpenItemDetailPopup(ctx.root);
+          if (pop2) break;
+          await sleep(55);
+        }
+        if (!pop2) continue;
+        if (await tryUseInsidePopup(pop2, sl.sig)) {
+          return { scanned: true, used: true, reason: 'used_grid_probe' };
+        }
+        await closeItemDetailPopupOnly(pop2);
+        await sleep(35);
+      }
+
+      return { scanned: true, used: false, reason: 'not_found_in_bag(slots=' + slots.length + ',probed=' + probedCount + ')' };
     } finally {
       await closeHiddenBagModal(ctx);
       stealthObj().leave();
       unlockModal();
     }
-  }
-  async function useOneBottleFromHiddenBagDom(kind) {
+  }  async function useOneBottleFromHiddenBagDom(kind) {
     var r = await scanAndUseOneFromHiddenBagDom(kind);
     return !!(r && r.used);
   }
@@ -2884,6 +3055,7 @@ class GameAutoPilot(
 
   async function queHoaTuu(I, hudOpt) {
     if (!A.cfg.qht) return true;
+    if (isQhtLocalTimerActive()) return true;
     var hud = hudOpt || scanHudBuffs(I);
     if (hud.qht) return true;
     var r = await ensureOneConsumable(I, {
@@ -2918,7 +3090,7 @@ class GameAutoPilot(
     var hud = scanHudBuffs(I);
     var ttlExpiring = A.cfg.ttl && (!hud.ttl || ((hud.rem && hud.rem.ttl) || 0) <= BUFF_RENEW_LEAD_MS);
     var tt2Expiring = A.cfg.tt2 && (!hud.tt2 || ((hud.rem && hud.rem.tt2) || 0) <= BUFF_RENEW_LEAD_MS);
-    var qhtExpiring = A.cfg.qht && (!hud.qht || ((hud.rem && hud.rem.qht) || 0) <= BUFF_RENEW_LEAD_MS);
+    var qhtExpiring = A.cfg.qht && !isQhtLocalTimerActive() && (!hud.qht || ((hud.rem && hud.rem.qht) || 0) <= BUFF_RENEW_LEAD_MS);
 
     if (!ttlExpiring && !tt2Expiring && !qhtExpiring) {
       // Căn chính xác theo thời gian còn lại của vật phẩm sắp hết nhất
@@ -3064,7 +3236,7 @@ class GameAutoPilot(
     var canChay = function () {
       if (!A.cfg.on || !ranh()) return false;
       if (A.st && (A.st.o !== 'game' || Date.now() - A.stT >= 90000)) return false;
-      if (A.st && ['phoban', 'bosstuan', 'thap'].indexOf(A.st.noi) >= 0) return false;
+      if (A.st && ['phoban', 'bosstuan', 'thap', 'tbk', 'baokho'].indexOf(A.st.noi) >= 0) return false;
       if (I.dg || I.tower || I.sat || I.dead) return false;
       return true;
     };
@@ -3077,7 +3249,7 @@ class GameAutoPilot(
       for (var gi = 0; gi < gCands.length; gi++) {
         var gc = gCands[gi];
         if (!isVis(gc) || gc.disabled || (md && md.contains(gc))) continue;
-        var gt = noAccent(gc.textContent || gc.getAttribute('title') || gc.getAttribute('aria-label') || '');
+        var gt = cleanUiLabel(gc.textContent || gc.getAttribute('title') || gc.getAttribute('aria-label') || '');
         if (gt === 'phan thuong' || (gt.indexOf('phan thuong') >= 0 && gt.length <= 22)) {
           gift = gc;
           break;
@@ -3088,35 +3260,92 @@ class GameAutoPilot(
     if (!ready('evHongBao', 45000)) return;
 
     var giftMo = function () {
-      return !md.classList.contains('hidden') && document.querySelector('#mBody #giftTabs');
+      return !md.classList.contains('hidden') && !!(document.querySelector('#mBody #giftTabs') || document.getElementById('giftTabs'));
+    };
+
+    var findEventTab = function () {
+      var tabs = document.querySelectorAll('#mBody #giftTabs button, #giftTabs button, #mBody [data-g]');
+      var fixedTabs = ['diem danh', 'moc cap', 'phuc duyen', 'thanh tuu'];
+      var fallbackEv = null;
+      for (var ti = 0; ti < tabs.length; ti++) {
+        var tb = tabs[ti];
+        if (!tb || tb.disabled || !isVis(tb)) continue;
+        var dg = String(tb.getAttribute('data-g') || '').toLowerCase();
+        var lbl = cleanUiLabel(tb.textContent || '');
+        if (lbl.indexOf('giang sinh') >= 0 || lbl.indexOf('noel') >= 0 || lbl.indexOf('su kien') >= 0 ||
+            lbl.indexOf('nha giao') >= 0 || lbl.indexOf('tet') >= 0 || lbl.indexOf('trung thu') >= 0 ||
+            dg === 'gs' || dg === 'noel' || dg === 'xmas' || dg === 'ng' || dg === 'ev' || dg === 'event' || dg === 'sk') {
+          return tb;
+        }
+        if (lbl && fixedTabs.indexOf(lbl) < 0 && !fallbackEv) {
+          fallbackEv = tb;
+        }
+      }
+      return fallbackEv;
     };
 
     var tenCuaHang = function (row) {
-      var span = row ? row.querySelector('span') : null;
-      if (!span) return '';
-      var txt = span.textContent || '';
-      var small = span.querySelector('small');
-      if (small && small.textContent) txt = txt.split(small.textContent).join(' ');
-      return txt.replace(/^\s*\d+\s+/, '').replace(/\s+/g, ' ').trim();
+      if (!row) return '';
+      var span = row.querySelector('span');
+      var src = span || row;
+      var clone = src.cloneNode(true);
+      var rm = clone.querySelectorAll('small, button');
+      for (var r = 0; r < rm.length; r++) rm[r].remove();
+      var na = cleanUiLabel(clone.textContent || '');
+      na = na.replace(/\s+\d+\s+moi\s+loai[\s\S]*/, '');
+      na = na.replace(/\s+\d+\s+\d+\s+hom\s+nay[\s\S]*/, '');
+      return na.replace(/^\d+\s+/, '').trim();
+    };
+
+    var findExchangeBtnInRow = function (row) {
+      if (!row) return null;
+      var btns = row.querySelectorAll('button, [role="button"]');
+      for (var j = 0; j < btns.length; j++) {
+        var b = btns[j];
+        if (!b) continue;
+        var attrs = b.attributes || [];
+        for (var ai = 0; ai < attrs.length; ai++) {
+          var an = attrs[ai].name || '';
+          var av = String(attrs[ai].value || '');
+          if (an.indexOf('data-') === 0 && av.indexOf('doi:') === 0) return b;
+        }
+        var lbl = cleanUiLabel(b.textContent || '');
+        if (lbl === 'doi' || lbl.indexOf('doi ') === 0) {
+          var rTxt = noAccent(row.textContent || '');
+          if (/\d+\s*\/\s*\d+\s+hom\s+nay/i.test(rTxt) || rTxt.indexOf('moi loai') >= 0) return b;
+        }
+      }
+      return null;
     };
 
     var nutTheoTen = function (ten) {
       if (!giftMo()) return null;
-      var want = noAccent(ten);
+      var want = cleanUiLabel(ten);
       var rows = document.querySelectorAll('#mBody .qrow');
       for (var i = 0; i < rows.length; i++) {
-        var b = rows[i].querySelector('button[data-ng^="doi:"]');
+        var b = findExchangeBtnInRow(rows[i]);
         if (!b) continue;
-        if (noAccent(tenCuaHang(rows[i])) === want) return b;
+        if (tenCuaHang(rows[i]) === want) return b;
+      }
+      var allBtns = document.querySelectorAll('#mBody button');
+      for (var k = 0; k < allBtns.length; k++) {
+        var bk = allBtns[k];
+        if (cleanUiLabel(bk.textContent || '') !== 'doi') continue;
+        var parentRow = bk.closest ? (bk.closest('.qrow, .row, .item, li, tr') || bk.parentElement) : bk.parentElement;
+        if (!parentRow) continue;
+        var pTxt = noAccent(parentRow.textContent || '');
+        if (!/\d+\s*\/\s*\d+\s+hom\s+nay/i.test(pTxt)) continue;
+        if (tenCuaHang(parentRow) === want) return bk;
       }
       return null;
     };
 
     var dem = function (b) {
-      var row = b && b.closest ? b.closest('.qrow') : null;
-      var s = row ? row.querySelector('small') : null;
-      if (!s) return null;
-      var m = /(\d+)\s*\/\s*(\d+)\s+hôm nay/i.exec(s.textContent || '');
+      var row = b && b.closest ? (b.closest('.qrow, .row, .item, li, tr') || b.parentElement) : null;
+      if (!row) return null;
+      var s = row.querySelector('small');
+      var m = s ? /(\d+)\s*\/\s*(\d+)\s+hom\s+nay/i.exec(noAccent(s.textContent || '')) : null;
+      if (!m) m = /(\d+)\s*\/\s*(\d+)\s+hom\s+nay/i.exec(noAccent(row.textContent || ''));
       if (!m) return null;
       var n = Number(m[1]), mx = Number(m[2]);
       if (!isFinite(n) || !isFinite(mx)) return null;
@@ -3127,8 +3356,7 @@ class GameAutoPilot(
 
     var anyNut = function () {
       for (var i = 0; i < items.length; i++) {
-        var b = nutTheoTen(items[i]);
-        if (b) return true;
+        if (nutTheoTen(items[i])) return true;
       }
       return false;
     };
@@ -3145,12 +3373,17 @@ class GameAutoPilot(
     try {
       gift.click();
       if (!await cho(giftMo)) { A.cool.evHongBao = Date.now() + 2 * 60000; return; }
-      var tab = document.querySelector('#mBody #giftTabs button[data-g="ng"]');
-      if (!tab || tab.disabled) { A.cool.evHongBao = Date.now() + 5 * 60000; return; }
+      var tab = findEventTab();
+      if (!tab || tab.disabled) {
+        A.cool.evHongBao = Date.now() + 5 * 60000;
+        note('[SuKien] Khong tim thay tab Su kien trong Phan thuong');
+        return;
+      }
       if (!canChay()) return;
       tab.click();
       if (!await cho(anyNut)) {
         A.cool.evHongBao = Date.now() + 3 * 60000;
+        note('[SuKien] Khong tim thay muc Doi nguyen lieu thua trong tab ' + cleanUiLabel(tab.textContent || ''));
         return;
       }
 
@@ -3167,9 +3400,10 @@ class GameAutoPilot(
           var d0 = dem(b);
           if (d0 === null || d0.n >= d0.mx) break;
           var t0 = d0.n;
+          try { if (b.scrollIntoView) b.scrollIntoView({ block: 'center' }); } catch (eSc) {}
           b.click();
 
-          var endWait = Date.now() + 4500;
+          var endWait = Date.now() + 2600;
           var confirmed = false;
           while (Date.now() < endWait && canChay()) {
             await sleep(100);
@@ -3181,7 +3415,7 @@ class GameAutoPilot(
               break;
             }
             if (!b || b.disabled) {
-              await sleep(250);
+              await sleep(220);
               b = nutTheoTen(ten);
               var d2 = dem(b);
               if (d2 !== null && d2.n > t0) {
@@ -3194,13 +3428,13 @@ class GameAutoPilot(
           if (!confirmed) {
             if (!b || b.disabled) break;
             A.cool.evHongBao = Date.now() + 2 * 60000;
-            note('sự kiện: chưa xác nhận đổi ' + ten + ', thử lại sau');
+            note('[SuKien] Chua doi them duoc ' + ten + ' (co the thieu nguyen lieu), bo qua');
             break;
           }
           await sleep(120);
         }
         if (count > 0) {
-          note('đã đổi ẩn trọn vẹn ' + count + ' ' + ten + ' ở Phần thưởng');
+          note('Da doi ' + count + ' ' + ten + ' (Su kien Giang Sinh)');
         }
       }
     } finally {
@@ -4607,7 +4841,7 @@ class GameAutoPilot(
 
   function isTbkTimeExhaustedInDom(I) {
     try {
-      var hasTinVat = (dayGet('tbkTv') > 0);
+      var hasTinVat = (dayGet('tbkTv2') > 0);
       if (I) {
         if (typeof I.tbkCon === 'number' && I.tbkCon <= 0) return true;
         if (typeof I.towerCon === 'number' && I.towerCon <= 0) return true;
@@ -4756,7 +4990,7 @@ class GameAutoPilot(
       }
 
       var fullTxt = noAccent(root.textContent || '');
-      var hasTinVat = (dayGet('tbkTv') > 0);
+      var hasTinVat = (dayGet('tbkTv2') > 0);
       if (fullTxt.indexOf('120/120') >= 0 || (!hasTinVat && fullTxt.indexOf('60/60') >= 0) ||
           fullTxt.indexOf('het gio') >= 0 || fullTxt.indexOf('het thoi gian') >= 0) {
         return { entered: false, exhausted: true };
@@ -4769,6 +5003,7 @@ class GameAutoPilot(
         if (!b || !isVis(b) || b.disabled || b.id === 'mswBtn' || b.id === 'vlmAuto') continue;
         if (b.closest && b.closest('#mswMenu, #tabs, #u20bar')) continue;
         var bt = stripCountText(b.textContent || '');
+        if (A.cfg.tbkTinVat && (bt.indexOf('dung tin vat') >= 0 || bt === 'them gio' || bt.indexOf('dung the') >= 0)) { try { dispatchRealUiClick(b); } catch (eTvU) {} await sleep(420); continue; }
         if (bt === 'vao thien bao kho' || bt === 'vao bao kho' || bt === 'vao thap' || bt === 'leo thap' || bt === 'bat dau' || bt === 'khieu chien') {
           try { dispatchRealUiClick(b); } catch (eE1) { try { b.click(); } catch (eE2) {} }
           clickedEnter = true;
@@ -4825,7 +5060,7 @@ class GameAutoPilot(
         if (!t || t.length > 26) continue;
         if (t === 'huy' || t === 'huy bo' || t === 'dong' || t === 'dong lai' || t === 'khong' || t === 'bo qua') continue;
         var score = 0;
-        if (t === 'dong y') score = 320;
+        if (t === 'dong y') { score = 320; var pBox = el.parentElement && el.parentElement.parentElement ? cleanUiLabel(el.parentElement.parentElement.textContent || '') : ''; if (pBox.indexOf('tin vat') >= 0 || pBox.indexOf('cong hien') >= 0 || pBox.indexOf('huy') >= 0) score = 500; }
         else if (t.indexOf('dong y') === 0) score = 260;
         else if (t === 'xac nhan') score = 220;
         else if (t === 'chap nhan') score = 200;
@@ -4845,7 +5080,7 @@ class GameAutoPilot(
 
   async function muaTinVatThienBaoKho(I) {
     if (!A.cfg.on || !A.cfg.tbkTinVat) return false;
-    if (dayGet('tbkTv') >= 1) return false;
+    if (dayGet('tbkTv2') >= 1) return false;
     if (I && (I.dead || I.dg || I.sat)) return false;
     if (!canRunHiddenConsumable()) return false;
     if (!ready('tbk_tinvat', 45000)) return false;
@@ -4972,7 +5207,8 @@ class GameAutoPilot(
             for (var depth = 0; depth < 6 && cur && cur !== root && cur !== document.body; depth++) {
               var curTxt = cleanUiLabel(cur.textContent || '');
               if (curTxt.length > 480) break;
-              if (curTxt.indexOf('da doi') >= 0 || curTxt.indexOf('da mua') >= 0 || curTxt.indexOf('het hang') >= 0 || curTxt.indexOf('0 1') >= 0) {
+              var rawCurTxt = String(cur.textContent || '');
+              if (curTxt.indexOf('da doi') >= 0 || curTxt.indexOf('da mua') >= 0 || curTxt.indexOf('het hang') >= 0 || /hom\s*nay\s*1\s*\/\s*1/i.test(noAccent(rawCurTxt)) || /\b1\s*\/\s*1\b/.test(rawCurTxt)) {
                 alreadyBought = true;
               }
               var rowBtns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
@@ -5007,7 +5243,7 @@ class GameAutoPilot(
       }
 
       if (alreadyBought) {
-        dayAdd('tbkTv', 1);
+        dayAdd('tbkTv2', 1);
         note('[TBK] Da doi Tin vat Thien Bao Kho hom nay');
         return false;
       }
@@ -5047,7 +5283,7 @@ class GameAutoPilot(
         return false;
       }
 
-      dayAdd('tbkTv', 1);
+      dayAdd('tbkTv2', 1);
       tbkClearXong();
       A.tbkFailCount = 0;
       note('Da doi Tin vat Thien Bao Kho (Bang hoi -> Cua hang -> Vat pham -> Doi -> Dong y)');
@@ -5100,6 +5336,7 @@ class GameAutoPilot(
       A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
       note('Phó Bản quá 3 giờ không dứt → nhả về lịch bình thường (10p quét lại)');
     } else if (A.cfg.pb && !pbXong()) {
@@ -5113,6 +5350,7 @@ class GameAutoPilot(
         A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
         A.pbStartedAt = 0;
         note('xong phó bản hôm nay → chuyển tiếp hoạt động');
@@ -5125,6 +5363,7 @@ class GameAutoPilot(
           A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
         } else if (!A.pbOut) {
           A.pbOut = now;
@@ -5133,6 +5372,7 @@ class GameAutoPilot(
           A.pbOut = 0;
       A.tbkFailCount = 0;
       delete A.cool.tbk_tinvat;
+      delete A.cool.evHongBao;
       delete A.cool.tbk_enter;
           A.pbStartedAt = 0;
           note('xong phó bản hôm nay (hết lượt) → chuyển tiếp hoạt động');
@@ -5340,7 +5580,7 @@ class GameAutoPilot(
     var tbkOrbit = !!(tbkEnabled && A.cfg.thapAfterMode === 'ORBIT');
 
     if (tbkEnabled && !tbkXong() && isTbkTimeExhaustedInDom(I)) {
-      if (A.cfg.tbkTinVat && dayGet('tbkTv') < 1) {
+      if (A.cfg.tbkTinVat && dayGet('tbkTv2') < 1) {
         var boughtTv = await muaTinVatThienBaoKho(I);
         if (boughtTv) {
           try { await scanAndUseOneFromHiddenBagDom('tbktv'); } catch (eUseTv) {}
@@ -5377,7 +5617,7 @@ class GameAutoPilot(
     }
 
     async function enterThienBaoKho() {
-      if (A.cfg.tbkTinVat && dayGet('tbkTv') < 1) {
+      if (A.cfg.tbkTinVat && dayGet('tbkTv2') < 1) {
         var boughtPre = await muaTinVatThienBaoKho(I);
         if (boughtPre) {
           try { await scanAndUseOneFromHiddenBagDom('tbktv'); } catch (ePreTv) {}
@@ -5429,7 +5669,7 @@ class GameAutoPilot(
         A.cool.tbk_enter = Date.now() + 6000;
         var entRes = await enterThienBaoKho();
         if (entRes && entRes.exhausted) {
-          if (A.cfg.tbkTinVat && dayGet('tbkTv') < 1) {
+          if (A.cfg.tbkTinVat && dayGet('tbkTv2') < 1) {
             var boughtLate = await muaTinVatThienBaoKho(I);
             if (boughtLate) {
               try { await scanAndUseOneFromHiddenBagDom('tbktv'); } catch (eLateTv) {}
