@@ -408,7 +408,8 @@ fun AutoConfigDialog(
                         },
                         onToggleThap = {},
                         onSelectThapMode = {}
-                    )                    AutoCheckRow("Nhận quà Điểm danh + Mốc cấp", draft.qua) {
+                    )
+                    AutoCheckRow("Nhận quà Điểm danh + Mốc cấp", draft.qua) {
                         draft = draft.copy(qua = it)
                     }
                     AutoCheckRow("Khấn tượng mỗi ngày (+20% kinh nghiệm 8 giờ)", draft.khan) {
