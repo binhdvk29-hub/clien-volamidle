@@ -100,6 +100,8 @@ data class AutoConfig(
     val qht: Boolean = false,
     val qhtMua: Boolean = false,
     val tbkTinVat: Boolean = false,
+    val bangLbdt: Boolean = false,
+    val bangPd: Boolean = false,
     val doiNguyenLieu: Set<String> = emptySet()
 ) {
     fun toJson(): JSONObject {
@@ -132,6 +134,8 @@ data class AutoConfig(
         o.put("qht", qht)
         o.put("qhtMua", qhtMua)
         o.put("tbkTinVat", tbkTinVat)
+        o.put("bangLbdt", bangLbdt)
+        o.put("bangPd", bangPd)
 
         val arr = org.json.JSONArray()
         doiNguyenLieu.forEach { arr.put(it) }
@@ -417,6 +421,8 @@ data class AutoConfig(
                 qht = o.optBoolean("qht", DEF.qht),
                 qhtMua = o.optBoolean("qhtMua", DEF.qhtMua),
                 tbkTinVat = o.optBoolean("tbkTinVat", DEF.tbkTinVat),
+                bangLbdt = o.optBoolean("bangLbdt", DEF.bangLbdt),
+                bangPd = o.optBoolean("bangPd", DEF.bangPd),
                 doiNguyenLieu = nguyenLieuSet
             )
         }
@@ -437,7 +443,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-81"
+        const val SCRIPT_VER = "vlmauto-82"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1209,6 +1215,8 @@ class GameAutoPilot(
         A.immediate = true;
       }
       A.cfg.tbkTinVat = !!A.cfg.tbkTinVat;
+      A.cfg.bangLbdt = !!A.cfg.bangLbdt;
+      A.cfg.bangPd = !!A.cfg.bangPd;
       A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
       A.cfg.thapNeDon = !!A.cfg.thapNeDon;
       A.cfg.thapNeDonStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
@@ -1233,7 +1241,7 @@ class GameAutoPilot(
       A.saveTriggeredAt = nowCfg;
       A.saveGraceUntil = nowCfg + 18000;
       A.cfgSeq = (A.cfgSeq | 0) + 1;
-      note('[Auto] Luu & quet ngay (TBK=' + (A.cfg.thap ? A.cfg.thapAfterMode : 'Tat') + ', tinVat=' + (A.cfg.tbkTinVat ? 1 : 0) + ', LC=' + ((A.cfg.afterDailyEnabled || A.cfg.afterDailyFarm) ? (A.cfg.farmMap || '1') : '0') + ', QHT=' + (A.cfg.qht ? 1 : 0) + ')');
+      note('[Auto] Luu & quet ngay (TBK=' + (A.cfg.thap ? A.cfg.thapAfterMode : 'Tat') + ', bangTV=' + (A.cfg.tbkTinVat ? 1 : 0) + ', LB=' + (A.cfg.bangLbdt ? 1 : 0) + ', PD=' + (A.cfg.bangPd ? 1 : 0) + ', LC=' + ((A.cfg.afterDailyEnabled || A.cfg.afterDailyFarm) ? (A.cfg.farmMap || '1') : '0') + ', QHT=' + (A.cfg.qht ? 1 : 0) + ')');
       A.cool = {};
       A.lastMapSelected = '';
       A.pbOut = 0;
@@ -5100,9 +5108,120 @@ class GameAutoPilot(
     }
     return best;
   }
+  function findGuildQtyInput() {
+    var inStealth = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
+    var isInpVis = function (el) {
+      if (!el || !el.isConnected || el.disabled || el.readOnly) return false;
+      try {
+        var cur = el;
+        while (cur && cur !== document.body && cur !== document.documentElement) {
+          if (cur.classList && cur.classList.contains('hidden')) return false;
+          cur = cur.parentElement;
+        }
+        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (st) {
+          if (st.display === 'none') return false;
+          if (!inStealth && st.visibility === 'hidden') return false;
+        }
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        return !!(r && r.width >= 24 && r.height >= 16);
+      } catch (eIv) { return isVis(el); }
+    };
+
+    var inps = document.querySelectorAll('input');
+    var best = null;
+    var bestScore = -1;
+    for (var i = inps.length - 1; i >= 0; i--) {
+      var el = inps[i];
+      if (!el) continue;
+      var tp = String(el.type || 'text').toLowerCase();
+      if (tp === 'hidden' || tp === 'checkbox' || tp === 'radio' || tp === 'button' || tp === 'submit' || tp === 'file') continue;
+      if (el.id === 'chatInp' || el.id === 'vlmAuto') continue;
+      if (el.closest && el.closest('#tabs, #u20bar, #mswMenu, #chatLines, #u20lines, #logBox, #u20log, #chatBox, #vlmAuto')) continue;
+      if (!isInpVis(el)) continue;
+
+      var score = (tp === 'number' ? 120 : 80);
+      var cur = el.parentElement;
+      for (var d = 0; d < 4 && cur && cur !== document.body; d++) {
+        var pTxt = cleanUiLabel(cur.textContent || '');
+        if (pTxt.length > 420) break;
+        if (pTxt.indexOf('lenh bai') >= 0 || pTxt.indexOf('phuc duyen') >= 0 || pTxt.indexOf('so luong') >= 0 ||
+            pTxt.indexOf('cong hien') >= 0 || pTxt.indexOf('diem') >= 0) {
+          score += 300;
+          break;
+        }
+        if (pTxt.indexOf('huy') >= 0 && (pTxt.indexOf('doi') >= 0 || pTxt.indexOf('dong y') >= 0)) {
+          score += 220;
+          break;
+        }
+        cur = cur.parentElement;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    return best;
+  }
+
+  function findGuildQtyConfirmBtn(qtyInp, excludeBtn) {
+    if (!qtyInp) return findGuildConfirmButton(excludeBtn);
+    var inStealth = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
+    var isBtnVis = function (el) {
+      if (!el || !el.isConnected || el.disabled) return false;
+      try {
+        var cur = el;
+        while (cur && cur !== document.body && cur !== document.documentElement) {
+          if (cur.classList && cur.classList.contains('hidden')) return false;
+          cur = cur.parentElement;
+        }
+        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (st) {
+          if (st.display === 'none') return false;
+          if (!inStealth && st.visibility === 'hidden') return false;
+        }
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        return !!(r && r.width >= 16 && r.height >= 12);
+      } catch (eBv) { return isVis(el); }
+    };
+
+    var cur = qtyInp.parentElement;
+    for (var d = 0; d < 5 && cur && cur !== document.body && cur !== document.documentElement; d++) {
+      var btns = cur.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"], a');
+      if (btns.length > 10) break;
+      var best = null;
+      var bestScore = -1;
+      for (var i = 0; i < btns.length; i++) {
+        var b = btns[i];
+        if (!b || b === excludeBtn || !isBtnVis(b)) continue;
+        var t = cleanUiLabel(b.textContent || b.value || '');
+        if (!t || t.length > 24) continue;
+        if (t === 'huy' || t === 'huy bo' || t === 'dong' || t === 'dong lai' || t === 'khong' ||
+            t === 'bo qua' || t === 'max' || t === 'toi da' || t === 'x') continue;
+        var sc = 0;
+        if (t === 'doi') sc = 500;
+        else if (t === 'dong y') sc = 460;
+        else if (t === 'xac nhan') sc = 420;
+        else if (t === 'chap nhan') sc = 380;
+        else if (t.indexOf('doi ') === 0) sc = 340;
+        else if (t === 'mua') sc = 300;
+        else if (t === 'ok') sc = 200;
+        if (sc > bestScore) {
+          bestScore = sc;
+          best = b;
+        }
+      }
+      if (best) return best;
+      cur = cur.parentElement;
+    }
+    return findGuildConfirmButton(excludeBtn);
+  }
+
   async function muaTinVatThienBaoKho(I) {
-    if (!A.cfg.on || !A.cfg.tbkTinVat) return false;
-    if (dayGet('tbkTv2') >= 1) return false;
+    var needTv = !!(A.cfg.tbkTinVat && dayGet('tbkTv2') < 1);
+    var needLb = !!(A.cfg.bangLbdt && dayGet('bangLbdt') < 1);
+    var needPd = !!(A.cfg.bangPd && dayGet('bangPd') < 1);
+    if (!A.cfg.on || (!needTv && !needLb && !needPd)) return false;
     if (I && (I.dead || I.dg || I.sat)) return false;
     if (!canRunHiddenConsumable()) return false;
     if (!ready('tbk_tinvat', 45000)) return false;
@@ -5132,7 +5251,11 @@ class GameAutoPilot(
       return null;
     };
 
-    lockModal(28000);
+    var boughtTinVat = false;
+    var anyBought = false;
+    var anyPointLack = false;
+
+    lockModal(35000);
     stealthObj().enter();
     try {
       var bangBtn = findBangHoiBtn();
@@ -5146,14 +5269,14 @@ class GameAutoPilot(
         }
       }
       if (!bangBtn) {
-        note('[TBK] Khong tim thay nut Bang Hoi de doi Tin vat');
+        note('[Bang] Khong tim thay nut Bang Hoi de doi vat pham');
         return false;
       }
 
       try { bangBtn.click(); } catch (eB0) {}
       await sleep(180);
       try { dispatchRealUiClick(bangBtn); } catch (eB1) {}
-      await sleep(320);
+      await sleep(340);
 
       var getGuildRoot = function () {
         var md = document.getElementById('modal');
@@ -5198,131 +5321,246 @@ class GameAutoPilot(
       // Bang hoi -> Cua hang -> Vat pham
       var clickedShop = await waitAndClickSubTab(['cua hang', 'shop bang', 'tiem bang'], 1600);
       if (!clickedShop) {
-        note('[TBK] Da mo Bang Hoi nhung khong thay muc Cua hang');
+        note('[Bang] Da mo Bang Hoi nhung khong thay muc Cua hang');
         return false;
       }
       await waitAndClickSubTab(['vat pham', 'dao cu', 'tieu hao'], 1400);
 
-      // Cho hien thi Tin vat Thien Bao Kho (toi da 1.6s)
-      var buyBtn = null;
-      var alreadyBought = false;
-      var waitItem = Date.now() + 1600;
-      while (Date.now() < waitItem) {
+      var findGuildItemCard = function (matchFn, defaultMax) {
         var root = getGuildRoot();
-        if (root) {
-          var nodes = root.querySelectorAll('.kc, .shoprow, .qrow, .item, tr, li, div, span, p');
-          var matches = [];
-          for (var ni = 0; ni < nodes.length; ni++) {
-            var el = nodes[ni];
-            if (!isVis(el)) continue;
-            if (el.closest && el.closest('#tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
-            var meta = cleanUiLabel(extractNodeMeta(el));
-            if (!meta || meta.length > 440) continue;
-            if (meta.indexOf('tin vat thien bao kho') >= 0 || (meta.indexOf('tin vat') >= 0 && meta.indexOf('bao kho') >= 0)) {
-              matches.push({ el: el, len: meta.length });
-            }
-          }
-          matches.sort(function (a, b) { return a.len - b.len; });
+        if (!root) return null;
+        var nodes = root.querySelectorAll('.kc, .shoprow, .qrow, .item, tr, li, div, span, p');
+        var matches = [];
+        for (var ni = 0; ni < nodes.length; ni++) {
+          var el = nodes[ni];
+          if (!isVis(el)) continue;
+          if (el.closest && el.closest('#tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
+          var meta = cleanUiLabel(extractNodeMeta(el));
+          if (!meta || meta.length > 420) continue;
+          if (matchFn(meta)) matches.push({ el: el, len: meta.length });
+        }
+        matches.sort(function (a, b) { return a.len - b.len; });
 
-          for (var mi = 0; mi < matches.length; mi++) {
-            var cur = matches[mi].el;
-            for (var depth = 0; depth < 6 && cur && cur !== root && cur !== document.body; depth++) {
-              var curTxt = cleanUiLabel(cur.textContent || '');
-              if (curTxt.length > 480) break;
-              var rawCurTxt = String(cur.textContent || '');
-              if (curTxt.indexOf('da doi') >= 0 || curTxt.indexOf('da mua') >= 0 || curTxt.indexOf('het hang') >= 0 || /hom\s*nay\s*1\s*\/\s*1/i.test(noAccent(rawCurTxt)) || /\b1\s*\/\s*1\b/.test(rawCurTxt)) {
-                alreadyBought = true;
+        for (var mi = 0; mi < matches.length; mi++) {
+          var cur = matches[mi].el;
+          for (var depth = 0; depth < 6 && cur && cur !== root && cur !== document.body; depth++) {
+            var rawTxt = String(cur.textContent || '');
+            var curTxt = cleanUiLabel(rawTxt);
+            if (curTxt.length > 460) break;
+            var rowBtns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
+            var doiBtns = [];
+            var disabledDone = false;
+            for (var rb = 0; rb < rowBtns.length; rb++) {
+              var rBtn = rowBtns[rb];
+              if (!isVis(rBtn)) continue;
+              var rbt = cleanUiLabel(rBtn.textContent || '');
+              if (rbt === 'da doi' || rbt === 'da mua' || rbt === 'het' || rbt === 'het hang') {
+                disabledDone = true;
+              } else if (rbt === 'doi' || rbt.indexOf('doi ') === 0 || rbt === 'mua' || rbt.indexOf('mua ') === 0) {
+                doiBtns.push(rBtn);
               }
-              var rowBtns = cur.querySelectorAll ? cur.querySelectorAll('button, [role="button"], a') : [];
-              var fallbackMua = null;
-              for (var rb = 0; rb < rowBtns.length; rb++) {
-                var rBtn = rowBtns[rb];
-                if (!isVis(rBtn)) continue;
-                var rbt = cleanUiLabel(rBtn.textContent || '');
-                if (rbt === 'da doi' || rbt === 'da mua' || rbt === 'het' || rbt === 'het hang') {
-                  alreadyBought = true;
-                  break;
-                }
-                if (!rBtn.disabled) {
-                  if (rbt === 'doi' || rbt.indexOf('doi ') === 0) {
-                    buyBtn = rBtn;
-                    break;
-                  }
-                  if (!fallbackMua && (rbt === 'mua' || rbt.indexOf('mua ') === 0)) {
-                    fallbackMua = rBtn;
-                  }
-                }
-              }
-              if (!buyBtn && fallbackMua) buyBtn = fallbackMua;
-              if (buyBtn || alreadyBought) break;
-              cur = cur.parentElement;
             }
-            if (buyBtn || alreadyBought) break;
+            if (doiBtns.length > 1) break;
+            if (doiBtns.length === 1 || disabledDone) {
+              var mLim = /hom\s*nay\s*(\d+)\s*\/\s*(\d+)/i.exec(noAccent(rawTxt));
+              var used = mLim ? Number(mLim[1]) : -1;
+              var maxLim = mLim ? Number(mLim[2]) : defaultMax;
+              var alreadyDone = disabledDone ||
+                curTxt.indexOf('da doi') >= 0 || curTxt.indexOf('da mua') >= 0 || curTxt.indexOf('het hang') >= 0 ||
+                (mLim && maxLim > 0 && used >= maxLim) ||
+                (doiBtns.length === 1 && doiBtns[0].disabled);
+              return {
+                card: cur,
+                btn: doiBtns.length === 1 ? doiBtns[0] : null,
+                used: used,
+                max: maxLim,
+                alreadyDone: alreadyDone
+              };
+            }
+            cur = cur.parentElement;
           }
         }
-        if (buyBtn || alreadyBought) break;
-        await sleep(120);
+        return null;
+      };
+
+      var queue = [];
+      if (needTv) {
+        queue.push({
+          key: 'tv',
+          dayKey: 'tbkTv2',
+          name: 'Tín vật Thiên Bảo Khố',
+          needQty: false,
+          defaultMax: 1,
+          match: function (m) {
+            return m.indexOf('tin vat thien bao kho') >= 0 || (m.indexOf('tin vat') >= 0 && m.indexOf('bao kho') >= 0);
+          }
+        });
+      }
+      if (needLb) {
+        queue.push({
+          key: 'lb',
+          dayKey: 'bangLbdt',
+          name: 'Lệnh Bài Dã Tẩu',
+          needQty: true,
+          defaultMax: 10,
+          match: function (m) {
+            return m.indexOf('lenh bai da tau') >= 0;
+          }
+        });
+      }
+      if (needPd) {
+        queue.push({
+          key: 'pd',
+          dayKey: 'bangPd',
+          name: 'Gói 10 Phúc Duyên',
+          needQty: true,
+          defaultMax: 10,
+          match: function (m) {
+            return m.indexOf('goi 10 phuc duyen') >= 0 || (m.indexOf('goi') >= 0 && m.indexOf('phuc duyen') >= 0);
+          }
+        });
       }
 
-      if (alreadyBought) {
-        dayAdd('tbkTv2', 1);
-        note('[TBK] Da doi Tin vat Thien Bao Kho hom nay');
-        return false;
-      }
-      if (!buyBtn) {
-        note('[TBK] Khong tim thay Tin vat Thien Bao Kho / nut Doi (Bang hoi -> Cua hang -> Vat pham)');
-        return false;
-      }
+      for (var qi = 0; qi < queue.length; qi++) {
+        var item = queue[qi];
+        var cardInfo = null;
+        var waitItem = Date.now() + 1600;
+        while (Date.now() < waitItem) {
+          cardInfo = findGuildItemCard(item.match, item.defaultMax);
+          if (cardInfo) break;
+          await sleep(120);
+        }
 
-      try { if (buyBtn.scrollIntoView) buyBtn.scrollIntoView({ block: 'center' }); } catch (eScr) {}
-      await sleep(80);
-      try { buyBtn.click(); } catch (eM0) {}
+        if (!cardInfo) {
+          note('[Bang] Khong tim thay ' + item.name + ' trong Cua hang -> Vat pham');
+          continue;
+        }
+        if (cardInfo.alreadyDone || !cardInfo.btn) {
+          dayAdd(item.dayKey, 1);
+          note('[Bang] Da doi du ' + item.name + ' hom nay');
+          continue;
+        }
 
-      // Cho popup xac nhan -> bam Dong y (toi da 2.5s)
-      var confirmBtn = null;
-      var retriedBuy = false;
-      var waitCf = Date.now() + 2500;
-      while (Date.now() < waitCf) {
+        var beforeUsed = cardInfo.used;
+        var maxLim = cardInfo.max > 0 ? cardInfo.max : item.defaultMax;
+        var wantQty = (beforeUsed >= 0 && maxLim > beforeUsed) ? (maxLim - beforeUsed) : item.defaultMax;
+        if (wantQty < 1) wantQty = 1;
+
+        var buyBtn = cardInfo.btn;
+        try { if (buyBtn.scrollIntoView) buyBtn.scrollIntoView({ block: 'center' }); } catch (eScr) {}
         await sleep(100);
-        confirmBtn = findGuildConfirmButton(buyBtn);
-        if (confirmBtn) break;
-        if (!retriedBuy && Date.now() > waitCf - 1850) {
-          retriedBuy = true;
-          try { dispatchRealUiClick(buyBtn); } catch (eM1) {}
+        try { buyBtn.click(); } catch (eM0) {}
+
+        var qtyInp = null;
+        var confirmBtn = null;
+        var retriedBuy = false;
+        var waitPop = Date.now() + 2500;
+        while (Date.now() < waitPop) {
+          await sleep(100);
+          if (item.needQty) {
+            qtyInp = findGuildQtyInput();
+            if (qtyInp) break;
+          }
+          confirmBtn = findGuildConfirmButton(buyBtn);
+          if (confirmBtn && !item.needQty) break;
+          if (!retriedBuy && Date.now() > waitPop - 1800) {
+            retriedBuy = true;
+            try { dispatchRealUiClick(buyBtn); } catch (eM1) {}
+          }
         }
+
+        if (item.needQty && qtyInp) {
+          try { qtyInp.focus(); } catch (eFoc) {}
+          try { fillInp(qtyInp, String(wantQty)); } catch (eFill) {}
+          if (String(qtyInp.value || '') !== String(wantQty)) {
+            try {
+              qtyInp.value = String(wantQty);
+              qtyInp.dispatchEvent(new Event('input', { bubbles: true }));
+              qtyInp.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (eSet) {}
+          }
+          await sleep(150);
+          var qtyConfirm = findGuildQtyConfirmBtn(qtyInp, buyBtn);
+          if (!qtyConfirm) {
+            note('[Bang] Da nhap ' + wantQty + ' cho ' + item.name + ' nhung khong thay nut Doi xac nhan');
+            continue;
+          }
+          try { qtyConfirm.click(); } catch (eQc0) {}
+          await sleep(420);
+          var stillInp = findGuildQtyInput();
+          if (stillInp) {
+            var qtyConfirm2 = findGuildQtyConfirmBtn(stillInp, buyBtn);
+            if (qtyConfirm2) {
+              try { dispatchRealUiClick(qtyConfirm2); } catch (eQc1) {}
+              await sleep(450);
+            }
+          }
+          // Neu game hien them hop thoai xac nhan Dong y sau khi nhap so luong
+          var extraCf = findGuildConfirmButton(buyBtn);
+          if (extraCf) {
+            try { extraCf.click(); } catch (eEx0) {}
+            await sleep(380);
+            var extraCf2 = findGuildConfirmButton(buyBtn);
+            if (extraCf2) {
+              try { dispatchRealUiClick(extraCf2); } catch (eEx1) {}
+              await sleep(380);
+            }
+          }
+        } else if (confirmBtn) {
+          try { confirmBtn.click(); } catch (eCf0) {}
+          await sleep(420);
+          var stillThere = findGuildConfirmButton(buyBtn);
+          if (stillThere) {
+            try { dispatchRealUiClick(stillThere); } catch (eCf1) {}
+            await sleep(450);
+          }
+          var stillAfter2 = findGuildConfirmButton(buyBtn);
+          if (stillAfter2) {
+            note('[Bang] Da bam Dong y (' + item.name + ') nhung hop thoai van con');
+            continue;
+          }
+        } else {
+          note('[Bang] Da bam Doi (' + item.name + ') nhung khong thay hop thoai xac nhan');
+          continue;
+        }
+
+        await sleep(420);
+        var afterInfo = findGuildItemCard(item.match, item.defaultMax);
+        var checkRoot = document.getElementById('modal') || getGuildRoot() || document.body;
+        var checkTxt = cleanUiLabel(checkRoot ? checkRoot.textContent : '');
+        var progressed = !!(afterInfo && (afterInfo.alreadyDone || (beforeUsed >= 0 && afterInfo.used > beforeUsed)));
+
+        if (!progressed && (checkTxt.indexOf('khong du') >= 0 || checkTxt.indexOf('thieu diem') >= 0 || checkTxt.indexOf('that bai') >= 0)) {
+          anyPointLack = true;
+          note('[Bang] Chua doi duoc ' + item.name + ' (khong du diem cong hien)');
+          continue;
+        }
+        if (!progressed && beforeUsed >= 0 && afterInfo && afterInfo.used === beforeUsed) {
+          note('[Bang] Chua ghi nhan tang luot doi ' + item.name + ' (' + afterInfo.used + '/' + maxLim + '), se thu lai');
+          continue;
+        }
+
+        var doneAll = !afterInfo || afterInfo.alreadyDone || (afterInfo.used >= maxLim);
+        if (doneAll) {
+          dayAdd(item.dayKey, 1);
+        }
+        anyBought = true;
+        if (item.key === 'tv') {
+          boughtTinVat = true;
+          tbkClearXong();
+          A.tbkFailCount = 0;
+          note('Da doi 1 Tin vat Thien Bao Kho (+60p -> toi da 120p)');
+        } else {
+          var gotCount = (afterInfo && beforeUsed >= 0 && afterInfo.used > beforeUsed) ? (afterInfo.used - beforeUsed) : wantQty;
+          note('Da doi ' + gotCount + ' ' + item.name + ' (Bang hoi -> Cua hang -> Vat pham)');
+        }
+        await sleep(250);
       }
 
-      if (!confirmBtn) {
-        note('[TBK] Da bam Doi nhung khong thay nut Dong y xac nhan');
-        return false;
-      }
-
-      try { confirmBtn.click(); } catch (eCf0) {}
-      await sleep(420);
-      var stillThere = findGuildConfirmButton(buyBtn);
-      if (stillThere) {
-        try { dispatchRealUiClick(stillThere); } catch (eCf1) {}
-        await sleep(450);
-      }
-      var stillAfter2 = findGuildConfirmButton(buyBtn);
-      if (stillAfter2) {
-        note('[TBK] Da bam Dong y (' + (stillAfter2.tagName || '') + '#' + (stillAfter2.id || '') + ') nhung hop thoai van con');
-        return false;
-      }
-      await sleep(300);
-      var checkRoot = document.getElementById('modal') || getGuildRoot() || document.body;
-      var checkTxt = cleanUiLabel(checkRoot ? checkRoot.textContent : '');
-      if (checkTxt.indexOf('khong du') >= 0 || checkTxt.indexOf('thieu diem') >= 0 || checkTxt.indexOf('that bai') >= 0) {
+      if (!anyBought && anyPointLack) {
         A.cool.tbk_tinvat = Date.now() + 600000;
-        note('[TBK] Chua doi duoc Tin vat (khong du diem cong hien/tien te)');
-        return false;
       }
-
-      dayAdd('tbkTv2', 1);
-      tbkClearXong();
-      A.tbkFailCount = 0;
-      note('Da doi Tin vat Thien Bao Kho (Bang hoi -> Cua hang -> Vat pham -> Doi -> Dong y)');
-      return true;
+      return boughtTinVat;
     } finally {
       await closeModalCleanly(document.getElementById('modal'));
       if (prevTabBtn && prevTabBtn.isConnected && isVis(prevTabBtn)) {

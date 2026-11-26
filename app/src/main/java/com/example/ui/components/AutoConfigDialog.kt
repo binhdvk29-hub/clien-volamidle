@@ -352,12 +352,90 @@ fun AutoConfigDialog(
                         }
                     }
 
-                    AutoCheckRow(
-                        label = "Mua Tín vật Thiên Bảo Khố (+60p: Bang Hội → Cửa hàng → Vật phẩm)",
-                        checked = draft.tbkTinVat,
-                        testTag = "auto_check_tbkTinVat"
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .testTag("auto_guild_shop_section"),
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF0F172A),
+                        border = BorderStroke(
+                            1.dp,
+                            if (draft.tbkTinVat || draft.bangLbdt || draft.bangPd) Color(0xFF10B981) else Color(0xFF334155)
+                        )
                     ) {
-                        draft = draft.copy(tbkTinVat = it)
+                        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                            Text(
+                                text = "Cửa hàng Bang Hội (Vật phẩm): Mua Tín vật, LBDT, PD",
+                                color = if (draft.tbkTinVat || draft.bangLbdt || draft.bangPd) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                val guildItems = listOf(
+                                    Triple("Tín vật", draft.tbkTinVat, "auto_check_tbkTinVat"),
+                                    Triple("LBDT", draft.bangLbdt, "auto_check_bangLbdt"),
+                                    Triple("PD", draft.bangPd, "auto_check_bangPd")
+                                )
+                                guildItems.forEachIndexed { idx, (label, isChecked, tag) ->
+                                    val toggle: (Boolean) -> Unit = { v ->
+                                        draft = when (idx) {
+                                            0 -> draft.copy(tbkTinVat = v)
+                                            1 -> draft.copy(bangLbdt = v)
+                                            else -> draft.copy(bangPd = v)
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 38.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isChecked) Color(0xFF065F46) else Color(0xFF1E293B))
+                                            .border(
+                                                1.dp,
+                                                if (isChecked) Color(0xFF10B981) else Color(0xFF475569),
+                                                RoundedCornerShape(6.dp)
+                                            )
+                                            .clickable { toggle(!isChecked) }
+                                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            .testTag(tag),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Checkbox(
+                                            checked = isChecked,
+                                            onCheckedChange = toggle,
+                                            modifier = Modifier.size(18.dp),
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = Color(0xFF10B981),
+                                                uncheckedColor = Color(0xFF64748B)
+                                            )
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = label,
+                                            color = if (isChecked) Color.White else Color(0xFFCBD5E1),
+                                            fontSize = 10.sp,
+                                            fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Medium,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = "Tín vật TBK (+60p) • Lệnh Bài Dã Tẩu (×10) • Gói 10 Phúc Duyên (×10)",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 8.5.sp,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
                     }
 
                     MainSkill9xSelector(
