@@ -22,8 +22,8 @@ android {
     }
     minSdk = 24
     targetSdk = 36
-    versionCode = 50455
-    versionName = if (isTestRepo) "5.4.55-test" else "5.4.55"
+    versionCode = 50456
+    versionName = if (isTestRepo) "5.4.56-test" else "5.4.56"
 
     buildConfigField("String", "UPDATE_REPO", "\"$githubRepo\"")
     buildConfigField("boolean", "IS_TEST_CHANNEL", isTestRepo.toString())

@@ -238,6 +238,7 @@ class GameTabManager(
                 applyRendererPriority(i, wv)
             }
         }
+        mainHandler.postDelayed({ adjustAllViewports() }, 180L)
     }
 
     fun registerSlot(tabIndex: Int, attacher: (WebView) -> Unit) {

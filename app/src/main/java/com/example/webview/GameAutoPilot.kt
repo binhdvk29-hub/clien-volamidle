@@ -443,7 +443,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-86"
+        const val SCRIPT_VER = "vlmauto-87"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -906,6 +906,7 @@ class GameAutoPilot(
       return 'ok';
     }
     if (window.__vlmTickTimer) { clearInterval(window.__vlmTickTimer); window.__vlmTickTimer = 0; }
+    if (window.__vlmTickDelayTimer) { clearTimeout(window.__vlmTickDelayTimer); window.__vlmTickDelayTimer = 0; }
     if (window.__vlmOrbitTimer) { clearTimeout(window.__vlmOrbitTimer); clearInterval(window.__vlmOrbitTimer); window.__vlmOrbitTimer = 0; }
     if (window.__vlmAutoBtnTimer) { clearInterval(window.__vlmAutoBtnTimer); window.__vlmAutoBtnTimer = 0; }
     if (window.__vlmOrbitRelease) window.__vlmOrbitRelease();
@@ -1500,62 +1501,64 @@ class GameAutoPilot(
     return true;
   };
 
+  function getUiScaleMetrics() {
+    var vw = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 360;
+    var vh = window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 640;
+    var compact = (vw <= 350 || vh <= 370);
+    var ultraCompact = (vw <= 235 || vh <= 290);
+    return {
+      vw: vw,
+      vh: vh,
+      compact: compact,
+      ultraCompact: ultraCompact,
+      minBtnW: ultraCompact ? 6 : (compact ? 9 : 14),
+      minBtnH: ultraCompact ? 6 : (compact ? 8 : 10),
+      minSlot: ultraCompact ? 12 : (compact ? 16 : 24),
+      maxSlot: compact ? 112 : 124,
+      minBagW: Math.max(68, Math.min(140, Math.floor(vw * 0.40))),
+      minBagH: Math.max(56, Math.min(104, Math.floor(vh * 0.22))),
+      minBarW: Math.max(18, Math.min(54, Math.floor(vw * 0.14)))
+    };
+  }
+
   function ensureStealthCss() {
     try {
       var id = '__vlm_stealth_css';
       var st = document.getElementById(id);
-      if (st && st.dataset && st.dataset.ver === '3') return;
+      if (st && st.dataset && st.dataset.ver === '4') return;
       if (!st) {
         st = document.createElement('style');
         st.id = id;
         (document.head || document.documentElement).appendChild(st);
       }
-      if (st.dataset) st.dataset.ver = '3';
+      if (st.dataset) st.dataset.ver = '4';
+      var sel = [
+        '#modal', '#cModal', '#cfModal', '#confirmModal', '#itemModal', '#detailModal',
+        '#popup', '.popup', '.modal', '[role="dialog"]', '[aria-modal="true"]',
+        '.confirm', '[data-confirm]', '.modal-backdrop', '.modal-overlay', '.backdrop', '.overlay',
+        '.swal2-container', '.sheet', '.drawer',
+        '#u20pop', '.u20-pop', '.u20-more', '.more-menu', '[data-more-pop]',
+        '#t-inv', '#t-bag', '#t-tui', '#p-inv', '#p-bag', '#p-tui',
+        '#tab-inv', '#tab-bag', '#tab-tui', '#invTab', '#bagTab', '#tuiTab',
+        '#invPane', '#bagPane', '#tuiPane', '#invPanel', '#bagPanel',
+        '#u20inv', '#u20bagPane', '#u20tui', '#u20sheet', '#u20drawer', '#u20panel',
+        '#t-quest', '#p-quest', '#questPane', '#questTab', '#nvPane',
+        '#t-guild', '#t-bang', '#p-guild', '#p-bang', '#guildPane', '#bangPane', '#u20guildPane',
+        '[data-vlm-stealth-hide="1"]'
+      ];
+      var p1 = [], p2 = [];
+      for (var i = 0; i < sel.length; i++) {
+        p1.push('html.__vlm-stealth ' + sel[i]);
+        p1.push('html.__vlm-stealth ' + sel[i] + ' *');
+        p2.push('html.__vlm-stealth ' + sel[i]);
+      }
       st.textContent =
-        'html.__vlm-stealth #modal, html.__vlm-stealth #modal *, ' +
-        'html.__vlm-stealth #cModal, html.__vlm-stealth #cModal *, ' +
-        'html.__vlm-stealth #cfModal, html.__vlm-stealth #cfModal *, ' +
-        'html.__vlm-stealth #confirmModal, html.__vlm-stealth #confirmModal *, ' +
-        'html.__vlm-stealth #itemModal, html.__vlm-stealth #itemModal *, ' +
-        'html.__vlm-stealth #detailModal, html.__vlm-stealth #detailModal *, ' +
-        'html.__vlm-stealth #popup, html.__vlm-stealth #popup *, ' +
-        'html.__vlm-stealth .popup, html.__vlm-stealth .popup *, ' +
-        'html.__vlm-stealth .modal, html.__vlm-stealth .modal *, ' +
-        'html.__vlm-stealth [role="dialog"], html.__vlm-stealth [role="dialog"] *, ' +
-        'html.__vlm-stealth [aria-modal="true"], html.__vlm-stealth [aria-modal="true"] *, ' +
-        'html.__vlm-stealth .confirm, html.__vlm-stealth .confirm *, ' +
-        'html.__vlm-stealth [data-confirm], html.__vlm-stealth [data-confirm] *, ' +
-        'html.__vlm-stealth .modal-backdrop, html.__vlm-stealth .modal-overlay, html.__vlm-stealth .backdrop, html.__vlm-stealth .overlay, ' +
-        'html.__vlm-stealth #u20pop, html.__vlm-stealth #u20pop *, ' +
-        'html.__vlm-stealth .u20-pop, html.__vlm-stealth .u20-pop *, ' +
-        'html.__vlm-stealth .u20-more, html.__vlm-stealth .u20-more *, ' +
-        'html.__vlm-stealth .more-menu, html.__vlm-stealth .more-menu *, ' +
-        'html.__vlm-stealth [data-more-pop], html.__vlm-stealth [data-more-pop] *, ' +
-        'html.__vlm-stealth #t-inv, html.__vlm-stealth #t-inv *, ' +
-        'html.__vlm-stealth #t-bag, html.__vlm-stealth #t-bag *, ' +
-        'html.__vlm-stealth #p-inv, html.__vlm-stealth #p-inv *, ' +
-        'html.__vlm-stealth #p-bag, html.__vlm-stealth #p-bag *, ' +
-        'html.__vlm-stealth #invTab, html.__vlm-stealth #invTab *, ' +
-        'html.__vlm-stealth #bagTab, html.__vlm-stealth #bagTab *, ' +
-        'html.__vlm-stealth #invPane, html.__vlm-stealth #invPane *, ' +
-        'html.__vlm-stealth #bagPane, html.__vlm-stealth #bagPane *, ' +
-        'html.__vlm-stealth #invPanel, html.__vlm-stealth #invPanel *, ' +
-        'html.__vlm-stealth #bagPanel, html.__vlm-stealth #bagPanel * { ' +
+        p1.join(', ') + ' { ' +
         '  pointer-events: none !important; ' +
         '  transition: none !important; ' +
         '  animation: none !important; ' +
         '} ' +
-        'html.__vlm-stealth #modal, html.__vlm-stealth #cModal, html.__vlm-stealth #cfModal, ' +
-        'html.__vlm-stealth #confirmModal, html.__vlm-stealth #itemModal, html.__vlm-stealth #detailModal, ' +
-        'html.__vlm-stealth #popup, html.__vlm-stealth .popup, html.__vlm-stealth .modal, ' +
-        'html.__vlm-stealth [role="dialog"], html.__vlm-stealth [aria-modal="true"], ' +
-        'html.__vlm-stealth .confirm, html.__vlm-stealth [data-confirm], ' +
-        'html.__vlm-stealth .modal-backdrop, html.__vlm-stealth .modal-overlay, html.__vlm-stealth .backdrop, html.__vlm-stealth .overlay, ' +
-        'html.__vlm-stealth #u20pop, html.__vlm-stealth .u20-pop, html.__vlm-stealth .u20-more, ' +
-        'html.__vlm-stealth .more-menu, html.__vlm-stealth [data-more-pop], ' +
-        'html.__vlm-stealth #t-inv, html.__vlm-stealth #t-bag, html.__vlm-stealth #p-inv, html.__vlm-stealth #p-bag, ' +
-        'html.__vlm-stealth #invTab, html.__vlm-stealth #bagTab, ' +
-        'html.__vlm-stealth #invPane, html.__vlm-stealth #bagPane, html.__vlm-stealth #invPanel, html.__vlm-stealth #bagPanel { ' +
+        p2.join(', ') + ' { ' +
         '  opacity: 0.001 !important; ' +
         '  z-index: -9999 !important; ' +
         '  position: fixed !important; ' +
@@ -1566,25 +1569,119 @@ class GameAutoPilot(
   }
 
   function stealthObj() {
-    if (!window.__vlmStealth) {
-      window.__vlmStealth = {
-        count: 0,
+    if (!window.__vlmStealth || !window.__vlmStealth.hideNode) {
+      var prevCount = (window.__vlmStealth && window.__vlmStealth.count) ? (window.__vlmStealth.count | 0) : 0;
+      var isStealthCandidatePanel = function (el) {
+        if (!el || el.nodeType !== 1 || el === document.body || el === document.documentElement) return false;
+        if (el.id === 'vlmAuto' || el.id === 'mswBtn' || el.id === 'modeSw' || el.id === 'tabs' || el.id === 'u20bar') return false;
+        if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #chatLines, #u20lines, #logBox, #u20log')) return false;
+        if (el.querySelector && el.querySelector('canvas, #tabs, #u20bar')) return false;
+        var cls = String(el.className || '').toLowerCase();
+        var eid = String(el.id || '').toLowerCase();
+        if (cls.indexOf('modal') >= 0 || cls.indexOf('popup') >= 0 || cls.indexOf('dialog') >= 0 ||
+            cls.indexOf('drawer') >= 0 || cls.indexOf('sheet') >= 0 || cls.indexOf('confirm') >= 0 ||
+            cls.indexOf('overlay') >= 0 || cls.indexOf('backdrop') >= 0 ||
+            eid.indexOf('modal') >= 0 || eid.indexOf('inv') >= 0 || eid.indexOf('bag') >= 0 ||
+            eid.indexOf('quest') >= 0 || eid.indexOf('guild') >= 0 || eid.indexOf('bang') >= 0) {
+          return true;
+        }
+        var tx = '';
+        try { tx = noAccent(el.textContent || ''); } catch (eTx) {}
+        if (tx.length >= 10 && tx.length <= 2600) {
+          if (tx.indexOf('dung 1') >= 0 || tx.indexOf('dung het') >= 0 || tx.indexOf('mo rong') >= 0 ||
+              tx.indexOf('ng.luong') >= 0 || tx.indexOf('knb khoa') >= 0 || tx.indexOf('tin vat thien bao kho') >= 0 ||
+              tx.indexOf('cua hang') >= 0 || tx.indexOf('huy theo doi') >= 0 || tx.indexOf('que hoa tuu') >= 0) {
+            return true;
+          }
+        }
+        try {
+          var cs = window.getComputedStyle ? window.getComputedStyle(el) : null;
+          if (cs && (cs.position === 'fixed' || cs.position === 'absolute') && (Number(cs.zIndex) || 0) >= 20) {
+            var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+            if (r && r.width >= 90 && r.height >= 60) return true;
+          }
+        } catch (eCs) {}
+        return false;
+      };
+
+      var obj = {
+        count: prevCount,
+        tagged: [],
+        obs: null,
+        hideNode: function (el) {
+          if (!el || el.nodeType !== 1 || el === document.body || el === document.documentElement) return;
+          if (el.querySelector && el.querySelector('canvas, #tabs, #u20bar')) return;
+          try {
+            if (el.getAttribute('data-vlm-stealth-hide') !== '1') {
+              el.setAttribute('data-vlm-stealth-hide', '1');
+              this.tagged.push(el);
+            }
+          } catch (eHn) {}
+        },
+        startObserver: function () {
+          if (this.obs || !window.MutationObserver || !document.body) return;
+          var self = this;
+          try {
+            this.obs = new MutationObserver(function (muts) {
+              if (!self.count) return;
+              for (var i = 0; i < muts.length; i++) {
+                var m = muts[i];
+                if (m.type === 'childList' && m.addedNodes) {
+                  for (var j = 0; j < m.addedNodes.length; j++) {
+                    var nd = m.addedNodes[j];
+                    if (isStealthCandidatePanel(nd)) self.hideNode(nd);
+                  }
+                } else if (m.type === 'attributes' && m.target) {
+                  if (isStealthCandidatePanel(m.target)) self.hideNode(m.target);
+                }
+              }
+            });
+            this.obs.observe(document.body, {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: ['class', 'style', 'hidden']
+            });
+          } catch (eObs) {}
+        },
+        stopObserver: function () {
+          if (this.obs) {
+            try { this.obs.disconnect(); } catch (eDis) {}
+            this.obs = null;
+          }
+        },
+        clearTagged: function () {
+          var arr = this.tagged || [];
+          this.tagged = [];
+          for (var i = 0; i < arr.length; i++) {
+            try { if (arr[i]) arr[i].removeAttribute('data-vlm-stealth-hide'); } catch (eRm) {}
+          }
+          try {
+            var leftover = document.querySelectorAll('[data-vlm-stealth-hide="1"]');
+            for (var k = 0; k < leftover.length; k++) leftover[k].removeAttribute('data-vlm-stealth-hide');
+          } catch (eRm2) {}
+        },
         enter: function () {
           ensureStealthCss();
           this.count = (this.count | 0) + 1;
           try { document.documentElement.classList.add('__vlm-stealth'); } catch (e) {}
+          this.startObserver();
         },
         leave: function () {
           this.count = Math.max(0, (this.count | 0) - 1);
           if (this.count === 0) {
+            var self = this;
+            self.stopObserver();
             setTimeout(function () {
               if (window.__vlmStealth && window.__vlmStealth.count === 0) {
+                self.clearTagged();
                 try { document.documentElement.classList.remove('__vlm-stealth'); } catch (e) {}
               }
-            }, 120);
+            }, 150);
           }
         }
       };
+      window.__vlmStealth = obj;
     }
     return window.__vlmStealth;
   }
@@ -1650,13 +1747,21 @@ class GameAutoPilot(
   var isVis = function (el) {
     if (!el || !el.isConnected) return false;
     try {
+      var inSt = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
       if (el.getClientRects && el.getClientRects().length === 0) return false;
       var cur = el;
       while (cur && cur !== document.body && cur !== document.documentElement) {
         if (cur.hidden) return false;
         if (cur.classList && cur.classList.contains('hidden')) return false;
         var cs = window.getComputedStyle(cur);
-        if (cs && (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0)) return false;
+        if (cs) {
+          if (cs.display === 'none') return false;
+          var isStNode = inSt && (cur.getAttribute && cur.getAttribute('data-vlm-stealth-hide') === '1');
+          if (!isStNode) {
+            if (cs.visibility === 'hidden' && !inSt) return false;
+            if (parseFloat(cs.opacity) === 0) return false;
+          }
+        }
         cur = cur.parentElement;
       }
     } catch (e) {}
@@ -2023,8 +2128,8 @@ class GameAutoPilot(
       if (A.st && Date.now() - A.stT < 90000) checkApiBuffSource(A.st);
 
       // Quét vùng hiển thị buff phía trên bên trái màn hình (tối ưu cho cả màn hình ngang & dọc, ngay trên Tổ đội)
-      var anchorBottom = 220;
-      var anchorRight = Math.max(480, Math.floor((window.innerWidth || 800) * 0.55));
+      var anchorBottom = Math.max(190, Math.min(340, Math.floor((window.innerHeight || 600) * 0.52)));
+      var anchorRight = Math.max(260, Math.floor((window.innerWidth || 800) * 0.85));
       try {
         var anchorCands = [document.getElementById('mswBtn'), document.getElementById('modeSw')];
         var smallBtns = document.querySelectorAll('button, div, span, a');
@@ -2248,7 +2353,7 @@ class GameAutoPilot(
 
     var isBagLabel = function (lbl) {
       if (!lbl || lbl.length > 26) return false;
-      return lbl === 'hanh trang' || lbl === 'hanh tran' || lbl.indexOf('hanh tran') >= 0 ||
+      return lbl === 'hanh trang' || lbl === 'hanh tran' || lbl.indexOf('hanh tran') >= 0 || lbl.indexOf('hanh tr') === 0 ||
         lbl === 'tui do' || lbl === 'tui' || lbl === 'hanh ly' || lbl === 'kho do';
     };
 
@@ -2352,7 +2457,7 @@ class GameAutoPilot(
         if (el.closest && el.closest('#tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
         if (el.querySelector && el.querySelector('canvas, #tabs, #u20bar')) continue;
         var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        if (!rect || rect.width < 150 || rect.height < 110) continue;
+        var __mBag = getUiScaleMetrics(); if (!rect || rect.width < __mBag.minBagW || rect.height < __mBag.minBagH) continue;
         var tx = cleanUiLabel(el.textContent || '');
         if (!tx || tx.length < 14) continue;
         var score = 0;
@@ -2384,6 +2489,7 @@ class GameAutoPilot(
         var foundVis = findVisibleBagRootNow();
         if (foundVis && foundVis.root) {
           await sleep(150);
+          try { stealthObj().hideNode(foundVis.root); } catch (eShV) {}
           return { root: foundVis.root, md: md, mode: foundVis.mode, prevTabBtn: prevTabBtn, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: null };
         }
         if (!retriedRealClick && Date.now() > waitEnd - 1150) {
@@ -2394,7 +2500,7 @@ class GameAutoPilot(
           var fbRoot = findFallbackBagRoot();
           if (fbRoot) {
             var savedStyle = { opacity: fbRoot.style.opacity, pointerEvents: fbRoot.style.pointerEvents };
-            try { fbRoot.style.opacity = '0.001'; fbRoot.style.pointerEvents = 'none'; } catch (eH) {}
+            try { stealthObj().hideNode(fbRoot); fbRoot.style.opacity = '0.001'; fbRoot.style.pointerEvents = 'none'; } catch (eH) {}
             await sleep(130);
             return { root: fbRoot, md: md, mode: 'fallback', prevTabBtn: prevTabBtn, moreBtn: openedMoreBtn, bagBtn: bagBtn, hiddenInline: savedStyle };
           }
@@ -2425,9 +2531,15 @@ class GameAutoPilot(
       } catch (eFbRest) {}
     }
     await closeModalCleanly(ctx && ctx.md ? ctx.md : document.getElementById('modal'));
-    if (ctx && ctx.mode === 'tab' && ctx.prevTabBtn && ctx.prevTabBtn.isConnected && isVis(ctx.prevTabBtn)) {
-      try { ctx.prevTabBtn.click(); } catch (e) {}
-      await sleep(80);
+    if (ctx && ctx.mode === 'tab') {
+      if (ctx.prevTabBtn && ctx.prevTabBtn.isConnected && isVis(ctx.prevTabBtn)) {
+        try { ctx.prevTabBtn.click(); } catch (e) {}
+        await sleep(90);
+      }
+      if (ctx.bagBtn && ctx.bagBtn.isConnected && findVisibleBagRootNow()) {
+        try { ctx.bagBtn.click(); } catch (eBgCl) {}
+        await sleep(90);
+      }
     }
     if (ctx && ctx.moreBtn && ctx.moreBtn.isConnected) {
       try {
@@ -2701,8 +2813,9 @@ class GameAutoPilot(
           if (!n || !isVis(n) || n === rootEl) continue;
           if (n.children && n.children.length > 5) continue;
           var r = n.getBoundingClientRect ? n.getBoundingClientRect() : null;
-          if (!r || r.width < 26 || r.width > 96 || r.height < 26 || r.height > 96) continue;
-          if (Math.abs(r.width - r.height) > 26) continue;
+          var __sm = getUiScaleMetrics();
+          if (!r || r.width < __sm.minSlot || r.width > __sm.maxSlot || r.height < __sm.minSlot || r.height > __sm.maxSlot) continue;
+          if (Math.abs(r.width - r.height) > Math.max(18, Math.max(r.width, r.height) * 0.65)) continue;
           var rawT = String(n.textContent || '').trim();
           if (!isPlainStackCount(rawT)) continue;
           var hasVisual = !!(n.querySelector && n.querySelector('img, canvas, svg')) ||
@@ -2715,7 +2828,7 @@ class GameAutoPilot(
           var clickNode = n;
           if (clickNode.parentElement && clickNode.parentElement !== rootEl) {
             var pr = clickNode.parentElement.getBoundingClientRect ? clickNode.parentElement.getBoundingClientRect() : null;
-            if (pr && pr.width <= 96 && pr.height <= 96 && isPlainStackCount(clickNode.parentElement.textContent || '')) {
+            if (pr && pr.width <= __sm.maxSlot && pr.height <= __sm.maxSlot && isPlainStackCount(clickNode.parentElement.textContent || '')) {
               clickNode = clickNode.parentElement;
             }
           }
@@ -2726,42 +2839,88 @@ class GameAutoPilot(
         return list;
       };
 
-      var slots = collectStackableSlots(ctx.root);
+      var findScrollableBagBox = function (rootEl) {
+        if (!rootEl) return null;
+        var list = [rootEl];
+        var ch = rootEl.querySelectorAll('div, section, ul');
+        for (var i = 0; i < Math.min(ch.length, 60); i++) list.push(ch[i]);
+        var best = null;
+        var bestDiff = 24;
+        for (var k = 0; k < list.length; k++) {
+          var el = list[k];
+          if (!el || !el.clientHeight) continue;
+          var diff = (el.scrollHeight || 0) - el.clientHeight;
+          if (diff > bestDiff) {
+            bestDiff = diff;
+            best = el;
+          }
+        }
+        return best;
+      };
+
       var cachedSig = (A._slotSigCache && A._slotSigCache[kind]) ? A._slotSigCache[kind] : '';
-      if (cachedSig && slots.length > 1) {
-        slots.sort(function (a, b) {
-          return (b.sig === cachedSig ? 1 : 0) - (a.sig === cachedSig ? 1 : 0);
-        });
-      }
-
       var probedSigs = {};
+      var probedNodes = [];
       var probedCount = 0;
-      var maxProbe = 28;
-      for (var si = 0; si < slots.length && probedCount < maxProbe; si++) {
-        var sl = slots[si];
-        if (sl.sig && sl.sig !== cachedSig && probedSigs[sl.sig]) continue;
-        if (sl.sig) probedSigs[sl.sig] = true;
-        probedCount++;
+      var maxProbe = 36;
+      var totalSlotsSeen = 0;
+      var scrollBox = findScrollableBagBox(ctx.root);
+      var origScrollTop = scrollBox ? (scrollBox.scrollTop || 0) : 0;
+      var maxScrollPass = scrollBox ? 3 : 0;
 
-        try { sl.el.click(); } catch (eSl0) {
-          try { dispatchRealUiClick(sl.el); } catch (eSl1) { continue; }
+      try {
+        for (var sp = 0; sp <= maxScrollPass && probedCount < maxProbe; sp++) {
+          if (sp > 0 && scrollBox) {
+            var nextTop = Math.min(scrollBox.scrollHeight, (scrollBox.scrollTop || 0) + Math.max(80, Math.floor(scrollBox.clientHeight * 0.8)));
+            if (nextTop <= (scrollBox.scrollTop || 0) + 4) break;
+            scrollBox.scrollTop = nextTop;
+            await sleep(90);
+          }
+          var slots = collectStackableSlots(ctx.root);
+          if (slots.length > totalSlotsSeen) totalSlotsSeen = slots.length;
+          if (cachedSig && slots.length > 1) {
+            slots.sort(function (a, b) {
+              return (b.sig === cachedSig ? 1 : 0) - (a.sig === cachedSig ? 1 : 0);
+            });
+          }
+
+          for (var si = 0; si < slots.length && probedCount < maxProbe; si++) {
+            var sl = slots[si];
+            if (probedNodes.indexOf(sl.el) >= 0) continue;
+            if (sl.sig && sl.sig !== cachedSig && probedSigs[sl.sig]) continue;
+            probedNodes.push(sl.el);
+            if (sl.sig) probedSigs[sl.sig] = true;
+            probedCount++;
+
+            try { if (sl.el.scrollIntoView) sl.el.scrollIntoView({ block: 'nearest' }); } catch (eSv) {}
+            try { sl.el.click(); } catch (eSl0) {
+              try { dispatchRealUiClick(sl.el); } catch (eSl1) { continue; }
+            }
+            var popEnd = Date.now() + 420;
+            var pop2 = null;
+            while (Date.now() < popEnd) {
+              pop2 = findOpenItemDetailPopup(ctx.root);
+              if (pop2) {
+                try { stealthObj().hideNode(pop2); } catch (eHp2) {}
+                break;
+              }
+              await sleep(55);
+            }
+            if (!pop2) continue;
+            if (await tryUseInsidePopup(pop2, sl.sig)) {
+              return { scanned: true, used: true, reason: 'used_grid_probe' };
+            }
+            await closeItemDetailPopupOnly(pop2);
+            await sleep(35);
+          }
         }
-        var popEnd = Date.now() + 420;
-        var pop2 = null;
-        while (Date.now() < popEnd) {
-          pop2 = findOpenItemDetailPopup(ctx.root);
-          if (pop2) break;
-          await sleep(55);
+      } finally {
+        if (scrollBox) {
+          try { scrollBox.scrollTop = origScrollTop; } catch (eSr) {}
         }
-        if (!pop2) continue;
-        if (await tryUseInsidePopup(pop2, sl.sig)) {
-          return { scanned: true, used: true, reason: 'used_grid_probe' };
-        }
-        await closeItemDetailPopupOnly(pop2);
-        await sleep(35);
       }
 
-      return { scanned: true, used: false, reason: 'not_found_in_bag(slots=' + slots.length + ',probed=' + probedCount + ')' };
+      return { scanned: true, used: false, reason: 'not_found_in_bag(slots=' + totalSlotsSeen + ',probed=' + probedCount + ')' };
     } finally {
       await closeHiddenBagModal(ctx);
       stealthObj().leave();
@@ -5026,7 +5185,7 @@ class GameAutoPilot(
           var mw = /(\d+(?:\.\d+)?)\s*%/.exec(sw);
           if (mw && Number(mw[1]) >= 99.5) {
             var r = bar.getBoundingClientRect ? bar.getBoundingClientRect() : null;
-            if (r && r.height >= 2 && r.height <= 26 && r.width >= 60) {
+            var __mBar = getUiScaleMetrics(); if (r && r.height >= 2 && r.height <= 28 && r.width >= __mBar.minBarW) {
               res.barFull = true;
               break;
             }
@@ -5186,7 +5345,7 @@ class GameAutoPilot(
           if (!inStealthCheck() && st.visibility === 'hidden') return false;
         }
         var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        return !!(r && r.width >= 14 && r.height >= 10);
+        var __mQ = getUiScaleMetrics(); return !!(r && r.width >= __mQ.minBtnW && r.height >= __mQ.minBtnH);
       } catch (eS) { return isVis(el); }
     };
 
@@ -5400,7 +5559,7 @@ class GameAutoPilot(
           if (!inStealth && st.visibility === 'hidden') return false;
         }
         var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        if (!r || r.width < 16 || r.height < 12) return false;
+        var __mB = getUiScaleMetrics(); if (!r || r.width < __mB.minBtnW || r.height < __mB.minBtnH) return false;
         return true;
       } catch (eR) { return isVis(el); }
     };
@@ -5469,7 +5628,7 @@ class GameAutoPilot(
           if (!inStealth && st.visibility === 'hidden') return false;
         }
         var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        return !!(r && r.width >= 24 && r.height >= 16);
+        var __mI = getUiScaleMetrics(); return !!(r && r.width >= Math.max(14, __mI.minBtnW + 4) && r.height >= __mI.minBtnH);
       } catch (eIv) { return isVis(el); }
     };
 
@@ -5526,7 +5685,7 @@ class GameAutoPilot(
           if (!inStealth && st.visibility === 'hidden') return false;
         }
         var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        return !!(r && r.width >= 16 && r.height >= 12);
+        var __mC = getUiScaleMetrics(); return !!(r && r.width >= __mC.minBtnW && r.height >= __mC.minBtnH);
       } catch (eBv) { return isVis(el); }
     };
 
@@ -5962,7 +6121,7 @@ class GameAutoPilot(
           if (!inStealthCheck() && st.visibility === 'hidden') return false;
         }
         var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        return !!(r && r.width >= 14 && r.height >= 10);
+        var __mQ = getUiScaleMetrics(); return !!(r && r.width >= __mQ.minBtnW && r.height >= __mQ.minBtnH);
       } catch (eSh) { return isVis(el); }
     };
 
@@ -8405,7 +8564,12 @@ class GameAutoPilot(
     window.__vlmOrbitTimer = setTimeout(scheduleNextOrbitTick, delayMs);
   }
 
-  window.__vlmTickTimer = setInterval(function () { tick().catch(function () {}); }, 15000);
+  var __tabPhaseMs = ((TAB | 0) % 6) * 2300;
+  window.__vlmTickDelayTimer = setTimeout(function () {
+    window.__vlmTickDelayTimer = 0;
+    tick().catch(function () {});
+    window.__vlmTickTimer = setInterval(function () { tick().catch(function () {}); }, 15000);
+  }, __tabPhaseMs);
   window.__vlmOrbitTimer = setTimeout(scheduleNextOrbitTick, 250);
   return 'installed';
 })();
