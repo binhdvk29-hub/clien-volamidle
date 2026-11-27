@@ -172,25 +172,12 @@ fun AutoConfigDialog(
                                             .background(if (isTabOn) Color(0xFF10B981) else Color(0xFF475569))
                                     )
                                     Text(
-                                text = "Thứ tự hoạt động & Leo Tháp",
-                                color = Color(0xFFFCA5A5),
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "• Thứ tự khi tích đủ: Dã Tẩu, Sát Thủ → Phó Bản → Thiên Bảo Khố (auto in-game) → Luyện Công (chọn map) hoặc Leo Tháp (Xa em ra / Bình thường).\n• Chỉ Leo Tháp: bỏ qua chuỗi hoạt động & dừng tự uống bình buff; vẫn nhận việc ngày nền chưa xong.",
-                                color = Color(0xFFCBD5E1),
-                                fontSize = 9.sp,
-                                modifier = Modifier.padding(top = 3.dp)
-                            )
-                            Text(
-                                text = "Quỹ đạo Xa em ra chỉ chạy trong Leo Tháp (bước 20°: Đánh gần 90, Đánh xa 400; vượt tầng chạy về tâm map). Để Tự động tool sẽ tự nhận diện Môn phái & Chiêu chính trong game.",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 9.sp,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }                }
+                                        text = "Tab ${i + 1}",
+                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1),
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -493,7 +480,7 @@ fun AutoConfigDialog(
                         }
                     )
 
-                    // 4. Cấu hình Leo Tháp: Môn phái, Chiêu chính 9x & Kiểu né đòn (dùng cho Chỉ Leo Tháp & Sau hoạt động -> Leo Tháp)
+                    // 4. Cấu hình Leo Tháp: Môn phái, Chiêu chính 9x & Kiểu né đòn
                     MainSkill9xSelector(
                         sectRaw = currentSectRaw,
                         selectedSkillId = draft.thapMainSkill,
@@ -640,19 +627,19 @@ fun AutoConfigDialog(
                     ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             Text(
-                                text = "Thứ tự hoạt động & Thiên Bảo Khố",
+                                text = "Thứ tự hoạt động & Leo Tháp",
                                 color = Color(0xFFFCA5A5),
                                 fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "• Thứ tự khi tích đủ: Dã Tẩu → Phó Bản → Thiên Bảo Khố (60p/ngày; 120p nếu mua Tín vật) → Luyện Công (chọn map).\n• Trong Thiên Bảo Khố: Xa em ra = bật chạy vòng tròn né đòn; Bình thường = auto ingame. Khi cần đổi chế độ sớm sẽ tự bấm Rời → Bấm lại để rời.",
+                                text = "• Thứ tự khi tích đủ: Dã Tẩu, Sát Thủ → Phó Bản → Thiên Bảo Khố (auto in-game) → Luyện Công (chọn map) hoặc Leo Tháp (Xa em ra / Bình thường).\n• Chỉ Leo Tháp: bỏ qua chuỗi hoạt động & dừng tự uống bình buff; vẫn nhận việc ngày nền chưa xong.",
                                 color = Color(0xFFCBD5E1),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
                             Text(
-                                text = "Quỹ đạo chạy vòng tròn chỉ hoạt động trong Thiên Bảo Khố (bước 20° quanh mục tiêu: bán kính 90 cho chiêu Đánh gần, 400 cho chiêu Đánh xa; vượt tầng lập tức chạy về tâm map).",
+                                text = "Quỹ đạo Xa em ra chỉ chạy trong Leo Tháp (bước 20°: Đánh gần 90, Đánh xa 400; vượt tầng chạy về tâm map). Để Tự động tool sẽ tự nhận diện Môn phái & Chiêu chính trong game.",
                                 color = Color(0xFF94A3B8),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -1029,7 +1016,6 @@ private fun MainSkill9xSelector(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Dropdown chọn Môn phái (tùy chọn lọc tay)
             Box(modifier = Modifier.weight(0.95f)) {
                 val boxShape = RoundedCornerShape(6.dp)
                 Row(
@@ -1103,7 +1089,6 @@ private fun MainSkill9xSelector(
                 }
             }
 
-            // Dropdown chọn Chiêu chính 9x
             Box(modifier = Modifier.weight(1.35f)) {
                 val boxShape = RoundedCornerShape(6.dp)
                 Row(
