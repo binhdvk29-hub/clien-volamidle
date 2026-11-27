@@ -172,12 +172,25 @@ fun AutoConfigDialog(
                                             .background(if (isTabOn) Color(0xFF10B981) else Color(0xFF475569))
                                     )
                                     Text(
-                                        text = "Tab ${i + 1}",
-                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1),
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
+                                text = "Thứ tự hoạt động & Leo Tháp",
+                                color = Color(0xFFFCA5A5),
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "• Thứ tự khi tích đủ: Dã Tẩu, Sát Thủ → Phó Bản → Thiên Bảo Khố (auto in-game) → Luyện Công (chọn map) hoặc Leo Tháp (Xa em ra / Bình thường).\n• Chỉ Leo Tháp: bỏ qua chuỗi hoạt động & dừng tự uống bình buff; vẫn nhận việc ngày nền chưa xong.",
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                            Text(
+                                text = "Quỹ đạo Xa em ra chỉ chạy trong Leo Tháp (bước 20°: Đánh gần 90, Đánh xa 400; vượt tầng chạy về tâm map). Để Tự động tool sẽ tự nhận diện Môn phái & Chiêu chính trong game.",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }                }
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -241,34 +254,19 @@ fun AutoConfigDialog(
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
-                    AutoCheckRow("Dã Tẩu tối đa: bật Trợ thủ, Chế độ Nhiệm Vụ khi còn lượt", draft.dt) {
-                        draft = draft.copy(dt = it)
-                    }
-                    AutoCheckRow("Mua Lệnh Bài Dã Tẩu bằng KNB khóa (20 / cái)", draft.ldtMua) {
-                        draft = draft.copy(ldtMua = it)
-                    }
-                    AutoCheckRow("Bình Phúc Duyên Lộ + Rương Phúc Duyên (lấy Lệnh Bài Dã Tẩu)", draft.pd) {
-                        draft = draft.copy(pd = it)
-                    }
-                    AutoCheckRow("Sát Thủ: tự gọi khi có Lệnh Bài", draft.st) {
-                        draft = draft.copy(st = it)
-                    }
-                    AutoCheckRow("Tự chạy phó bản: Chế độ Phó Bản tới khi hết lượt, rồi Dã Tẩu, rồi về chế độ cũ", draft.pb) {
-                        draft = draft.copy(pb = it)
-                    }
-                    val isTbkChecked = draft.thap || draft.thapNeDon
-                    val normalizedTbkMode = AutoConfig.normalizeThapAfterMode(draft.thapAfterMode)
-                    val isTbkOrbit = isTbkChecked && normalizedTbkMode == AutoConfig.THAP_MODE_ORBIT
+                    val normalizedTowerMode = AutoConfig.normalizeThapAfterMode(draft.thapAfterMode)
+                    val isAfterTower = draft.afterDailyEnabled && draft.thap && !draft.afterDailyFarm
+                    val isAnyTowerOrbit = (draft.thapNeDon || isAfterTower) && normalizedTowerMode == AutoConfig.THAP_MODE_ORBIT
 
-                    // Thiên Bảo Khố (đẩy lên giữa Tự chạy phó bản và Ưu tiên hành động khi hết lượt)
+                    // 1. Khối Chỉ Leo Tháp (ưu tiên tuyệt đối, dừng tự uống bình buff, vẫn nhận việc ngày nền)
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 3.dp)
-                            .testTag("auto_tbk_section"),
+                            .testTag("auto_only_tower_section"),
                         shape = RoundedCornerShape(6.dp),
                         color = Color(0xFF0F172A),
-                        border = BorderStroke(1.dp, if (isTbkChecked) Color(0xFF10B981) else Color(0xFF334155))
+                        border = BorderStroke(1.dp, if (draft.thapNeDon) Color(0xFF10B981) else Color(0xFF334155))
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                             Row(
@@ -279,38 +277,32 @@ fun AutoConfigDialog(
                                 Row(
                                     modifier = Modifier
                                         .heightIn(min = 44.dp)
-                                        .clickable {
-                                            val nextOn = !isTbkChecked
-                                            draft = draft.copy(thap = nextOn, thapNeDon = false)
-                                        }
+                                        .clickable { draft = draft.copy(thapNeDon = !draft.thapNeDon) }
                                         .testTag("auto_check_thapNeDon"),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Checkbox(
-                                        checked = isTbkChecked,
-                                        onCheckedChange = { checked ->
-                                            draft = draft.copy(thap = checked, thapNeDon = false)
-                                        },
+                                        checked = draft.thapNeDon,
+                                        onCheckedChange = { checked -> draft = draft.copy(thapNeDon = checked) },
                                         colors = CheckboxDefaults.colors(
                                             checkedColor = Color(0xFF10B981),
                                             uncheckedColor = Color(0xFF64748B)
                                         )
                                     )
                                     Text(
-                                        text = "Thiên Bảo Khố",
-                                        color = if (isTbkChecked) Color.White else Color(0xFFCBD5E1),
+                                        text = "Chỉ Leo Tháp",
+                                        color = if (draft.thapNeDon) Color.White else Color(0xFFCBD5E1),
                                         fontSize = 10.5.sp,
-                                        fontWeight = if (isTbkChecked) FontWeight.Bold else FontWeight.Medium,
+                                        fontWeight = if (draft.thapNeDon) FontWeight.Bold else FontWeight.Medium,
                                         maxLines = 1
                                     )
                                 }
-
-                                val tbkModes = listOf(
-                                    Triple(AutoConfig.THAP_MODE_ORBIT, "Xa em ra", "auto_thap_mode_orbit"),
-                                    Triple(AutoConfig.THAP_MODE_NORMAL, "Bình thường", "auto_thap_mode_normal")
+                                val towerModes = listOf(
+                                    Triple(AutoConfig.THAP_MODE_ORBIT, "Xa em ra", "auto_only_thap_mode_orbit"),
+                                    Triple(AutoConfig.THAP_MODE_NORMAL, "Bình thường", "auto_only_thap_mode_normal")
                                 )
-                                tbkModes.forEach { (modeKey, modeLabel, tag) ->
-                                    val isSel = isTbkChecked && normalizedTbkMode == modeKey
+                                towerModes.forEach { (modeKey, modeLabel, tag) ->
+                                    val isSel = draft.thapNeDon && normalizedTowerMode == modeKey
                                     val shape = RoundedCornerShape(6.dp)
                                     Box(
                                         modifier = Modifier
@@ -318,15 +310,10 @@ fun AutoConfigDialog(
                                             .heightIn(min = 36.dp)
                                             .clip(shape)
                                             .background(if (isSel) Color(0xFF065F46) else Color(0xFF1E293B))
-                                            .border(
-                                                1.dp,
-                                                if (isSel) Color(0xFF10B981) else Color(0xFF475569),
-                                                shape
-                                            )
+                                            .border(1.dp, if (isSel) Color(0xFF10B981) else Color(0xFF475569), shape)
                                             .clickable {
                                                 draft = draft.copy(
-                                                    thap = true,
-                                                    thapNeDon = false,
+                                                    thapNeDon = true,
                                                     thapAfterMode = modeKey
                                                 )
                                             }
@@ -344,12 +331,30 @@ fun AutoConfigDialog(
                                 }
                             }
                             Text(
-                                text = "Hoạt động ngày (60p/ngày; 120p nếu có Tín vật). Chạy sau Dã Tẩu & Phó Bản.",
-                                color = if (isTbkChecked) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
+                                text = "Ưu tiên leo tháp liên tục, dừng tự uống bình buff, vẫn nhận việc ngày nền chưa xong.",
+                                color = if (draft.thapNeDon) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
                                 fontSize = 9.sp,
                                 modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
                             )
                         }
+                    }
+
+                    // 2. Chuỗi hoạt động ngày theo thứ tự: Dã Tẩu, Sát Thủ -> Phó Bản -> Thiên Bảo Khố
+                    val dtStChecked = draft.dt || draft.st
+                    AutoCheckRow("Dã Tẩu, Sát Thủ", dtStChecked, "auto_check_dt_st") { checked ->
+                        draft = draft.copy(dt = checked, st = checked)
+                    }
+                    AutoCheckRow("Mua LBDT", draft.ldtMua, "auto_check_ldtMua") {
+                        draft = draft.copy(ldtMua = it)
+                    }
+                    AutoCheckRow("Đổi Phúc Duyên", draft.pd, "auto_check_pd") {
+                        draft = draft.copy(pd = it)
+                    }
+                    AutoCheckRow("Phó Bản", draft.pb, "auto_check_pb") {
+                        draft = draft.copy(pb = it)
+                    }
+                    AutoCheckRow("Thiên Bảo Khố (auto in-game)", draft.tbk, "auto_check_tbk") {
+                        draft = draft.copy(tbk = it)
                     }
 
                     Surface(
@@ -438,6 +443,57 @@ fun AutoConfigDialog(
                         }
                     }
 
+                    // 3. Ưu tiên sau khi hết hoạt động: Luyện Công (+ Chọn map) HOẶC Leo Tháp (Xa em ra / Bình thường)
+                    AutoCheckRow(
+                        label = "Ưu tiên sau khi hết hoạt động (Dã Tẩu, Phó Bản, Thiên Bảo Khố)",
+                        checked = draft.afterDailyEnabled,
+                        testTag = "auto_check_afterDailyEnabled"
+                    ) { enabled ->
+                        val hasTarget = draft.afterDailyFarm || draft.thap
+                        draft = draft.copy(
+                            afterDailyEnabled = enabled,
+                            afterDailyFarm = if (enabled && !hasTarget) true else draft.afterDailyFarm
+                        )
+                    }
+                    AfterDailyActionSelector(
+                        enabled = draft.afterDailyEnabled,
+                        afterDailyFarm = draft.afterDailyFarm,
+                        farmMap = draft.farmMap,
+                        afterDailyThap = draft.thap && !draft.afterDailyFarm,
+                        thapAfterMode = draft.thapAfterMode,
+                        onToggleFarm = { checked ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
+                                afterDailyFarm = checked,
+                                thap = if (checked) false else draft.thap
+                            )
+                        },
+                        onSelectMap = { mapName ->
+                            draft = draft.copy(
+                                afterDailyEnabled = true,
+                                afterDailyFarm = true,
+                                thap = false,
+                                farmMap = mapName
+                            )
+                        },
+                        onToggleThap = { checked ->
+                            draft = draft.copy(
+                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
+                                afterDailyFarm = if (checked) false else draft.afterDailyFarm,
+                                thap = checked
+                            )
+                        },
+                        onSelectThapMode = { modeKey ->
+                            draft = draft.copy(
+                                afterDailyEnabled = true,
+                                afterDailyFarm = false,
+                                thap = true,
+                                thapAfterMode = modeKey
+                            )
+                        }
+                    )
+
+                    // 4. Cấu hình Leo Tháp: Môn phái, Chiêu chính 9x & Kiểu né đòn (dùng cho Chỉ Leo Tháp & Sau hoạt động -> Leo Tháp)
                     MainSkill9xSelector(
                         sectRaw = currentSectRaw,
                         selectedSkillId = draft.thapMainSkill,
@@ -451,41 +507,8 @@ fun AutoConfigDialog(
                     )
                     OrbitStyleSelector(
                         selectedStyle = draft.thapNeDonStyle,
-                        isOrbitEnabled = isTbkOrbit,
+                        isOrbitEnabled = isAnyTowerOrbit,
                         onSelect = { style -> draft = draft.copy(thapNeDonStyle = style) }
-                    )
-
-                    AutoCheckRow(
-                        label = "Ưu tiên hành động khi hết lượt Dã Tẩu, Phó Bản, Thiên Bảo Khố",
-                        checked = draft.afterDailyEnabled,
-                        testTag = "auto_check_afterDailyEnabled"
-                    ) { enabled ->
-                        draft = draft.copy(
-                            afterDailyEnabled = enabled,
-                            afterDailyFarm = if (enabled) true else draft.afterDailyFarm
-                        )
-                    }
-                    AfterDailyActionSelector(
-                        enabled = draft.afterDailyEnabled,
-                        afterDailyFarm = draft.afterDailyFarm,
-                        farmMap = draft.farmMap,
-                        afterDailyThap = false,
-                        thapAfterMode = draft.thapAfterMode,
-                        onToggleFarm = { checked ->
-                            draft = draft.copy(
-                                afterDailyEnabled = if (checked) true else draft.afterDailyEnabled,
-                                afterDailyFarm = checked
-                            )
-                        },
-                        onSelectMap = { mapName ->
-                            draft = draft.copy(
-                                afterDailyEnabled = if (mapName.isNotBlank()) true else draft.afterDailyEnabled,
-                                afterDailyFarm = if (mapName.isNotBlank()) true else draft.afterDailyFarm,
-                                farmMap = mapName
-                            )
-                        },
-                        onToggleThap = {},
-                        onSelectThapMode = {}
                     )
                     AutoCheckRow("Nhận quà Điểm danh + Mốc cấp", draft.qua) {
                         draft = draft.copy(qua = it)
@@ -761,9 +784,9 @@ private fun AfterDailyActionSelector(
         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
             Text(
                 text = if (enabled) {
-                    "Xong Dã Tẩu, Phó Bản & Thiên Bảo Khố sẽ tự chuyển Luyện Công + map:"
+                    "Xong Dã Tẩu, Phó Bản & Thiên Bảo Khố sẽ tự chuyển:"
                 } else {
-                    "Tích dòng trên để bật tự quét và chuyển sang hành động dưới:"
+                    "Tích dòng trên để chọn Luyện Công hoặc Leo Tháp sau khi hết hoạt động:"
                 },
                 color = if (enabled) Color(0xFF6EE7B7) else Color(0xFF94A3B8),
                 fontSize = 9.sp,
@@ -772,7 +795,7 @@ private fun AfterDailyActionSelector(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Hàng 1: Luyện Công + Chọn map (2 ô cùng 1 hàng)
+            // Hàng 1: Luyện Công + Chọn map
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -843,66 +866,90 @@ private fun AfterDailyActionSelector(
                             .background(Color(0xFF0F172A))
                             .heightIn(max = 320.dp)
                     ) {
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = "-- Chưa chọn map --",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 10.5.sp
-                                )
-                            },
-                            onClick = {
-                                mapExpanded = false
-                                onSelectMap("Mạc Bắc Thảo Nguyên" )
-                            }
-                        )
-                        Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        var uiSelectedMap by remember(farmMap) { mutableStateOf(normalize130MapName(farmMap)) }
                         listOf("Mạc Bắc Thảo Nguyên", "Vi sơn đảo").forEach { mName ->
-                            val isChecked = uiSelectedMap == mName
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isChecked) Color(0xFF14532D) else Color(0xFF1E293B))
-                                    .clickable {
-                                        mapExpanded = false
-                                        uiSelectedMap = mName; onSelectMap(mName)
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = {
-                                        mapExpanded = false
-                                        uiSelectedMap = mName; onSelectMap(mName)
-                                    },
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = mName,
-                                    color = if (isChecked) Color(0xFF6EE7B7) else Color.White,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
+                            val isChecked = normalize130MapName(farmMap) == mName
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = if (isChecked) "✓ $mName" else mName,
+                                        color = if (isChecked) Color(0xFF6EE7B7) else Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isChecked) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                onClick = {
+                                    mapExpanded = false
+                                    onSelectMap(mName)
+                                }
+                            )
                         }
-                    } }
+                    }
                 }
             }
 
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Hàng 2: Leo Tháp + Xa em ra / Bình thường
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .heightIn(min = 44.dp)
+                        .clickable { onToggleThap(!afterDailyThap) }
+                        .testTag("auto_check_afterDailyThap"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = afterDailyThap,
+                        onCheckedChange = onToggleThap,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color(0xFF10B981),
+                            uncheckedColor = Color(0xFF64748B)
+                        )
+                    )
+                    Text(
+                        text = "Leo Tháp",
+                        color = if (afterDailyThap) Color.White else Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        fontWeight = if (afterDailyThap) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+
+                val modes = listOf(
+                    Triple(AutoConfig.THAP_MODE_ORBIT, "Xa em ra", "auto_thap_mode_orbit"),
+                    Triple(AutoConfig.THAP_MODE_NORMAL, "Bình thường", "auto_thap_mode_normal")
+                )
+                modes.forEach { (modeKey, modeLabel, tag) ->
+                    val isSel = afterDailyThap && normalizedThapMode == modeKey
+                    val shape = RoundedCornerShape(6.dp)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 36.dp)
+                            .clip(shape)
+                            .background(if (isSel) Color(0xFF065F46) else Color(0xFF1E293B))
+                            .border(1.dp, if (isSel) Color(0xFF10B981) else Color(0xFF475569), shape)
+                            .clickable { onSelectThapMode(modeKey) }
+                            .testTag(tag),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = modeLabel,
+                            color = if (isSel) Color.White else Color(0xFF94A3B8),
+                            fontSize = 9.5.sp,
+                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
         }
     }
 }
-
 @Composable
 private fun AutoCheckRow(
     label: String,
@@ -943,24 +990,34 @@ private fun MainSkill9xSelector(
     resolvedStyle: String?,
     onSelectSkill: (String) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val detectedSect = AutoConfig.sectDisplayLabel(sectRaw)
-    val sectSkills = AutoConfig.skills9xForSect(sectRaw)
-    val availableSkills = if (sectSkills.isNotEmpty()) sectSkills else AutoConfig.ALL_9X_SKILLS
+    var sectExpanded by remember { mutableStateOf(false) }
+    var skillExpanded by remember { mutableStateOf(false) }
+    val allSects = remember {
+        AutoConfig.ALL_9X_SKILLS.map { it.sectKey to it.sectLabel }.distinct()
+    }
+    val detectedSectKey = AutoConfig.normalizeSectKey(sectRaw)
     val selectedSkill = AutoConfig.findMainSkill(selectedSkillId)
+    var manualSectKey by remember(sectRaw) { mutableStateOf<String?>(null) }
+    val effectiveSectKey = manualSectKey ?: selectedSkill?.sectKey ?: detectedSectKey
+    val effectiveSectLabel = allSects.firstOrNull { it.first == effectiveSectKey }?.second
+    val availableSkills = if (effectiveSectKey != null) {
+        AutoConfig.ALL_9X_SKILLS.filter { it.sectKey == effectiveSectKey }
+    } else {
+        AutoConfig.ALL_9X_SKILLS
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 28.dp, end = 4.dp, bottom = 6.dp)
+            .padding(start = 24.dp, end = 4.dp, bottom = 6.dp)
     ) {
         Text(
-            text = if (detectedSect != null) {
-                "Môn phái: $detectedSect • Chọn chiêu chính 9x:"
+            text = if (effectiveSectLabel != null) {
+                "Cấu hình Leo Tháp • Môn phái: $effectiveSectLabel"
             } else {
-                "Chưa đọc được môn phái (vào game để lọc theo phái) • Chọn chiêu 9x:"
+                "Cấu hình Leo Tháp • Môn phái & Chiêu chính (Tự động hoặc chọn tay):"
             },
-            color = if (detectedSect != null) Color(0xFF38BDF8) else Color(0xFFFBBF24),
+            color = if (effectiveSectLabel != null) Color(0xFF38BDF8) else Color(0xFFFBBF24),
             fontSize = 9.5.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier
@@ -968,97 +1025,178 @@ private fun MainSkill9xSelector(
                 .testTag("auto_detected_sect_label")
         )
 
-        Box(modifier = Modifier.fillMaxWidth()) {
-            val boxShape = RoundedCornerShape(6.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .clip(boxShape)
-                    .background(Color(0xFF0F172A))
-                    .border(
-                        1.dp,
-                        if (selectedSkill != null) Color(0xFF10B981) else Color(0xFF475569),
-                        boxShape
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Dropdown chọn Môn phái (tùy chọn lọc tay)
+            Box(modifier = Modifier.weight(0.95f)) {
+                val boxShape = RoundedCornerShape(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp)
+                        .clip(boxShape)
+                        .background(Color(0xFF0F172A))
+                        .border(1.dp, if (effectiveSectLabel != null) Color(0xFF38BDF8) else Color(0xFF475569), boxShape)
+                        .clickable { sectExpanded = true }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .testTag("auto_manual_sect_dropdown"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = effectiveSectLabel ?: "Phái: Tự động",
+                        color = if (effectiveSectLabel != null) Color.White else Color(0xFF94A3B8),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    .clickable { expanded = true }
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                    .testTag("auto_main_skill_dropdown"),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = when {
-                        selectedSkill == null -> "-- Chọn chiêu chính 9x --"
-                        detectedSect != null && selectedSkill.sectLabel != detectedSect ->
-                            "${selectedSkill.displayName} (${selectedSkill.sectLabel})"
-                        else -> selectedSkill.displayName
-                    },
-                    color = if (selectedSkill != null) Color.White else Color(0xFF94A3B8),
-                    fontSize = 10.5.sp,
-                    fontWeight = if (selectedSkill != null) FontWeight.SemiBold else FontWeight.Normal,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    imageVector = Icons.Filled.ArrowDropDown,
-                    contentDescription = "Chọn chiêu chính 9x",
-                    tint = Color(0xFF94A3B8)
-                )
-            }
-
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.background(Color(0xFF0F172A))
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = "-- Chưa chọn chiêu --",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        )
-                    },
-                    modifier = Modifier.testTag("auto_main_skill_clear"),
-                    onClick = {
-                        expanded = false
-                        onSelectSkill("")
-                    }
-                )
-                availableSkills.forEach { skill ->
-                    val styleText = if (skill.combatStyle == AutoConfig.ORBIT_MELEE) "Đánh gần (90)" else "Đánh xa (400)"
-                    val label = if (detectedSect != null) {
-                        "${skill.displayName} · $styleText"
-                    } else {
-                        "[${skill.sectLabel}] ${skill.displayName} · $styleText"
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = "Chọn môn phái",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = sectExpanded,
+                    onDismissRequest = { sectExpanded = false },
+                    modifier = Modifier
+                        .background(Color(0xFF0F172A))
+                        .heightIn(max = 320.dp)
+                ) {
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = label,
-                                color = if (selectedSkill?.id == skill.id) Color(0xFF6EE7B7) else Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = if (selectedSkill?.id == skill.id) FontWeight.Bold else FontWeight.Normal
+                                text = "🤖 Tự động nhận diện phái",
+                                color = Color(0xFF6EE7B7),
+                                fontSize = 11.sp
                             )
                         },
-                        modifier = Modifier.testTag("auto_main_skill_option_${skill.id}"),
                         onClick = {
-                            expanded = false
-                            onSelectSkill(skill.id)
+                            sectExpanded = false
+                            manualSectKey = null
+                            onSelectSkill("")
                         }
                     )
+                    allSects.forEach { (sKey, sLabel) ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = sLabel,
+                                    color = if (effectiveSectKey == sKey) Color(0xFF38BDF8) else Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (effectiveSectKey == sKey) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            onClick = {
+                                sectExpanded = false
+                                manualSectKey = sKey
+                                if (selectedSkill != null && selectedSkill.sectKey != sKey) {
+                                    onSelectSkill("")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Dropdown chọn Chiêu chính 9x
+            Box(modifier = Modifier.weight(1.35f)) {
+                val boxShape = RoundedCornerShape(6.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp)
+                        .clip(boxShape)
+                        .background(Color(0xFF0F172A))
+                        .border(
+                            1.dp,
+                            if (selectedSkill != null) Color(0xFF10B981) else Color(0xFF475569),
+                            boxShape
+                        )
+                        .clickable { skillExpanded = true }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .testTag("auto_main_skill_dropdown"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = selectedSkill?.displayName ?: "Chiêu: Tự động",
+                        color = if (selectedSkill != null) Color.White else Color(0xFF94A3B8),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = if (selectedSkill != null) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = "Chọn chiêu chính 9x",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = skillExpanded,
+                    onDismissRequest = { skillExpanded = false },
+                    modifier = Modifier
+                        .background(Color(0xFF0F172A))
+                        .heightIn(max = 320.dp)
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = "🤖 Tự động nhận diện chiêu",
+                                color = Color(0xFF6EE7B7),
+                                fontSize = 11.sp
+                            )
+                        },
+                        modifier = Modifier.testTag("auto_main_skill_clear"),
+                        onClick = {
+                            skillExpanded = false
+                            onSelectSkill("")
+                        }
+                    )
+                    availableSkills.forEach { skill ->
+                        val styleText = if (skill.combatStyle == AutoConfig.ORBIT_MELEE) "Gần 90" else "Xa 400"
+                        val label = if (effectiveSectKey != null) {
+                            "${skill.displayName} · $styleText"
+                        } else {
+                            "[${skill.sectLabel}] ${skill.displayName} · $styleText"
+                        }
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = label,
+                                    color = if (selectedSkill?.id == skill.id) Color(0xFF6EE7B7) else Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (selectedSkill?.id == skill.id) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            modifier = Modifier.testTag("auto_main_skill_option_${skill.id}"),
+                            onClick = {
+                                skillExpanded = false
+                                manualSectKey = skill.sectKey
+                                onSelectSkill(skill.id)
+                            }
+                        )
+                    }
                 }
             }
         }
 
         val resolvedText = when (resolvedStyle) {
-            AutoConfig.ORBIT_MELEE -> "Cách di chuyển: Đánh gần (giữ khoảng cách 90, bước 20°)"
-            AutoConfig.ORBIT_RANGED -> "Cách di chuyển: Đánh xa (giữ khoảng cách 400, bước 20°)"
-            else -> "Chưa chọn chiêu chính — hãy chọn chiêu 9x để xác định khoảng cách"
+            AutoConfig.ORBIT_MELEE -> "Tầm đánh: Đánh gần (giữ cự ly 90, bước 20°)"
+            AutoConfig.ORBIT_RANGED -> "Tầm đánh: Đánh xa (giữ cự ly 400, bước 20°)"
+            else -> "Tầm đánh: Tự động nhận diện theo Môn phái & Chiêu chính khi vào Tháp"
         }
         Text(
             text = resolvedText,
-            color = if (resolvedStyle != null) Color(0xFF6EE7B7) else Color(0xFFFCA5A5),
+            color = Color(0xFF6EE7B7),
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier
@@ -1067,7 +1205,6 @@ private fun MainSkill9xSelector(
         )
     }
 }
-
 @Composable
 private fun OrbitStyleSelector(
     selectedStyle: String,
@@ -1076,7 +1213,7 @@ private fun OrbitStyleSelector(
 ) {
     val normalized = AutoConfig.normalizeOrbitStyle(selectedStyle)
     val options = listOf(
-        Triple(AutoConfig.ORBIT_AUTO, "Theo chiêu", "auto_orbit_style_auto"),
+        Triple(AutoConfig.ORBIT_AUTO, "Tự động", "auto_orbit_style_auto"),
         Triple(AutoConfig.ORBIT_MELEE, "Đánh gần (90)", "auto_orbit_style_melee"),
         Triple(AutoConfig.ORBIT_RANGED, "Đánh xa (400)", "auto_orbit_style_ranged")
     )

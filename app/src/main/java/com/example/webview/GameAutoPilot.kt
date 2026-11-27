@@ -102,7 +102,8 @@ data class AutoConfig(
     val tbkTinVat: Boolean = false,
     val bangLbdt: Boolean = false,
     val bangPd: Boolean = false,
-    val doiNguyenLieu: Set<String> = emptySet()
+    val doiNguyenLieu: Set<String> = emptySet(),
+    val tbk: Boolean = false
 ) {
     fun toJson(): JSONObject {
         val o = JSONObject()
@@ -136,6 +137,7 @@ data class AutoConfig(
         o.put("tbkTinVat", tbkTinVat)
         o.put("bangLbdt", bangLbdt)
         o.put("bangPd", bangPd)
+        o.put("tbk", tbk)
 
         val arr = org.json.JSONArray()
         doiNguyenLieu.forEach { arr.put(it) }
@@ -388,6 +390,25 @@ data class AutoConfig(
                 }
             }
 
+            val hasTbkKey = o.has("tbk")
+            val parsedTbk = if (hasTbkKey) {
+                o.optBoolean("tbk", DEF.tbk)
+            } else {
+                o.optBoolean("thap", false) || o.optBoolean("thapNeDon", false)
+            }
+            val parsedAfterFarm = o.optBoolean("afterDailyFarm", DEF.afterDailyFarm)
+            val parsedThap = if (hasTbkKey) {
+                o.optBoolean("thap", DEF.thap) && !parsedAfterFarm
+            } else {
+                false
+            }
+            val parsedThapNeDon = if (hasTbkKey) o.optBoolean("thapNeDon", DEF.thapNeDon) else false
+            val parsedAfterEnabled = if (o.has("afterDailyEnabled")) {
+                o.optBoolean("afterDailyEnabled", DEF.afterDailyEnabled)
+            } else {
+                parsedAfterFarm || parsedThap
+            }
+
             return AutoConfig(
                 on = o.optBoolean("on", DEF.on),
                 theGiaoDich = o.optBoolean("theGiaoDich", DEF.theGiaoDich),
@@ -406,16 +427,12 @@ data class AutoConfig(
                 tt2 = o.optBoolean("tt2", DEF.tt2),
                 tt2Mua = o.optBoolean("tt2Mua", DEF.tt2Mua),
                 pb = o.optBoolean("pb", DEF.pb),
-                afterDailyEnabled = if (o.has("afterDailyEnabled")) {
-                    o.optBoolean("afterDailyEnabled", DEF.afterDailyEnabled)
-                } else {
-                    o.optBoolean("afterDailyFarm", DEF.afterDailyFarm) || o.optBoolean("thap", DEF.thap)
-                },
-                afterDailyFarm = o.optBoolean("afterDailyFarm", DEF.afterDailyFarm),
+                afterDailyEnabled = parsedAfterEnabled,
+                afterDailyFarm = parsedAfterFarm,
                 farmMap = normalizeAllowed130Map(o.optString("farmMap", "Mạc Bắc Thảo Nguyên")),
-                thap = o.optBoolean("thap", DEF.thap) || o.optBoolean("thapNeDon", false),
+                thap = parsedThap,
                 thapAfterMode = normalizeThapAfterMode(o.optString("thapAfterMode", DEF.thapAfterMode)),
-                thapNeDon = o.optBoolean("thapNeDon", DEF.thapNeDon),
+                thapNeDon = parsedThapNeDon,
                 thapNeDonStyle = normalizeOrbitStyle(o.optString("thapNeDonStyle", DEF.thapNeDonStyle)),
                 thapMainSkill = normalizeMainSkillId(o.optString("thapMainSkill", DEF.thapMainSkill)),
                 qht = o.optBoolean("qht", DEF.qht),
@@ -423,7 +440,8 @@ data class AutoConfig(
                 tbkTinVat = o.optBoolean("tbkTinVat", DEF.tbkTinVat),
                 bangLbdt = o.optBoolean("bangLbdt", DEF.bangLbdt),
                 bangPd = o.optBoolean("bangPd", DEF.bangPd),
-                doiNguyenLieu = nguyenLieuSet
+                doiNguyenLieu = nguyenLieuSet,
+                tbk = parsedTbk
             )
         }
 
@@ -443,7 +461,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-87"
+        const val SCRIPT_VER = "vlmauto-88"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -936,7 +954,7 @@ class GameAutoPilot(
 
   var DEF = { on: false, theGiaoDich: false, dt: true, ldtMua: true, k2k: 0, pd: true, st: true, lbMua: 0,
     knbMua: 0, knbGiu: 0, qua: true, evHb: false, evDhb: false, khan: true, ttl: true,
-    ttlMua: false, tt2: true, tt2Mua: false, pb: true, afterDailyEnabled: false, afterDailyFarm: false, farmMap: '', thap: false, thapAfterMode: 'NORMAL', thapNeDon: false, thapNeDonStyle: 'AUTO', thapMainSkill: '', qht: false, qhtMua: false };
+    ttlMua: false, tt2: true, tt2Mua: false, pb: true, afterDailyEnabled: false, afterDailyFarm: false, farmMap: '', tbk: false, thap: false, thapAfterMode: 'NORMAL', thapNeDon: false, thapNeDonStyle: 'AUTO', thapMainSkill: '', qht: false, qhtMua: false };
 
   var A = {
     cfg: Object.assign({}, DEF, CFG0 || {}),
@@ -1226,7 +1244,18 @@ class GameAutoPilot(
       A.cfg = Object.assign({}, DEF, c || {});
       A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
       A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
-      A.cfg.thap = !!(A.cfg.thap || A.cfg.thapNeDon);
+      var __hasTbkKey = !!(c && Object.prototype.hasOwnProperty.call(c, 'tbk'));
+      if (__hasTbkKey) {
+        A.cfg.tbk = !!c.tbk;
+        A.cfg.thap = !!(A.cfg.thap && !A.cfg.afterDailyFarm);
+        A.cfg.thapNeDon = !!A.cfg.thapNeDon;
+      } else {
+        A.cfg.tbk = !!(A.cfg.thap || A.cfg.thapNeDon);
+        A.cfg.thap = false;
+        A.cfg.thapNeDon = false;
+      }
+      A._autoTowerProfile = null;
+      A._lastOrbitStyleLogSig = '';
       var __rawFarmNA = noAccent(A.cfg.farmMap || '').replace(/\s+/g, ' ').trim();
       if (__rawFarmNA.indexOf('vi son') >= 0 || __rawFarmNA.indexOf('son dao') >= 0) A.cfg.farmMap = 'Vi sơn đảo';
       else if (__rawFarmNA.indexOf('mac bac') >= 0 || __rawFarmNA.indexOf('thao nguyen') >= 0) A.cfg.farmMap = 'Mạc Bắc Thảo Nguyên';
@@ -1266,7 +1295,7 @@ class GameAutoPilot(
       A.cfg.thapMainSkill = String(A.cfg.thapMainSkill || '').trim();
     } catch (e) {}
     if (!imm && typeof t === 'number' && t > A.touchK) A.touchK = t;
-    if (!A.cfg.on || (!A.cfg.thapNeDon && !(A.cfg.afterDailyEnabled && A.cfg.thap && A.cfg.thapAfterMode === 'ORBIT'))) {
+    if (!A.cfg.on || A.cfg.thapAfterMode !== 'ORBIT' || (!A.cfg.thapNeDon && !(A.cfg.afterDailyEnabled && A.cfg.thap && !A.cfg.afterDailyFarm))) {
       try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eRel) {}
       try { if (typeof towerLockSet === 'function') towerLockSet(false); } catch (eTl) {}
     }
@@ -1897,7 +1926,8 @@ class GameAutoPilot(
       }
       if (txt.indexOf('nhiem vu') >= 0 || txt.indexOf('da tau') >= 0) return 'quest';
       if (txt.indexOf('pho ban') >= 0) return 'dg';
-      if (txt.indexOf('leo thap') >= 0 || txt.indexOf('thien bao kho') >= 0 || txt.indexOf('bao kho') >= 0) return 'tower';
+      if (txt.indexOf('thien bao kho') >= 0 || txt.indexOf('bao kho') >= 0) return 'tbk';
+      if (txt.indexOf('leo thap') >= 0) return 'tower';
       if (txt.indexOf('luyen cong') >= 0) return 'farm';
     } catch (eM) {}
     return '';
@@ -1939,7 +1969,8 @@ class GameAutoPilot(
     return fb;
   }
 
-  async function troThu(I) {
+  async function troThu(I) {
+    if (A.cfg.thapNeDon) return;
     var dt = I.dt || {};
     var can = (A.cfg.dt && (!dt.auto || !I.autoLdt)) || (A.cfg.st && !I.autoSt);
     if (!can || !ready('tt', 60000)) return;
@@ -3329,6 +3360,7 @@ class GameAutoPilot(
   }
 
   async function suDungVatPhamTieuHao(I) {
+    if (A.cfg.thapNeDon) return;
     if (!A.cfg.ttl && !A.cfg.tt2 && !A.cfg.qht) return;
     if ((A.cool.buff_scan_15m || 0) > Date.now()) return;
     var hud = scanHudBuffs(I);
@@ -3410,7 +3442,8 @@ class GameAutoPilot(
     return 0;
   }
 
-  async function daTau(I) {
+  async function daTau(I) {
+    if (A.cfg.thapNeDon) return;
     if ((I.lvl | 0) < 20) return;
     if ((I.ldtMax | 0) > 0 && (I.ldtMua | 0) >= (I.ldtMax | 0)) {
       dayAdd('ldtMuaDone', 1);
@@ -5511,7 +5544,7 @@ class GameAutoPilot(
           await sleep(120);
           var mdNow = document.getElementById('modal');
           var modalClosed = !mdNow || mdNow.classList.contains('hidden');
-          if (isInTowerNow() || modalClosed) {
+          if (isInTbkNow() || modalClosed) {
             out.entered = true;
             break;
           }
@@ -6598,7 +6631,7 @@ class GameAutoPilot(
       var modeKeywords = {
         farm: ['luyen cong'],
         dg: ['pho ban'],
-        tower: ['thien bao kho', 'bao kho', 'leo thap'],
+        tower: ['leo thap'],
         quest: ['nhiem vu', 'da tau']
       };
       var kws = modeKeywords[targetMode] || [];
@@ -6754,8 +6787,9 @@ class GameAutoPilot(
     var pldCon = !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
     var pbCon = A.cfg.pb && !pbXong() && !pbOver3h;
 
-    var tbkEnabled = !!(A.cfg.thap || A.cfg.thapNeDon);
-    var tbkOrbit = !!(tbkEnabled && A.cfg.thapAfterMode === 'ORBIT');
+    var tbkEnabled = !forceOnlyTower && !!A.cfg.tbk;
+    var inTbkRightNow = isInTbkNow();
+    inTowerRightNow = isInTowerNow();
 
     if (tbkEnabled && !tbkXong() && isTbkTimeExhaustedInDom(I)) {
       if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) {
@@ -6764,18 +6798,26 @@ class GameAutoPilot(
         var verEx = await probeThienBaoKhoInQuestTab(false);
         if (verEx && verEx.checked && verEx.exhausted) {
           dayAdd('tbkx2', 1);
-          note('Da het thoi gian Thien Bao Kho hom nay (' + verEx.summary + ') -> bo qua toi 00:00, chuyen Luyen Cong');
+          note('Da het thoi gian Thien Bao Kho hom nay (' + verEx.summary + ') -> bo qua toi 00:00');
         }
       }
     }
 
     var tbkCon = tbkEnabled && !tbkXong();
     var dailyDone = !dtCon && !stCon && !pldCon && !pbCon && !tbkCon;
-    var afterFarmActive = !!(A.cfg.afterDailyEnabled || A.cfg.afterDailyFarm) && dailyDone;
+    var afterTowerActive = !forceOnlyTower && !!(A.cfg.afterDailyEnabled && A.cfg.thap && !A.cfg.afterDailyFarm) && dailyDone;
+    var afterFarmActive = !forceOnlyTower && !!(A.cfg.afterDailyEnabled && A.cfg.afterDailyFarm && !afterTowerActive) && dailyDone;
+    var towerModeLabel = (A.cfg.thapAfterMode === 'ORBIT') ? 'Xa em ra' : 'Binh thuong';
 
-    if (afterFarmActive && justSaved && ready('after_daily_ok_note', 8000)) {
+    if (forceOnlyTower && justSaved && ready('only_tower_note', 8000)) {
+      var rOnly = resolveOrbitStyle();
+      var styleDesc = rOnly.style ? (' · ' + (rOnly.skill || rOnly.sect || 'Tu nhan dien') + ' -> ' + (rOnly.style === 'melee' ? 'Danh gan 90' : 'Danh xa 400')) : '';
+      note('Che do Chi Leo Thap (' + towerModeLabel + styleDesc + ') · Dung tu uong buff');
+    } else if (afterFarmActive && justSaved && ready('after_daily_ok_note', 8000)) {
       note('Da xong hoat dong -> chuyen Luyen Cong' + (A.cfg.farmMap ? (' (' + A.cfg.farmMap + ')') : ''));
-    } else if ((A.cfg.afterDailyEnabled || A.cfg.afterDailyFarm) && !dailyDone && justSaved && ready('after_daily_wait_note', 8000)) {
+    } else if (afterTowerActive && justSaved && ready('after_daily_ok_note', 8000)) {
+      note('Da xong hoat dong -> chuyen Leo Thap (' + towerModeLabel + ')');
+    } else if (!forceOnlyTower && A.cfg.afterDailyEnabled && !dailyDone && justSaved && ready('after_daily_wait_note', 8000)) {
       var pend = [];
       if (dtCon) pend.push('Da Tau ' + dtToday + '/' + dtMax);
       if (stCon) pend.push('Sat Thu (' + (I.lb | 0) + ')');
@@ -6785,71 +6827,61 @@ class GameAutoPilot(
       note('Thu tu hoat dong con lai: ' + pend.join(' -> '));
     }
 
-    if (tbkOrbit && (inTowerRightNow || mode === 'tower')) {
+    async function enterThienBaoKho() {
+      if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) {
+        await muaVaDungTinVatThienBaoKho(I);
+      }
+      var qRes = await probeThienBaoKhoInQuestTab(true);
+      if (qRes && qRes.checked) {
+        if (qRes.exhausted) return qRes;
+        if (qRes.entered || isInTbkNow()) {
+          qRes.entered = true;
+          return qRes;
+        }
+        return qRes;
+      }
+      return { checked: false, entered: isInTbkNow(), exhausted: false, summary: '' };
+    }
+
+    // Thu tu: Neu Chi Leo Thap -> 'tower'.
+    // Nguoc lai: (1) Da Tau, Sat Thu / PLD -> (2) Pho Ban -> (3) Thien Bao Kho -> (4) Luyen Cong hoac Leo Thap
+    var want = forceOnlyTower
+      ? 'tower'
+      : ((dtCon || stCon || pldCon)
+          ? 'quest'
+          : (pbCon
+              ? 'dg'
+              : (tbkCon
+                  ? 'tbk'
+                  : (afterFarmActive
+                      ? 'farm'
+                      : (afterTowerActive ? 'tower' : null)))));
+    var prev = prevGet();
+
+    if (want === 'tower' && (inTowerRightNow || mode === 'tower')) {
       towerLockSet(true);
     } else {
       towerLockSet(false);
     }
 
-    async function enterThienBaoKho() {
-      if (A.cfg.tbkTinVat && (dayGet('tbkTv2') < 1 || dayGet('tbkTvUse') < 1)) {
-        await muaVaDungTinVatThienBaoKho(I);
-      }
-      // Uu tien kiem tra & vao truc tiep qua Nhiệm vụ -> Thiên Bảo Khố de doc chinh xac xx/60p, xx/120p va nut "Vao Thien Bao Kho" / "Het phut hom nay - 0h mo lai"
-      var qRes = await probeThienBaoKhoInQuestTab(true);
-      if (qRes && qRes.checked) {
-        if (qRes.exhausted) return qRes;
-        if (qRes.entered || isInTowerNow()) {
-          qRes.entered = true;
-          return qRes;
-        }
-        // Da xac nhan con thoi gian (nut "Vao Thien Bao Kho"), thu du phong qua nut Che Do
-        var swFb = await switchMode('tower');
-        if (swFb) {
-          await sleep(650);
-          if (isInTowerNow()) {
-            qRes.entered = true;
-            return qRes;
-          }
-        }
-        return qRes;
-      }
-      // Du phong neu tam thoi khong mo duoc bang Nhiệm vụ
-      var swOk = await switchMode('tower');
-      if (swOk) {
-        await sleep(650);
-        if (isInTowerNow()) return { checked: false, entered: true, exhausted: false, summary: '' };
-      }
-      return { checked: false, entered: isInTowerNow(), exhausted: false, summary: '' };
-    }
-
-    // Thu tu hoat dong: (1) Da Tau / Sat Thu / PLD -> (2) Pho Ban -> (3) Thien Bao Kho -> (4) Luyen Cong (chon map)
-    var want = (dtCon || stCon || pldCon)
-      ? 'quest'
-      : (pbCon
-          ? 'dg'
-          : (tbkCon
-              ? 'tower'
-              : (afterFarmActive ? 'farm' : null)));
-    var prev = prevGet();
-
     // Neu dang trong Thien Bao Kho nhung can roi som -> bam Roi -> Bam lai de roi
-    if (inTowerRightNow && want && want !== 'tower') {
+    if (inTbkRightNow && want && want !== 'tbk') {
       if (I.dead) return;
       if (!justSaved && isUserControlling(3500)) return;
       if (justSaved || ready('tbk_leave_early', 4500)) {
         A.cool.tbk_leave_early = Date.now() + 4500;
         var leftOk = await leaveThienBaoKho();
         if (leftOk) {
-          note('Roi Thien Bao Kho som (bam Roi -> Bam lai de roi) de chuyen ' + (MODE_VI[want] || want));
+          note('Roi Thien Bao Kho som de chuyen ' + (MODE_VI[want] || want));
         }
       }
+      return;
     }
 
-    if (want === 'tower') {
+    if (want === 'tbk') {
       if (I.dead || I.sat || I.dg) return;
       if (!justSaved && isUserControlling(3500)) return;
-      if (inTowerRightNow) {
+      if (inTbkRightNow) {
         A.tbkFailCount = 0;
         ensureGameAutoOn(false);
       } else if (justSaved || ready('tbk_enter', 8000)) {
@@ -6868,22 +6900,40 @@ class GameAutoPilot(
           }
           dayAdd('tbkx2', 1);
           A.tbkFailCount = 0;
-          note('Da het thoi gian Thien Bao Kho hom nay (' + (entRes.summary || 'Het phut hom nay - 0h mo lai') + ') -> bo qua toi 00:00, chuyen Luyen Cong');
+          note('Da het thoi gian Thien Bao Kho hom nay (' + (entRes.summary || 'Het phut hom nay - 0h mo lai') + ') -> bo qua toi 00:00');
         } else if (entRes && entRes.entered) {
           A.tbkFailCount = 0;
           tbkClearXong();
-          note('Vao Thien Bao Kho (' + (tbkOrbit ? 'Xa em ra' : 'Binh thuong') + (entRes.summary ? ', ' + entRes.summary : '') + ')');
+          note('Vao Thien Bao Kho (Auto in-game' + (entRes.summary ? ', ' + entRes.summary : '') + ')');
         } else if (entRes && entRes.checked && !entRes.exhausted) {
           if (ready('tbk_retry_note', 25000)) {
             note('[TBK] Con thoi gian (' + entRes.summary + ') nhung chua vao duoc, se thu lai');
           }
         }
-      }    } else if (want && mode !== want) {
+      }
+    } else if (want === 'tower') {
+      if (I.dead || I.sat || I.dg) return;
+      if (!justSaved && isUserControlling(3500)) return;
+      if (inTowerRightNow) {
+        ensureGameAutoOn(false);
+        logTowerCombatProfileOnce();
+      } else if (mode !== 'tower') {
+        if (!justSaved && (!ranh() || !ready('mode_tower', 3500))) return;
+        if (await switchMode('tower')) {
+          A.cool.mode_tower = Date.now() + 3500;
+          note((forceOnlyTower ? 'Chi Leo Thap: ' : 'Xong hoat dong -> ') + 'Chuyen Leo Thap (' + towerModeLabel + ')');
+          logTowerCombatProfileOnce();
+        }
+      } else {
+        ensureGameAutoOn(false);
+        logTowerCombatProfileOnce();
+      }
+    } else if (want && mode !== want) {
       if (I.dead || I.sat || I.dg) return;
       if (!justSaved && (!ranh() || !ready('mode_' + want, 3500))) return;
       var savedPrev = prev || mode;
       if (await switchMode(want)) {
-        if (!prev && !afterFarmActive) prevSet(savedPrev);
+        if (!prev && !afterFarmActive && !afterTowerActive) prevSet(savedPrev);
         A.pbOut = 0;
         A.cool['mode_' + want] = Date.now() + 3500;
         if (want === 'dg' && !A.pbStartedAt) A.pbStartedAt = now;
@@ -6895,7 +6945,7 @@ class GameAutoPilot(
           }
         } else {
           note(want === 'dg'
-            ? 'Chuyen Tu chay Pho Ban (con luot)'
+            ? 'Chuyen Pho Ban (con luot)'
             : ('Chuyen Nhiem Vu (' + (dtCon ? ('Da Tau ' + dtToday + '/' + dtMax) : (stCon ? 'Sat Thu' : 'Phong Lang Do')) + ')'));
         }
       }
@@ -6905,7 +6955,8 @@ class GameAutoPilot(
         if (!isAlreadyOnTrainingMap(I, A.cfg.farmMap)) {
           await selectTrainingMap(I, A.cfg.farmMap);
         }
-      }    } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
+      }
+    } else if (!want && prev && MODE_VI[prev] && mode !== prev && (mode === 'quest' || mode === 'dg' || mode === 'tower')) {
       if (I.dg || I.sat || !ranh() || !ready('mode_restore', 8000)) return;
       if (await switchMode(prev)) {
         prevSet(null);
@@ -6915,7 +6966,6 @@ class GameAutoPilot(
       prevSet(null);
     }
   }
-
   function syncDailyDoneFlags(I) {
     if (!I) return;
     try {
@@ -6997,7 +7047,7 @@ class GameAutoPilot(
       if (pbXong()) done.push('PhoBan');
       else acts.push('PhoBan');
     }
-    if (A.cfg.thap || A.cfg.thapNeDon) {
+    if (A.cfg.tbk && !A.cfg.thapNeDon) {
       var tbkTag = (A.tbkStatus && A.tbkStatus.maxMin > 0) ? ('TBK(' + A.tbkStatus.usedMin + '/' + A.tbkStatus.maxMin + 'p)') : 'TBK';
       if (tbkXong()) done.push(tbkTag);
       else acts.push(tbkTag);
@@ -7118,9 +7168,15 @@ class GameAutoPilot(
       // BUOC 2: Viec ngay can mo bang/modal -> chay TRUOC khi chui vao Pho Ban / Thien Bao Kho de khong bi bo sot
       var Ipre = (await info()) || I0;
       syncDailyDoneFlags(Ipre);
-      var inBusyZone = !!(Ipre.dg || Ipre.tower || Ipre.sat || Ipre.dead || isInTowerNow());
+      var inBusyZone = !!(Ipre.dg || Ipre.tower || Ipre.sat || Ipre.dead || isInTowerNow() || isInTbkNow());
       if (!inBusyZone && A.cfg.on && (A.cfgSeq | 0) === runSeq) {
-        var modalTasks = [
+        var modalTasks = A.cfg.thapNeDon ? [
+          [khan, 'khan'],
+          [muaVaDungTinVatThienBaoKho, 'bangHoi'],
+          [muaTheGiaoDich, 'theGd'],
+          [muaKnb, 'knb'],
+          [doiNguyenLieuThua, 'suKien']
+        ] : [
           [suDungVatPhamTieuHao, 'buff'],
           [khan, 'khan'],
           [muaVaDungTinVatThienBaoKho, 'bangHoi'],
@@ -7132,7 +7188,7 @@ class GameAutoPilot(
           if (!await safeStep(modalTasks[mi][0], modalTasks[mi][1])) break;
         }
         // Neu vua doi LBDT/Goi Phuc Duyen tu Bang Hoi -> mo Phuc Duyen / mua bo sung ngay
-        if (A.cfg.pd && A.cfg.on && (A.cfgSeq | 0) === runSeq) {
+        if (!A.cfg.thapNeDon && A.cfg.pd && A.cfg.on && (A.cfgSeq | 0) === runSeq) {
           delete A.cool.pd_open;
           await safeStep(daTau, 'pdAfterBang');
         }
@@ -7158,11 +7214,11 @@ class GameAutoPilot(
         var dtDoneA = !(A.cfg.dt && lvA >= 20 && !dtA.du && ((dtA.today | 0) < ((dtA.max | 0) > 0 ? (dtA.max | 0) : 200) || ((Iafter.ldt | 0) > 0 && (dtA.con | 0) > 0)));
         var stDoneA = !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
         var pbDoneA = !(A.cfg.pb && !pbXong());
-        var tbkDoneA = !((A.cfg.thap || A.cfg.thapNeDon) && !tbkXong());
+        var tbkDoneA = !(A.cfg.tbk && !tbkXong());
         var curM = readDomModeFallback() || Iafter.mode || 'farm';
-        if ((A.cfg.afterDailyFarm || A.cfg.afterDailyEnabled) &&
+        if (!A.cfg.thapNeDon && A.cfg.afterDailyEnabled && A.cfg.afterDailyFarm && !A.cfg.thap &&
             A.cfg.farmMap && dtDoneA && stDoneA && pbDoneA && tbkDoneA &&
-            curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead && !isInTowerNow() &&
+            curM === 'farm' && !Iafter.dg && !Iafter.tower && !Iafter.sat && !Iafter.dead && !isInTowerNow() && !isInTbkNow() &&
             !isAlreadyOnTrainingMap(Iafter, A.cfg.farmMap)) {
           await selectTrainingMap(Iafter, A.cfg.farmMap);
         }
@@ -7866,6 +7922,98 @@ class GameAutoPilot(
     return null;
   }
 
+  function autoDetectTowerCombatProfile() {
+    var now = Date.now();
+    if (A._autoTowerProfile && (now - (A._autoTowerProfile.at || 0)) < 20000 && A._autoTowerProfile.style) {
+      return A._autoTowerProfile;
+    }
+    var sectRaw = '';
+    try {
+      if (A.st) sectRaw = String(A.st.phai || A.st.sect || A.st.monPhai || '');
+      if (!sectRaw && A.info) sectRaw = String(A.info.phai || A.info.sect || A.info.monPhai || '');
+    } catch (eS) {}
+    var sectNA = noAccent(sectRaw);
+
+    var found = null;
+
+    // Tang 1: Doc ten chieu tu API / trang thai nhan vat
+    var tryApiSkills = function (src) {
+      if (!src || typeof src !== 'object' || found) return;
+      var fields = [src.mainSkill, src.activeSkill, src.skill, src.chieu, src.curSkill];
+      if (Array.isArray(src.skills)) {
+        for (var si = 0; si < src.skills.length; si++) {
+          var sk = src.skills[si];
+          fields.push(typeof sk === 'string' ? sk : (sk && (sk.name || sk.ten || sk.id || sk.label)));
+        }
+      }
+      for (var fi = 0; fi < fields.length; fi++) {
+        var rawF = noAccent(String(fields[fi] || ''));
+        if (!rawF) continue;
+        var mF = matchSkillInList(rawF, ORBIT_MELEE_SKILLS);
+        if (mF) { found = { style: 'melee', skill: mF.label, sect: sectRaw, source: 'auto_api' }; return; }
+        var rF = matchSkillInList(rawF, ORBIT_RANGED_SKILLS);
+        if (rF) { found = { style: 'ranged', skill: rF.label, sect: sectRaw, source: 'auto_api' }; return; }
+      }
+    };
+    tryApiSkills(A.st);
+    tryApiSkills(A.info);
+
+    // Tang 2: Quet thanh chieu thuc tren HUD DOM (uu tien o chieu dang bat/chon)
+    if (!found) {
+      try {
+        var nodes = document.querySelectorAll('button, [role="button"], .skill, .sk, [data-skill], [title], [aria-label]');
+        var cap = Math.min(nodes.length, 260);
+        var bestHit = null;
+        var bestScore = -1;
+        for (var i = 0; i < cap; i++) {
+          var el = nodes[i];
+          if (!el || !isVis(el) || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+          if (el.closest && el.closest('#modal, #chatLines, #u20lines, #logBox, #u20log, #mswMenu, #tabs, #u20bar')) continue;
+          var txt = noAccent((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-skill') || ''));
+          if (!txt || txt.length > 90) continue;
+          var mD = matchSkillInList(txt, ORBIT_MELEE_SKILLS);
+          var rD = mD ? null : matchSkillInList(txt, ORBIT_RANGED_SKILLS);
+          var hit = mD || rD;
+          if (!hit) continue;
+          var cls = String(el.className || '').toLowerCase();
+          var score = 100;
+          if (cls.indexOf('active') >= 0 || cls.indexOf('on') >= 0 || cls.indexOf('sel') >= 0 ||
+              cls.indexOf('cur') >= 0 || el.getAttribute('aria-pressed') === 'true') {
+            score += 80;
+          }
+          if (txt.length <= 36) score += 25;
+          if (score > bestScore) {
+            bestScore = score;
+            bestHit = { style: mD ? 'melee' : 'ranged', skill: hit.label, sect: sectRaw, source: 'auto_hud' };
+          }
+        }
+        if (bestHit) found = bestHit;
+      } catch (eHud) {}
+    }
+
+    // Tang 3: Suy luan theo Mon phai (neu game an ten chieu tren HUD)
+    if (!found && sectNA) {
+      if (sectNA.indexOf('thien vuong') >= 0) {
+        found = { style: 'melee', skill: '', sect: 'Thiên Vương Bang', source: 'auto_sect' };
+      } else if (sectNA.indexOf('con lon') >= 0 || sectNA.indexOf('nga mi') >= 0 || sectNA.indexOf('nga my') >= 0 ||
+                 sectNA.indexOf('duong mon') >= 0 || sectNA.indexOf('cai bang') >= 0 ||
+                 sectNA.indexOf('thuy yen') >= 0 || sectNA.indexOf('ngu doc') >= 0) {
+        found = { style: 'ranged', skill: '', sect: sectRaw, source: 'auto_sect' };
+      } else if (sectNA.indexOf('vo dang') >= 0) {
+        found = { style: (sectNA.indexOf('kiem') >= 0 ? 'melee' : 'ranged'), skill: '', sect: sectRaw, source: 'auto_sect' };
+      } else if (sectNA.indexOf('thien nhan') >= 0) {
+        found = { style: (sectNA.indexOf('kich') >= 0 || sectNA.indexOf('chien') >= 0 ? 'melee' : 'ranged'), skill: '', sect: sectRaw, source: 'auto_sect' };
+      } else if (sectNA.indexOf('thieu lam') >= 0) {
+        found = { style: (sectNA.indexOf('dao') >= 0 ? 'ranged' : 'melee'), skill: '', sect: sectRaw, source: 'auto_sect' };
+      }
+    }
+
+    var res = found || { style: '', skill: '', sect: sectRaw, source: 'none' };
+    res.at = now;
+    A._autoTowerProfile = res;
+    return res;
+  }
+
   function resolveOrbitStyle() {
     var cfgStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
     var cleanedSkill = String(A.cfg.thapMainSkill || '').replace(/\([^)]*\)/g, ' ');
@@ -7874,26 +8022,79 @@ class GameAutoPilot(
     var rChosen = chosenRaw ? matchSkillInList(chosenRaw, ORBIT_RANGED_SKILLS) : null;
 
     if (cfgStyle === 'MELEE') {
-      return { style: 'melee', skill: (mChosen || rChosen) ? (mChosen || rChosen).label : '' };
+      return { style: 'melee', skill: (mChosen || rChosen) ? (mChosen || rChosen).label : '', sect: '', source: 'manual_style' };
     }
     if (cfgStyle === 'RANGED') {
-      return { style: 'ranged', skill: (mChosen || rChosen) ? (mChosen || rChosen).label : '' };
+      return { style: 'ranged', skill: (mChosen || rChosen) ? (mChosen || rChosen).label : '', sect: '', source: 'manual_style' };
     }
 
-    if (mChosen) return { style: 'melee', skill: mChosen.label };
-    if (rChosen) return { style: 'ranged', skill: rChosen.label };
-    return { style: '', skill: '' };
+    if (mChosen) return { style: 'melee', skill: mChosen.label, sect: '', source: 'manual_skill' };
+    if (rChosen) return { style: 'ranged', skill: rChosen.label, sect: '', source: 'manual_skill' };
+
+    return autoDetectTowerCombatProfile();
   }
 
-  function isInTowerNow() {
+  function logTowerCombatProfileOnce() {
+    try {
+      if (A.cfg.thapAfterMode !== 'ORBIT') return;
+      var r = resolveOrbitStyle();
+      var effStyle = r.style || 'ranged';
+      var sig = (r.source || '') + '|' + (r.skill || '') + '|' + (r.sect || '') + '|' + effStyle;
+      if (A._lastOrbitStyleLogSig === sig) return;
+      A._lastOrbitStyleLogSig = sig;
+      var modeStr = (effStyle === 'melee') ? 'Danh gan (90)' : 'Danh xa (400)';
+      var whoStr = r.skill ? ('Chieu: ' + r.skill) : (r.sect ? ('Phai: ' + r.sect) : 'Mac dinh');
+      var srcStr = (r.source && r.source.indexOf('manual') === 0) ? 'Chon tay' : 'Tu nhan dien';
+      note('[LeoThap] ' + srcStr + ' (' + whoStr + ') -> ' + modeStr);
+    } catch (eLogOrb) {}
+  }
+
+  function isInTbkNow() {
     try {
       if (A.st && Date.now() - A.stT < 15000) {
         if (A.st.o && A.st.o !== 'game') return false;
         if (A.st.dead || (typeof A.st.hp === 'number' && A.st.hp <= 0)) return false;
         if (A.st.noi) {
           var noiS = noAccent(String(A.st.noi)).toLowerCase();
-          if (noiS === 'thap' || noiS === 'tbk' || noiS === 'baokho' || noiS === 'thienbaokho' ||
-              noiS.indexOf('baokho') >= 0 || noiS.indexOf('thap') >= 0) return true;
+          if (noiS === 'tbk' || noiS === 'baokho' || noiS === 'thienbaokho' ||
+              noiS.indexOf('baokho') >= 0 || noiS.indexOf('thienbao') >= 0) return true;
+        }
+      }
+      if (A.info && !A.info.dead && A.info.tbk === true) return true;
+      var mBtn = document.getElementById('mswBtn');
+      var mTxt = mBtn ? noAccent(mBtn.textContent || '') : '';
+      var stg = document.getElementById('stageLbl');
+      var stTxt = stg ? noAccent(stg.textContent || '') : '';
+      if (mTxt.indexOf('thien bao') >= 0 || mTxt.indexOf('bao kho') >= 0 ||
+          stTxt.indexOf('thien bao') >= 0 || stTxt.indexOf('bao kho') >= 0) {
+        if (stTxt.indexOf('chua di') < 0) return true;
+      }
+      if (mTxt.indexOf('leo thap') < 0 && !(A.info && A.info.dg)) {
+        var rBtns = document.querySelectorAll('button, [role="button"], .btn');
+        var rCap = Math.min(rBtns.length, 140);
+        for (var ri = 0; ri < rCap; ri++) {
+          var rb = rBtns[ri];
+          if (!rb || !isVis(rb) || rb.disabled || rb.id === 'vlmAuto' || rb.id === 'mswBtn') continue;
+          if (rb.closest && rb.closest('#modal, #mswMenu, #tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
+          var rt = cleanUiLabel(rb.textContent || '');
+          if (rt === 'roi' || rt === 'bam lai de roi' || rt === 'roi thien bao kho' || rt === 'roi bao kho') {
+            return true;
+          }
+        }
+      }
+    } catch (eTbkNow) {}
+    return false;
+  }
+
+  function isInTowerNow() {
+    try {
+      if (isInTbkNow()) return false;
+      if (A.st && Date.now() - A.stT < 15000) {
+        if (A.st.o && A.st.o !== 'game') return false;
+        if (A.st.dead || (typeof A.st.hp === 'number' && A.st.hp <= 0)) return false;
+        if (A.st.noi) {
+          var noiS = noAccent(String(A.st.noi)).toLowerCase();
+          if (noiS === 'thap' || (noiS.indexOf('thap') >= 0 && noiS.indexOf('baokho') < 0)) return true;
         }
       }
       if (A.info) {
@@ -7902,33 +8103,24 @@ class GameAutoPilot(
       }
       var mBtn = document.getElementById('mswBtn');
       var mTxt = mBtn ? noAccent(mBtn.textContent || '') : '';
-      if (mTxt.indexOf('leo thap') >= 0 || mTxt.indexOf('thien bao kho') >= 0 || mTxt.indexOf('bao kho') >= 0) {
+      if (mTxt.indexOf('leo thap') >= 0) {
         var stg = document.getElementById('stageLbl');
         var stTxt = stg ? noAccent(stg.textContent || '') : '';
         if (stTxt.indexOf('chua di') >= 0) return false;
-        if (stTxt.indexOf('tang') >= 0 || stTxt.indexOf('thap') >= 0 || stTxt.indexOf('bao kho') >= 0 || stTxt.indexOf('thien bao') >= 0 || (A.info && A.info.mode === 'tower')) {
+        if (stTxt.indexOf('tang') >= 0 || stTxt.indexOf('thap') >= 0 || (A.info && A.info.mode === 'tower')) {
           return true;
-        }
-      }
-      // Nhan dien them nut do "Roi" / "Bam lai de roi" khi dang dung trong Thien Bao Kho
-      var rBtns = document.querySelectorAll('button, [role="button"], .btn');
-      var rCap = Math.min(rBtns.length, 140);
-      for (var ri = 0; ri < rCap; ri++) {
-        var rb = rBtns[ri];
-        if (!rb || !isVis(rb) || rb.disabled || rb.id === 'vlmAuto' || rb.id === 'mswBtn') continue;
-        if (rb.closest && rb.closest('#modal, #mswMenu, #tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var rt = cleanUiLabel(rb.textContent || '');
-        if (rt === 'roi' || rt === 'bam lai de roi' || rt === 'roi thien bao kho') {
-          if (!(A.info && A.info.dg)) return true;
         }
       }
     } catch (e) {}
     return false;
   }
-  function isTowerOrbitEnabled() {
-    return !!(A.cfg.on && (A.cfg.thap || A.cfg.thapNeDon) && A.cfg.thapAfterMode === 'ORBIT');
-  }
 
+  function isTowerOrbitEnabled() {
+    if (!A.cfg.on) return false;
+    if (A.cfg.thapAfterMode !== 'ORBIT') return false;
+    if (A.cfg.thapNeDon) return true;
+    return !!(A.cfg.afterDailyEnabled && A.cfg.thap && !A.cfg.afterDailyFarm);
+  }
   function isOrbitEligible() {
     if (!isTowerOrbitEnabled()) return false;
     if (isUserControlling(3500)) return false;
@@ -7948,7 +8140,7 @@ class GameAutoPilot(
         if (pe && !pe.classList.contains('hidden') && isVis(pe)) return false;
       }
     } catch (e) { return false; }
-    return isInTowerNow();
+    return !isInTbkNow() && isInTowerNow();
   }
 
   function findPrimaryGameCanvas() {
