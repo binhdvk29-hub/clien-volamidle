@@ -461,7 +461,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-88"
+        const val SCRIPT_VER = "vlmauto-89"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1241,6 +1241,7 @@ class GameAutoPilot(
       var c = (typeof j === 'string') ? JSON.parse(j) : (j || {});
       var __prevFarmKey = (A.cfg && A.cfg.farmMap) ? normalizeMapCompareKey(A.cfg.farmMap) : '';
       var __prevEvJson = JSON.stringify((A.cfg && A.cfg.doiNguyenLieu) || []);
+      var __prevTowerCfgSig = String((A.cfg && A.cfg.thapMainSkill) || '') + '|' + String((A.cfg && A.cfg.thapNeDonStyle) || '') + '|' + String((A.cfg && A.cfg.thapAfterMode) || '');
       A.cfg = Object.assign({}, DEF, c || {});
       A.cfg.afterDailyEnabled = !!A.cfg.afterDailyEnabled;
       A.cfg.afterDailyFarm = !!A.cfg.afterDailyFarm;
@@ -1254,8 +1255,11 @@ class GameAutoPilot(
         A.cfg.thap = false;
         A.cfg.thapNeDon = false;
       }
-      A._autoTowerProfile = null;
-      A._lastOrbitStyleLogSig = '';
+      var __newTowerCfgSig = String(A.cfg.thapMainSkill || '') + '|' + String(A.cfg.thapNeDonStyle || '') + '|' + String(A.cfg.thapAfterMode || '');
+      if (__newTowerCfgSig !== __prevTowerCfgSig) {
+        A._autoTowerProfile = null;
+        A._lastOrbitStyleLogSig = '';
+      }
       var __rawFarmNA = noAccent(A.cfg.farmMap || '').replace(/\s+/g, ' ').trim();
       if (__rawFarmNA.indexOf('vi son') >= 0 || __rawFarmNA.indexOf('son dao') >= 0) A.cfg.farmMap = 'Vi sơn đảo';
       else if (__rawFarmNA.indexOf('mac bac') >= 0 || __rawFarmNA.indexOf('thao nguyen') >= 0) A.cfg.farmMap = 'Mạc Bắc Thảo Nguyên';
@@ -6621,11 +6625,11 @@ class GameAutoPilot(
     async function switchMode(targetMode) {
       if (targetMode !== 'tower') {
         try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eSwRel) {}
-      }
-      var r = await api('cheDo', { m: targetMode }, 2200);
-      if (r && r.ok && r.m === targetMode) {
-        ensureGameAutoOn(false);
-        return true;
+        var r = await api('cheDo', { m: targetMode }, 2200);
+        if (r && r.ok && r.m === targetMode) {
+          ensureGameAutoOn(false);
+          return true;
+        }
       }
 
       var modeKeywords = {
@@ -6636,92 +6640,172 @@ class GameAutoPilot(
       };
       var kws = modeKeywords[targetMode] || [];
 
-      var findModeMenuItem = function () {
-        var direct = document.querySelector('#mswMenu [data-msw="' + targetMode + '"], [data-msw="' + targetMode + '"], [data-mode="' + targetMode + '"]');
-        if (direct) return direct;
-        var menuEl = document.getElementById('mswMenu') || document.getElementById('modeSw') || document.body;
-        var nodes = menuEl.querySelectorAll('button, [role="button"], [role="menuitem"], .item, li, a, div');
-        var cap = Math.min(nodes.length, 240);
-        for (var i = 0; i < cap; i++) {
-          var el = nodes[i];
-          if (!el || el.id === 'mswBtn' || el.id === 'vlmAuto') continue;
-          if (el.children && el.children.length > 2) continue;
-          var txt = noAccent(el.textContent || '').replace(/\s+/g, ' ').trim();
-          if (!txt || txt.length > 28 || txt.indexOf('che do') === 0) continue;
-          for (var k = 0; k < kws.length; k++) {
-            if (txt === kws[k] || txt.indexOf(kws[k]) >= 0) return el;
-          }
+      var matchItemText = function (rawTxt) {
+        var txt = noAccent(rawTxt || '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!txt || txt.length > 28 || txt.indexOf('che do') === 0) return false;
+        if (targetMode === 'tower' && (txt.indexOf('bao kho') >= 0 || txt.indexOf('thien bao') >= 0)) return false;
+        for (var k = 0; k < kws.length; k++) {
+          if (txt === kws[k] || txt.indexOf(kws[k]) >= 0) return true;
         }
-        return null;
+        return false;
       };
 
       var findModeTriggerBtn = function () {
         var b = document.getElementById('mswBtn');
         if (b && isVis(b)) return b;
-        var btns = document.querySelectorAll('button, [role="button"], .btn');
-        var cap = Math.min(btns.length, 160);
+        var btns = document.querySelectorAll('button, [role="button"], .btn, div');
+        var cap = Math.min(btns.length, 220);
         for (var i = 0; i < cap; i++) {
-          if (!isVis(btns[i]) || btns[i].id === 'vlmAuto') continue;
-          var bt = noAccent(btns[i].textContent || '').replace(/\s+/g, ' ').trim();
-          if (bt.indexOf('che do:') === 0 || bt.indexOf('che do ') === 0) return btns[i];
+          var el = btns[i];
+          if (!el || !isVis(el) || el.id === 'vlmAuto') continue;
+          if (el.children && el.children.length > 3) continue;
+          var bt = noAccent(el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (bt.indexOf('che do:') === 0 || bt.indexOf('che do ') === 0) return el;
         }
         return null;
+      };
+
+      var findModeMenuItem = function (requireVis, triggerEl) {
+        if (targetMode !== 'tower') {
+          var direct = document.querySelector('#mswMenu [data-msw="' + targetMode + '"], [data-msw="' + targetMode + '"], [data-mode="' + targetMode + '"]');
+          if (direct && (!requireVis || isVis(direct))) return direct;
+        } else {
+          var directTower = document.querySelectorAll('#mswMenu [data-msw], [data-msw], [data-mode]');
+          for (var dt = 0; dt < directTower.length; dt++) {
+            var dEl = directTower[dt];
+            if (!dEl || dEl.id === 'mswBtn' || dEl.id === 'vlmAuto') continue;
+            if (requireVis && !isVis(dEl)) continue;
+            if (matchItemText(dEl.textContent || '')) return dEl;
+          }
+        }
+
+        var containers = [];
+        var mMenu = document.getElementById('mswMenu');
+        var mSw = document.getElementById('modeSw');
+        if (mMenu) containers.push(mMenu);
+        if (mSw && mSw !== mMenu) containers.push(mSw);
+        if (requireVis) containers.push(document.body);
+
+        var trigRect = (triggerEl && triggerEl.getBoundingClientRect) ? triggerEl.getBoundingClientRect() : null;
+        var best = null;
+        var bestScore = -99999;
+
+        for (var ci = 0; ci < containers.length; ci++) {
+          var rootEl = containers[ci];
+          var nodes = rootEl.querySelectorAll('button, [role="button"], [role="menuitem"], .item, li, a, div, span');
+          var cap = Math.min(nodes.length, 320);
+          for (var i = 0; i < cap; i++) {
+            var el = nodes[i];
+            if (!el || el.id === 'mswBtn' || el.id === 'vlmAuto') continue;
+            if (requireVis && !isVis(el)) continue;
+            if (el.closest && el.closest('#modal, #tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
+            if (el.children && el.children.length > 3) continue;
+            if (!matchItemText(el.textContent || '')) continue;
+
+            var score = 200 - (el.textContent || '').trim().length;
+            if (mMenu && mMenu.contains(el)) score += 300;
+            else if (mSw && mSw.contains(el)) score += 200;
+            if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button' || el.getAttribute('role') === 'menuitem') score += 40;
+            if (trigRect && el.getBoundingClientRect) {
+              var er = el.getBoundingClientRect();
+              var dx = Math.abs(er.left - trigRect.left);
+              var dy = Math.abs(er.top - trigRect.top);
+              if (dx <= 140 && dy <= 340) score += 160;
+              else if (rootEl === document.body) score -= 120;
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              best = el;
+            }
+          }
+          if (best && ci < 2) return best;
+        }
+        return best;
+      };
+
+      var verifySwitched = async function () {
+        var domM = readDomModeFallback();
+        if (targetMode === 'tower') {
+          if (domM === 'tower' || isInTowerNow()) return true;
+          return false;
+        }
+        if (domM === targetMode) return true;
+        var Icheck = await info();
+        return !!(Icheck && Icheck.mode === targetMode);
       };
 
       try {
         var mBtn = findModeTriggerBtn();
         var menu = document.getElementById('mswMenu');
-        var item = findModeMenuItem();
-        if (mBtn && (!item || !isVis(item) || (menu && menu.classList.contains('hidden')))) {
-          try { dispatchRealUiClick(mBtn); } catch (eB1) { try { mBtn.click(); } catch (eB2) {} }
-          await sleep(180);
-          item = findModeMenuItem();
-        }
-        if (item) {
-          try { dispatchRealUiClick(item); } catch (eI1) { try { item.click(); } catch (eI2) {} }
-          await sleep(260);
-          if (menu && !menu.classList.contains('hidden')) {
-            try { menu.classList.add('hidden'); } catch (eM) {}
+        var item = findModeMenuItem(true, mBtn);
+        if (mBtn && (!item || (menu && menu.classList.contains('hidden')))) {
+          try { mBtn.click(); } catch (eB0) {
+            try { dispatchRealUiClick(mBtn); } catch (eB1) {}
           }
-          await sleep(160);
-          if (readDomModeFallback() === targetMode) {
+          await sleep(240);
+          item = findModeMenuItem(true, mBtn);
+          if (!item) {
+            try { dispatchRealUiClick(mBtn); } catch (eB2) {}
+            await sleep(240);
+            item = findModeMenuItem(true, mBtn);
+          }
+        }
+        if (!item) item = findModeMenuItem(false, mBtn);
+
+        if (item) {
+          try { item.click(); } catch (eI0) {
+            try { dispatchRealUiClick(item); } catch (eI1) {}
+          }
+          await sleep(360);
+          if (await verifySwitched()) {
+            if (menu && !menu.classList.contains('hidden')) {
+              try { menu.classList.add('hidden'); } catch (eM1) {}
+            }
             ensureGameAutoOn(false);
             return true;
           }
-          var Icheck = await info();
-          if (Icheck && Icheck.mode === targetMode) {
+          // Thu nhan lai bang su kien day du 1 lan neu click thuong chua an
+          try { dispatchRealUiClick(item); } catch (eI2) {}
+          await sleep(360);
+          if (menu && !menu.classList.contains('hidden')) {
+            try { menu.classList.add('hidden'); } catch (eM2) {}
+          }
+          if (await verifySwitched()) {
             ensureGameAutoOn(false);
             return true;
           }
         }
 
-        var selects = document.querySelectorAll('select');
-        for (var si = 0; si < selects.length; si++) {
-          var sel = selects[si];
-          if (!isVis(sel)) continue;
-          var opts = sel.options || [];
-          for (var oi = 0; oi < opts.length; oi++) {
-            var opt = opts[oi];
-            var ot = noAccent((opt.text || '') + ' ' + (opt.value || ''));
-            var hit = (opt.value === targetMode);
-            for (var kk = 0; !hit && kk < kws.length; kk++) {
-              if (ot.indexOf(kws[kk]) >= 0) hit = true;
-            }
-            if (hit) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              await sleep(280);
-              if (readDomModeFallback() === targetMode) {
-                ensureGameAutoOn(false);
-                return true;
+        if (targetMode !== 'tower') {
+          var selects = document.querySelectorAll('select');
+          for (var si = 0; si < selects.length; si++) {
+            var sel = selects[si];
+            if (!isVis(sel)) continue;
+            var opts = sel.options || [];
+            for (var oi = 0; oi < opts.length; oi++) {
+              var opt = opts[oi];
+              var ot = noAccent((opt.text || '') + ' ' + (opt.value || ''));
+              var hit = (opt.value === targetMode);
+              for (var kk = 0; !hit && kk < kws.length; kk++) {
+                if (ot.indexOf(kws[kk]) >= 0) hit = true;
+              }
+              if (hit) {
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                await sleep(280);
+                if (readDomModeFallback() === targetMode) {
+                  ensureGameAutoOn(false);
+                  return true;
+                }
               }
             }
           }
+        } else if (ready('tower_switch_fail_note', 20000)) {
+          note('[LeoThap] Chua bam duoc muc Leo Thap trong Che Do (btn=' + (mBtn ? 'ok' : 'null') + ', item=' + (item ? 'ok' : 'null') + ', mode=' + (readDomModeFallback() || '?') + ')');
         }
       } catch (eDom) {}
       return false;
     }
-
     // 3. UU TIEN KHUNG GIO: 4 moc Boss Hoang Kim (12:00, 15:30, 19:30, 22:00)
     var activeBossSlot = getActiveBossHkSlot();
     var savedBossPrev = bossHkPrevGet();
@@ -6914,19 +6998,17 @@ class GameAutoPilot(
     } else if (want === 'tower') {
       if (I.dead || I.sat || I.dg) return;
       if (!justSaved && isUserControlling(3500)) return;
-      if (inTowerRightNow) {
+      var domModeTower = readDomModeFallback();
+      if (inTowerRightNow || domModeTower === 'tower') {
         ensureGameAutoOn(false);
         logTowerCombatProfileOnce();
-      } else if (mode !== 'tower') {
-        if (!justSaved && (!ranh() || !ready('mode_tower', 3500))) return;
+      } else {
+        if (!justSaved && (!ranh() || !ready('mode_tower', 4500))) return;
+        A.cool.mode_tower = Date.now() + 4500;
         if (await switchMode('tower')) {
-          A.cool.mode_tower = Date.now() + 3500;
           note((forceOnlyTower ? 'Chi Leo Thap: ' : 'Xong hoat dong -> ') + 'Chuyen Leo Thap (' + towerModeLabel + ')');
           logTowerCombatProfileOnce();
         }
-      } else {
-        ensureGameAutoOn(false);
-        logTowerCombatProfileOnce();
       }
     } else if (want && mode !== want) {
       if (I.dead || I.sat || I.dg) return;
@@ -8101,13 +8183,11 @@ class GameAutoPilot(
         if (A.info.dead) return false;
         if (A.info.tower === true) return true;
       }
-      var mBtn = document.getElementById('mswBtn');
-      var mTxt = mBtn ? noAccent(mBtn.textContent || '') : '';
-      if (mTxt.indexOf('leo thap') >= 0) {
+      if (readDomModeFallback() === 'tower') {
         var stg = document.getElementById('stageLbl');
         var stTxt = stg ? noAccent(stg.textContent || '') : '';
         if (stTxt.indexOf('chua di') >= 0) return false;
-        if (stTxt.indexOf('tang') >= 0 || stTxt.indexOf('thap') >= 0 || (A.info && A.info.mode === 'tower')) {
+        if (!stg || !stTxt || stTxt.indexOf('tang') >= 0 || stTxt.indexOf('thap') >= 0 || !(A.info && A.info.dg)) {
           return true;
         }
       }
