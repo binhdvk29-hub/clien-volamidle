@@ -121,6 +121,8 @@ fun ControlSheet(
     onToggleHideGame: () -> Unit = {},
     isPcMode: Boolean = false,
     onTogglePcMode: () -> Unit = {},
+    isUltraLightTab: Boolean = false,
+    onToggleUltraLightTab: () -> Unit = {},
     isTestChannel: Boolean = false,
     updateStatusLabel: String = "🔄 Cập nhật",
     onCheckUpdate: () -> Unit = {},
@@ -774,6 +776,27 @@ fun ControlSheet(
                         onClick = {
                             onInteract()
                             onOpenAutoConfig()
+                        }
+                    )
+
+                    // Hàng 7b: ⚡ Siêu nhẹ (riêng từng tab - 1 tích chọn)
+                    SheetButton(
+                        label = if (isUltraLightTab) {
+                            "⚡ Siêu nhẹ (Tab ${tabIndex + 1}) · 🟢 ĐANG BẬT"
+                        } else {
+                            "⚡ Siêu nhẹ (Tab ${tabIndex + 1}) · ⚪ Đang tắt"
+                        },
+                        fill = if (isUltraLightTab) Color(0xFF0E7490) else Color(0xFF1E293B),
+                        contentColor = Color.White,
+                        borderColor = if (isUltraLightTab) Color(0xFF38BDF8) else Color(0xFF334155),
+                        fontSize = 10.5.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp)
+                            .testTag("sheet_ultra_light_tab"),
+                        onClick = {
+                            onInteract()
+                            onToggleUltraLightTab()
                         }
                     )
 

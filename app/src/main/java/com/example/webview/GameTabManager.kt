@@ -180,6 +180,8 @@ class GameTabManager(
     @Volatile
     private var isPcModeActive: Boolean = prefs.getPcMode()
 
+    private val ultraLightTabs = BooleanArray(TabLimits.SLOT_COUNT) { i -> prefs.getUltraLight(i) }
+
     @Volatile
     private var visibleTabsInLayout: Set<Int> = (0 until TabLimits.SLOT_COUNT).toSet()
 
@@ -504,6 +506,10 @@ class GameTabManager(
                 )
                 view?.evaluateJavascript(
                     buildPcModeScript(isPcModeActive),
+                    null
+                )
+                view?.evaluateJavascript(
+                    buildUltraLightScript(ultraLightTabs.getOrNull(tabIndex) == true),
                     null
                 )
                 if (url != null && url != "about:blank") {
@@ -1147,6 +1153,342 @@ class GameTabManager(
                     setTimeout(function() {
                         try { window.dispatchEvent(new Event('resize')); } catch (e) {}
                     }, 80);
+                } catch (e) {}
+            })($flag);
+        """.trimIndent()
+    }
+
+    fun setTabUltraLight(tabIndex: Int, enabled: Boolean) {
+        if (tabIndex !in 0 until TabLimits.SLOT_COUNT) return
+        ultraLightTabs[tabIndex] = enabled
+        prefs.setUltraLight(tabIndex, enabled)
+        val statusMsg = if (enabled) {
+            "⚡ Siêu nhẹ: ĐANG BẬT (Ngủ đồ họa + 2 FPS + Ẩn chat)"
+        } else {
+            "⚡ Siêu nhẹ: Đã tắt"
+        }
+        appendGameLog(tabIndex, if (enabled) "Bat che do Sieu nhe (Tab ${tabIndex + 1})" else "Tat che do Sieu nhe (Tab ${tabIndex + 1})")
+        mainHandler.post {
+            val wv = webViews.getOrNull(tabIndex)
+            try {
+                if (wv != null && wv.url != null && wv.url != "about:blank") {
+                    wv.evaluateJavascript(buildUltraLightScript(enabled), null)
+                }
+                if (isTabActive.getOrNull(tabIndex) == true) {
+                    updateStatus(tabIndex, statusMsg)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun buildUltraLightScript(enabled: Boolean): String {
+        val flag = if (enabled) "true" else "false"
+        return """
+            (function(ulOn) {
+                try {
+                    var CSS_ID = '__vlm_ultra_light_css';
+                    var S = window.__vlmUltraLight;
+                    if (!S) {
+                        S = window.__vlmUltraLight = {
+                            on: false,
+                            lastTouch: 0,
+                            wakeTimer: 0,
+                            pruneTimer: 0,
+                            syncTimer: 0,
+                            gameSynced: false,
+                            syncTries: 0,
+                            rafWrapped: false,
+                            touchBound: false,
+                            origRaf: null,
+                            origCaf: null,
+                            lastRafAt: 0,
+                            pending: {},
+                            nextId: 910000
+                        };
+                    }
+                    S.on = !!ulOn;
+
+                    var root = document.documentElement;
+                    var ensureCss = function() {
+                        var el = document.getElementById(CSS_ID);
+                        if (!el) {
+                            el = document.createElement('style');
+                            el.id = CSS_ID;
+                            (document.head || root).appendChild(el);
+                        }
+                        el.textContent =
+                            'html.__vlm-ul-on #chatBox, html.__vlm-ul-on #chatLines, html.__vlm-ul-on #u20lines, ' +
+                            'html.__vlm-ul-on #logBox, html.__vlm-ul-on #u20log, html.__vlm-ul-on #chatWrap, ' +
+                            'html.__vlm-ul-on #chatPanel, html.__vlm-ul-on .chat-box, html.__vlm-ul-on .chat-panel { ' +
+                            '  display: none !important; ' +
+                            '} ' +
+                            'html.__vlm-ul-on *, html.__vlm-ul-on *::before, html.__vlm-ul-on *::after { ' +
+                            '  animation: none !important; transition: none !important; ' +
+                            '  box-shadow: none !important; text-shadow: none !important; ' +
+                            '  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; ' +
+                            '} ' +
+                            'html.__vlm-ul-on:not(.__vlm-ul-awake) canvas { ' +
+                            '  opacity: 0.015 !important; ' +
+                            '}';
+                    };
+
+                    var pruneChatDom = function() {
+                        if (!S.on) return;
+                        try {
+                            var ids = ['chatLines', 'u20lines', 'logBox', 'u20log'];
+                            for (var i = 0; i < ids.length; i++) {
+                                var box = document.getElementById(ids[i]);
+                                if (!box || !box.children) continue;
+                                var extra = box.children.length - 15;
+                                while (extra > 0 && box.firstElementChild) {
+                                    box.removeChild(box.firstElementChild);
+                                    extra--;
+                                }
+                            }
+                        } catch (eP) {}
+                    };
+
+                    var markUserTouch = function(ev) {
+                        if (ev && ev.isTrusted === false) return;
+                        S.lastTouch = Date.now();
+                        if (!S.on) return;
+                        try { if (root) root.classList.add('__vlm-ul-awake'); } catch (eW1) {}
+                        if (S.wakeTimer) clearTimeout(S.wakeTimer);
+                        S.wakeTimer = setTimeout(function() {
+                            S.wakeTimer = 0;
+                            if (!S.on) return;
+                            if (Date.now() - (S.lastTouch || 0) >= 9800 && !window.__vlmOrbitSpyActive) {
+                                try { if (root) root.classList.remove('__vlm-ul-awake'); } catch (eW2) {}
+                            }
+                        }, 10000);
+                    };
+
+                    if (!S.touchBound) {
+                        S.touchBound = true;
+                        window.addEventListener('pointerdown', markUserTouch, true);
+                        window.addEventListener('touchstart', markUserTouch, { capture: true, passive: true });
+                    }
+
+                    if (!S.rafWrapped && typeof window.requestAnimationFrame === 'function') {
+                        S.rafWrapped = true;
+                        S.origRaf = window.requestAnimationFrame.bind(window);
+                        S.origCaf = typeof window.cancelAnimationFrame === 'function'
+                            ? window.cancelAnimationFrame.bind(window)
+                            : function() {};
+
+                        window.requestAnimationFrame = function(cb) {
+                            var st = window.__vlmUltraLight;
+                            if (!st || !st.on || typeof cb !== 'function') {
+                                return S.origRaf(cb);
+                            }
+                            var now = Date.now();
+                            var orbitBusy = !!window.__vlmOrbitSpyActive;
+                            var userAwake = (now - (st.lastTouch || 0)) < 10000;
+                            var modalOpen = false;
+                            try {
+                                var md = document.getElementById('modal');
+                                if (md && !md.classList.contains('hidden') && !(root && root.classList.contains('__vlm-stealth'))) {
+                                    modalOpen = true;
+                                }
+                            } catch (eMd) {}
+
+                            if (orbitBusy || userAwake || modalOpen) {
+                                try { if (root && !root.classList.contains('__vlm-ul-awake')) root.classList.add('__vlm-ul-awake'); } catch (eAw1) {}
+                                st.lastRafAt = now;
+                                return S.origRaf(cb);
+                            }
+                            try { if (root && root.classList.contains('__vlm-ul-awake')) root.classList.remove('__vlm-ul-awake'); } catch (eAw2) {}
+
+                            var wait = 500 - (now - (st.lastRafAt || 0));
+                            if (wait <= 16) {
+                                st.lastRafAt = now;
+                                return S.origRaf(cb);
+                            }
+                            var fakeId = ++st.nextId;
+                            var entry = { tid: 0, rid: 0, canceled: false };
+                            st.pending[fakeId] = entry;
+                            entry.tid = setTimeout(function() {
+                                entry.tid = 0;
+                                if (entry.canceled) { delete st.pending[fakeId]; return; }
+                                st.lastRafAt = Date.now();
+                                entry.rid = S.origRaf(function(ts) {
+                                    delete st.pending[fakeId];
+                                    if (!entry.canceled) cb(ts);
+                                });
+                            }, wait);
+                            return fakeId;
+                        };
+
+                        window.cancelAnimationFrame = function(id) {
+                            var st = window.__vlmUltraLight;
+                            var entry = st && st.pending && st.pending[id];
+                            if (entry) {
+                                entry.canceled = true;
+                                if (entry.tid) clearTimeout(entry.tid);
+                                if (entry.rid) S.origCaf(entry.rid);
+                                delete st.pending[id];
+                                return;
+                            }
+                            return S.origCaf(id);
+                        };
+                    }
+
+                    var noAcc = function(str) {
+                        return String(str || '').toLowerCase().normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
+                            .replace(/\s+/g, ' ').trim();
+                    };
+
+                    var trySyncGameLowSpec = function() {
+                        if (!S.on || S.gameSynced) return;
+                        if (S.syncTries >= 4) return;
+                        var now = Date.now();
+                        var hasHud = !!(document.getElementById('modeSw') || document.getElementById('ktcBtn') || document.getElementById('mswBtn'));
+                        var modalBusy = !!(window.__vlmModalLockUntil && now < window.__vlmModalLockUntil);
+                        var stealthBusy = !!(root && root.classList.contains('__vlm-stealth'));
+                        var md = document.getElementById('modal');
+                        var modalVisible = !!(md && !md.classList.contains('hidden'));
+                        if (!hasHud || modalBusy || stealthBusy || modalVisible) {
+                            S.syncTries++;
+                            if (S.syncTries < 4 && S.on) {
+                                S.syncTimer = setTimeout(trySyncGameLowSpec, 6000);
+                            }
+                            return;
+                        }
+
+                        var findSysBtn = function() {
+                            var ids = ['sysBtn', 'heThongBtn', 'btnSys', 'u20sys', 'setBtn', 'optBtn'];
+                            for (var i = 0; i < ids.length; i++) {
+                                var b = document.getElementById(ids[i]);
+                                if (b && !b.disabled && b.offsetParent !== null) return b;
+                            }
+                            var qs = document.querySelectorAll('button, [role="button"], a');
+                            for (var j = 0; j < Math.min(qs.length, 220); j++) {
+                                var q = qs[j];
+                                if (!q || q.disabled || q.offsetParent === null) continue;
+                                if (q.closest && q.closest('#modal, #chatLines, #u20lines, #logBox, #u20log')) continue;
+                                var tx = noAcc(q.textContent || q.getAttribute('title') || q.getAttribute('aria-label') || '');
+                                if (tx === 'he thong') return q;
+                            }
+                            return null;
+                        };
+
+                        var sysBtn = findSysBtn();
+                        if (!sysBtn) {
+                            S.syncTries++;
+                            if (S.syncTries < 4 && S.on) S.syncTimer = setTimeout(trySyncGameLowSpec, 6000);
+                            return;
+                        }
+
+                        S.syncTries++;
+                        window.__vlmModalLockUntil = Date.now() + 4500;
+                        var usedSharedStealth = !!(window.__vlmStealth && typeof window.__vlmStealth.enter === 'function');
+                        if (usedSharedStealth) {
+                            window.__vlmStealth.enter();
+                        } else {
+                            try { if (root) root.classList.add('__vlm-stealth'); } catch (eSt) {}
+                        }
+
+                        var finishSync = function() {
+                            try {
+                                var mEnd = document.getElementById('modal');
+                                if (mEnd && !mEnd.classList.contains('hidden')) {
+                                    var xBtn = document.getElementById('mClose');
+                                    if (xBtn) xBtn.click();
+                                    else mEnd.click();
+                                }
+                            } catch (eCl) {}
+                            setTimeout(function() {
+                                if (usedSharedStealth && window.__vlmStealth && typeof window.__vlmStealth.leave === 'function') {
+                                    window.__vlmStealth.leave();
+                                } else {
+                                    try { if (root) root.classList.remove('__vlm-stealth'); } catch (eSt2) {}
+                                }
+                                window.__vlmModalLockUntil = 0;
+                            }, 160);
+                        };
+
+                        try { sysBtn.click(); } catch (eClick) { finishSync(); return; }
+
+                        setTimeout(function() {
+                            try {
+                                var mBody = document.getElementById('mBody') || document.getElementById('modal');
+                                if (!mBody) { finishSync(); return; }
+                                var tabs = mBody.querySelectorAll('button, [role="tab"], a');
+                                for (var ti = 0; ti < tabs.length; ti++) {
+                                    var tt = noAcc(tabs[ti].textContent || '');
+                                    if (tt === 'tuy chon' || tt === 'cai dat' || tt === 'hien thi') {
+                                        try { tabs[ti].click(); } catch (eTab) {}
+                                        break;
+                                    }
+                                }
+                                setTimeout(function() {
+                                    try {
+                                        var area = document.getElementById('mBody') || document.getElementById('modal');
+                                        if (area) {
+                                            var cbs = area.querySelectorAll('input[type="checkbox"]');
+                                            var changed = 0;
+                                            for (var ci = 0; ci < cbs.length; ci++) {
+                                                var cb = cbs[ci];
+                                                if (!cb || cb.disabled || cb.checked) continue;
+                                                var row = cb.closest('label, .qrow, .opt, .row, li, tr, div');
+                                                var rt = noAcc(row ? row.textContent : '');
+                                                if (!rt || rt.length > 160) continue;
+                                                if (rt.indexOf('man hinh den') >= 0 || rt.indexOf('tat man hinh') >= 0 ||
+                                                    rt.indexOf('tu dong') >= 0 || rt.indexOf('auto') >= 0 ||
+                                                    rt.indexOf('am thanh') >= 0 || rt.indexOf('nhac') >= 0 ||
+                                                    rt.indexOf('dang xuat') >= 0 || rt.indexOf('xoa') >= 0) continue;
+                                                var wantOn = (rt.indexOf('tiet kiem') >= 0 ||
+                                                    rt.indexOf('giam hieu ung') >= 0 ||
+                                                    rt.indexOf('an hieu ung') >= 0 ||
+                                                    rt.indexOf('tat hieu ung') >= 0 ||
+                                                    rt.indexOf('an nguoi choi') >= 0 ||
+                                                    rt.indexOf('an nhan vat khac') >= 0 ||
+                                                    rt.indexOf('an sat thuong') >= 0 ||
+                                                    rt.indexOf('an chu bay') >= 0 ||
+                                                    rt.indexOf('che do nhe') >= 0 ||
+                                                    rt.indexOf('do hoa thap') >= 0);
+                                                if (wantOn) {
+                                                    try { cb.click(); changed++; } catch (eCb) {}
+                                                }
+                                            }
+                                            S.gameSynced = true;
+                                        }
+                                    } finally {
+                                        finishSync();
+                                    }
+                                }, 260);
+                            } catch (eIn) {
+                                finishSync();
+                            }
+                        }, 360);
+                    };
+
+                    if (S.on) {
+                        ensureCss();
+                        if (root) {
+                            root.classList.add('__vlm-ul-on');
+                            root.classList.remove('__vlm-ul-awake');
+                        }
+                        pruneChatDom();
+                        if (S.pruneTimer) clearInterval(S.pruneTimer);
+                        S.pruneTimer = setInterval(pruneChatDom, 30000);
+                        if (S.syncTimer) clearTimeout(S.syncTimer);
+                        if (!S.gameSynced) {
+                            S.syncTries = 0;
+                            S.syncTimer = setTimeout(trySyncGameLowSpec, 4200);
+                        }
+                    } else {
+                        if (S.pruneTimer) { clearInterval(S.pruneTimer); S.pruneTimer = 0; }
+                        if (S.syncTimer) { clearTimeout(S.syncTimer); S.syncTimer = 0; }
+                        if (S.wakeTimer) { clearTimeout(S.wakeTimer); S.wakeTimer = 0; }
+                        if (root) {
+                            root.classList.remove('__vlm-ul-on');
+                            root.classList.remove('__vlm-ul-awake');
+                        }
+                        var cssEl = document.getElementById(CSS_ID);
+                        if (cssEl) cssEl.remove();
+                    }
                 } catch (e) {}
             })($flag);
         """.trimIndent()

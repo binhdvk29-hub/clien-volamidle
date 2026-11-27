@@ -1,4 +1,4 @@
-package com.example.data
+﻿package com.example.data
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -27,6 +27,7 @@ class PreferencesManager(context: Context) {
         private const val KEY_HIDE_MAP = "pref_hide_map"
         private const val KEY_HIDE_GAME = "pref_hide_game"
         private const val KEY_PC_MODE = "pref_pc_mode"
+        private const val KEY_ULTRA_LIGHT_TAB_PREFIX = "pref_ultra_light_tab_"
 
         private const val KEY_DND_OVERRIDE_ACTIVE = "sleep_dnd_override_active"
         private const val KEY_DND_PREV_FILTER = "sleep_dnd_prev_filter"
@@ -112,6 +113,13 @@ class PreferencesManager(context: Context) {
 
     fun setPcMode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_PC_MODE, enabled).apply()
+    }
+
+    fun getUltraLight(tabIndex: Int): Boolean =
+        prefs.getBoolean("$KEY_ULTRA_LIGHT_TAB_PREFIX$tabIndex", false)
+
+    fun setUltraLight(tabIndex: Int, enabled: Boolean) {
+        prefs.edit().putBoolean("$KEY_ULTRA_LIGHT_TAB_PREFIX$tabIndex", enabled).apply()
     }
 
     fun getAccount(tabIndex: Int, cluster: String = getCluster()): AccountConfig {

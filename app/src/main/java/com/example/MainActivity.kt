@@ -196,6 +196,7 @@ fun MainScreen(
     val isHideMapSynced by viewModel.isHideMapSynced.collectAsState()
     val isHideGameSynced by viewModel.isHideGameSynced.collectAsState()
     val isPcMode by viewModel.isPcMode.collectAsState()
+    val ultraLightTabs by viewModel.ultraLightTabs.collectAsState()
     val isPcModeEffective = isPcMode
     val autoConfigs by viewModel.autoConfigs.collectAsState()
     val autoDialogTabIndex by viewModel.autoDialogTabIndex.collectAsState()
@@ -423,6 +424,11 @@ fun MainScreen(
                 onToggleHideGame = { viewModel.syncHideGame(!isHideGameSynced) },
                 isPcMode = isPcMode,
                 onTogglePcMode = { viewModel.setPcMode(!isPcMode) },
+                isUltraLightTab = ultraLightTabs.getOrNull(controlSheetTabIndex) == true,
+                onToggleUltraLightTab = {
+                    val cur = ultraLightTabs.getOrNull(controlSheetTabIndex) == true
+                    viewModel.setTabUltraLight(controlSheetTabIndex, !cur)
+                },
                 isTestChannel = viewModel.isTestChannel,
                 gameLogs = gameLogs,
                 onClearGameLogs = { viewModel.clearGameLogs() },

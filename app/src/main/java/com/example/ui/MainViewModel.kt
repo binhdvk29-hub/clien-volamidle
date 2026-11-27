@@ -90,6 +90,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isPcMode = MutableStateFlow(prefs.getPcMode())
     val isPcMode: StateFlow<Boolean> = _isPcMode.asStateFlow()
 
+    private val _ultraLightTabs = MutableStateFlow(
+        (0 until TabLimits.SLOT_COUNT).map { i -> prefs.getUltraLight(i) }
+    )
+    val ultraLightTabs: StateFlow<List<Boolean>> = _ultraLightTabs.asStateFlow()
+
     private val _autoConfigs = MutableStateFlow(
         (0 until TabLimits.SLOT_COUNT).map { i -> AutoConfig.fromJson(prefs.getAutoConfig(i)) }
     )
@@ -285,6 +290,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setPcMode(enabled: Boolean) {
         _isPcMode.value = enabled
         prefs.setPcMode(enabled)
+    }
+
+    fun setTabUltraLight(tabIndex: Int, enabled: Boolean) {
+        if (tabIndex !in 0 until TabLimits.SLOT_COUNT) return
+        prefs.setUltraLight(tabIndex, enabled)
+        val mutable = _ultraLightTabs.value.toMutableList()
+        if (tabIndex in mutable.indices) {
+            mutable[tabIndex] = enabled
+            _ultraLightTabs.value = mutable
+        }
+        tabManager.setTabUltraLight(tabIndex, enabled)
     }
 
     fun syncSellExcessItems() {
