@@ -461,7 +461,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-89"
+        const val SCRIPT_VER = "vlmauto-90"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1230,6 +1230,8 @@ class GameAutoPilot(
 
   function setCfg(j, t, imm) {
     var prevOn = !!A.cfg.on;
+    var prevSt = !!A.cfg.st;
+    var prevDt = !!A.cfg.dt;
     var prevTtl = !!A.cfg.ttl;
     var prevTt2 = !!A.cfg.tt2;
     var prevQht = !!A.cfg.qht;
@@ -1293,6 +1295,9 @@ class GameAutoPilot(
       A.tbkStatus = null;
       A.tbkProbedAt = 0;
       delete A.cool.tbk_probe;
+      delete A.cool.pb_probe;
+      if (A.cfg.st && !prevSt) dayClear('stx');
+      if (A.cfg.dt && !prevDt) delete A.cool.dt_stall_skip;
       A.cfg.thapAfterMode = (String(A.cfg.thapAfterMode || '').toUpperCase().trim() === 'ORBIT') ? 'ORBIT' : 'NORMAL';
       A.cfg.thapNeDon = !!A.cfg.thapNeDon;
       A.cfg.thapNeDonStyle = normalizeOrbitStyleJs(A.cfg.thapNeDonStyle);
@@ -1867,6 +1872,7 @@ class GameAutoPilot(
 
   var MODE_VI = { farm: 'Luyện Công', dg: 'Phó Bản', tower: 'Leo Tháp', quest: 'Nhiệm Vụ' };
   var pbXong = function () { return dayGet('pbx') > 0; };
+  var stXong = function () { return dayGet('stx') > 0; };
   var tbkXong = function () { return dayGet('tbkx2') > 0; };
   var tbkClearXong = function () {
     try {
@@ -5361,6 +5367,145 @@ class GameAutoPilot(
     return true;
   }
 
+  async function probeDungeonInQuestTab() {
+    var failOut = { checked: false, exhausted: false, summary: '' };
+    if (!canRunHiddenConsumable()) return failOut;
+
+    var inStealthCheck = function () {
+      return !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
+    };
+    var isShown = function (el) {
+      if (!el || !el.isConnected) return false;
+      try {
+        var cur = el;
+        while (cur && cur !== document.body && cur !== document.documentElement) {
+          if (cur.classList && cur.classList.contains('hidden')) return false;
+          cur = cur.parentElement;
+        }
+        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
+        if (st) {
+          if (st.display === 'none') return false;
+          if (!inStealthCheck() && st.visibility === 'hidden') return false;
+        }
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+        var __mQ = getUiScaleMetrics();
+        return !!(r && r.width >= __mQ.minBtnW && r.height >= __mQ.minBtnH);
+      } catch (eS) { return isVis(el); }
+    };
+
+    var findQuestTabBtn = function () {
+      var ids = ['questBtn', 'nvBtn', 'btnQuest', 'btnNv', 'u20quest', 'u20nv', 'tabQuest', 'tabNv'];
+      for (var ii = 0; ii < ids.length; ii++) {
+        var q = document.getElementById(ids[ii]);
+        if (q && isShown(q) && !q.disabled) return q;
+      }
+      var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, button, [role="button"], [role="tab"], a');
+      var cap = Math.min(all.length, 280);
+      for (var i = 0; i < cap; i++) {
+        var el = all[i];
+        if (!el || !isShown(el) || el.disabled || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+        var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
+        if (t === 'nhiem vu') return el;
+      }
+      return null;
+    };
+
+    var getQuestRoot = function () {
+      var md = document.getElementById('modal');
+      if (md && !md.classList.contains('hidden')) return document.getElementById('mBody') || md;
+      var pIds = ['t-quest', 'p-quest', 'questPane', 'questTab', 'nvPane'];
+      for (var pi = 0; pi < pIds.length; pi++) {
+        var pe = document.getElementById(pIds[pi]);
+        if (pe && isShown(pe)) return pe;
+      }
+      return null;
+    };
+
+    var findPbItem = function (root) {
+      if (!root) return null;
+      var els = root.querySelectorAll('button, [role="tab"], [role="button"], .tab, .qtab, li, a, div');
+      var cap = Math.min(els.length, 320);
+      for (var i = 0; i < cap; i++) {
+        var el = els[i];
+        if (!el || !isShown(el) || el.disabled || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+        if (el.closest && el.closest('#tabs, #u20bar, #modeSw, #mswMenu')) continue;
+        if (el.children && el.children.length > 3) continue;
+        var lbl = cleanUiLabel(el.textContent || '');
+        if (!lbl || lbl.length > 30) continue;
+        if (lbl === 'pho ban' || (lbl.indexOf('pho ban') === 0 && lbl.indexOf('thu thach') < 0)) return el;
+      }
+      return null;
+    };
+
+    var prevTabBtn = document.querySelector('#tabs .on, #tabs .active, #tabs [aria-selected="true"], #u20bar .on, #u20bar .active');
+    var qBtn = findQuestTabBtn();
+    if (!qBtn) return failOut;
+
+    lockModal(12000);
+    stealthObj().enter();
+    try {
+      try { qBtn.click(); } catch (eQ0) { try { dispatchRealUiClick(qBtn); } catch (eQ1) {} }
+      var root = null;
+      var wEnd = Date.now() + 1800;
+      while (Date.now() < wEnd) {
+        await sleep(100);
+        root = getQuestRoot();
+        if (root) {
+          try { stealthObj().hideNode(root); } catch (eH) {}
+          break;
+        }
+      }
+      if (!root) return failOut;
+
+      var pbTab = findPbItem(root);
+      if (pbTab) {
+        try { pbTab.click(); } catch (eP0) { try { dispatchRealUiClick(pbTab); } catch (eP1) {} }
+        await sleep(340);
+      }
+      root = getQuestRoot() || root;
+      var txt = noAccent(root.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!txt || txt.indexOf('pho ban') < 0) return failOut;
+
+      var hasRemainText = /con\s+[1-9]\d*\s*\/\s*\d+/.test(txt) || /[1-9]\d*\s*\/\s*\d+\s*luot/.test(txt);
+      var hasEnabledEnterBtn = false;
+      var btns = root.querySelectorAll('button, [role="button"], .btn');
+      for (var bi = 0; bi < Math.min(btns.length, 120); bi++) {
+        var b = btns[bi];
+        if (!b || !isShown(b) || b.disabled) continue;
+        var bt = cleanUiLabel(b.textContent || '');
+        if (bt === 'vao' || bt === 'vao pho ban' || bt === 'khieu chien' || bt === 'bat dau' || bt === 'tao phong') {
+          hasEnabledEnterBtn = true;
+          break;
+        }
+      }
+      var hetCount = (txt.match(/het luot/g) || []).length;
+      var zeroCount = (txt.match(/\b0\s*\/\s*[1-9]\d*/g) || []).length;
+      var exhausted = !hasRemainText && !hasEnabledEnterBtn && (hetCount >= 1 || zeroCount >= 1);
+      if (hasRemainText || hasEnabledEnterBtn || hetCount >= 1 || zeroCount >= 1) {
+        return {
+          checked: true,
+          exhausted: exhausted,
+          summary: exhausted ? ('het=' + hetCount + ',zero=' + zeroCount) : 'con_luot'
+        };
+      }
+      return failOut;
+    } catch (ePbP) {
+      return failOut;
+    } finally {
+      try {
+        var mdEnd = document.getElementById('modal');
+        if (mdEnd && !mdEnd.classList.contains('hidden')) {
+          await closeModalCleanly(mdEnd);
+        } else if (prevTabBtn && prevTabBtn.isConnected && prevTabBtn !== qBtn) {
+          try { prevTabBtn.click(); } catch (ePr) {}
+        }
+      } catch (eCl) {}
+      stealthObj().leave();
+      unlockModal();
+    }
+  }
+
   async function probeThienBaoKhoInQuestTab(doEnter) {
     var failOut = { checked: false, entered: false, exhausted: false, usedMin: -1, maxMin: -1, tvUsedToday: false, tvCount: -1, summary: '' };
     if (!canRunHiddenConsumable()) return failOut;
@@ -6551,9 +6696,27 @@ class GameAutoPilot(
     } else if (!A.dtLastProgressAt) {
       A.dtLastProgressAt = now;
     }
-    var dtStalled30m = !!(A.cfg.dt && !t.du && dtToday < (t.max | 0) && A.dtLastProgressAt > 0 && (now - A.dtLastProgressAt > 30 * 60000));
+    var stFresh = !!(A.st && (now - A.stT < 20000));
+    var dtRemZero = (typeof t.con === 'number' && t.con <= 0);
+    var dtDoneByApi = !!(t.du || dtRemZero || (dtToday >= ((t.max | 0) > 0 ? (t.max | 0) : 200) && ((I.ldt | 0) <= 0 || dtRemZero)));
+    if (dtToday !== A.dtLastToday || (I.ldt | 0) > (A.dtLastLdt | 0)) {
+      delete A.cool.dt_stall_skip;
+      A.dtQuestSince = 0;
+    }
+    A.dtLastLdt = (I.ldt | 0);
+    if (A.cfg.dt && !dtDoneByApi && mode === 'quest' && !I.sat && !I.dg && !I.dead) {
+      if (!A.dtQuestSince) A.dtQuestSince = now;
+      else if (now - A.dtQuestSince > 12 * 60000) {
+        A.cool.dt_stall_skip = now + 20 * 60000;
+        A.dtQuestSince = 0;
+        note('Da Tau dung yen qua 12p o Che do Nhiem Vu -> tam bo qua 20p de chuyen tiep hoat dong');
+      }
+    } else {
+      A.dtQuestSince = 0;
+    }
+    var dtStalled30m = !!(A.cfg.dt && !dtDoneByApi && ((A.dtLastProgressAt > 0 && (now - A.dtLastProgressAt > 30 * 60000)) || (A.cool.dt_stall_skip && now < A.cool.dt_stall_skip)));
 
-    var inPbNow = !!(I.dg || (A.st && A.st.noi === 'phoban') || mode === 'dg');
+    var inPbNow = !!(I.dg || (stFresh && A.st.noi === 'phoban') || mode === 'dg');
     if (inPbNow && !pbXong()) {
       if (!A.pbStartedAt) A.pbStartedAt = now;
     } else {
@@ -6578,23 +6741,30 @@ class GameAutoPilot(
         A.pbStartedAt = 0;
         note('xong phó bản hôm nay → chuyển tiếp hoạt động');
       } else {
-        var trong = !!(I.dg || (A.st && A.st.noi === 'phoban'));
-        var ltOk = !A.st || !A.st.lt || A.st.lt === 'noi' || A.st.lt === 'khong';
-        var lien = A.pbSeen && now - A.pbSeen < 60000;
+        var trong = !!(I.dg || (stFresh && A.st.noi === 'phoban'));
+        var ltOk = !stFresh || !A.st.lt || A.st.lt === 'noi' || A.st.lt === 'khong';
+        var lien = A.pbSeen && now - A.pbSeen < 180000;
         A.pbSeen = now;
-        if (mode !== 'dg' || trong || I.dead || I.sat || !ltOk || !lien) {
+        if (mode !== 'dg' || trong || I.dead || I.sat || !lien) {
           A.pbOut = 0;
         } else if (!A.pbOut) {
           A.pbOut = now;
-        } else if (now - A.pbOut > 15000) {
+        } else if ((ltOk && (now - A.pbOut > 18000)) || (now - A.pbOut > 40000)) {
           dayAdd('pbx', 1);
           A.pbOut = 0;
           A.pbStartedAt = 0;
           note('xong phó bản hôm nay (hết lượt) → chuyển tiếp hoạt động');
+        } else if (now - A.pbOut > 10000 && ready('pb_probe', 90000)) {
+          var pbProbeRes = await probeDungeonInQuestTab();
+          if (pbProbeRes && pbProbeRes.checked && pbProbeRes.exhausted) {
+            dayAdd('pbx', 1);
+            A.pbOut = 0;
+            A.pbStartedAt = 0;
+            note('Xac minh Nhiem vu -> Pho ban het luot -> chuyen tiep hoat dong');
+          }
         }
       }
     }
-
     if (isUserControlling(3500)) return;
 
     var forceOnlyTower = !!A.cfg.thapNeDon;
@@ -6627,8 +6797,12 @@ class GameAutoPilot(
         try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eSwRel) {}
         var r = await api('cheDo', { m: targetMode }, 2200);
         if (r && r.ok && r.m === targetMode) {
-          ensureGameAutoOn(false);
-          return true;
+          await sleep(300);
+          var dmAfterApi = readDomModeFallback();
+          if (!dmAfterApi || dmAfterApi === targetMode) {
+            ensureGameAutoOn(false);
+            return true;
+          }
         }
       }
 
@@ -6644,6 +6818,7 @@ class GameAutoPilot(
         var txt = noAccent(rawTxt || '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
         if (!txt || txt.length > 28 || txt.indexOf('che do') === 0) return false;
         if (targetMode === 'tower' && (txt.indexOf('bao kho') >= 0 || txt.indexOf('thien bao') >= 0)) return false;
+        if (targetMode === 'farm' && (txt.indexOf('pho ban') >= 0 || txt.indexOf('nhiem vu') >= 0 || txt.indexOf('bao kho') >= 0 || txt.indexOf('leo thap') >= 0)) return false;
         for (var k = 0; k < kws.length; k++) {
           if (txt === kws[k] || txt.indexOf(kws[k]) >= 0) return true;
         }
@@ -6726,10 +6901,9 @@ class GameAutoPilot(
       var verifySwitched = async function () {
         var domM = readDomModeFallback();
         if (targetMode === 'tower') {
-          if (domM === 'tower' || isInTowerNow()) return true;
-          return false;
+          return !!(domM === 'tower' || isInTowerNow());
         }
-        if (domM === targetMode) return true;
+        if (domM) return domM === targetMode;
         var Icheck = await info();
         return !!(Icheck && Icheck.mode === targetMode);
       };
@@ -6864,13 +7038,45 @@ class GameAutoPilot(
     //    (3) Ưu tiên hành động khi hết lượt -> 'farm' (+ Chọn map) hoặc 'tower' (Xa em ra / Bình thường)
     var justSaved = !!(A.saveGraceUntil && now < A.saveGraceUntil);
     var dtMax = (t.max | 0) > 0 ? (t.max | 0) : 200;
-    var hasDtInfo = !!(I && I.ok && I.dt);
-    var dtCon = hasDtInfo && A.cfg.dt && lv >= 20 && !t.du && !dtStalled30m &&
+    var hasDtInfo = !!(I && I.ok && !I._fallback && I.dt);
+    var dtCon = hasDtInfo && A.cfg.dt && lv >= 20 && !dtDoneByApi && !dtStalled30m &&
       ((t.today | 0) < dtMax || ((I.ldt | 0) > 0 && (t.con | 0) > 0));
-    var stCon = A.cfg.st && lv >= 20 && (I.lb | 0) > 0;
-    var pldCon = !!(I.pldCon > 0 || (A.st && A.st.noi === 'thuyen'));
-    var pbCon = A.cfg.pb && !pbXong() && !pbOver3h;
 
+    var stHetApi = !!(I.stDu || I.satDu ||
+      (typeof I.stCon === 'number' && I.stCon <= 0) ||
+      (typeof I.satCon === 'number' && I.satCon <= 0));
+    if (stHetApi && !stXong()) dayAdd('stx', 1);
+    if (I.sat || (typeof A.stLastLb === 'number' && (I.lb | 0) < A.stLastLb)) {
+      A.stIdleSince = 0;
+    }
+    A.stLastLb = (I.lb | 0);
+    if (A.cfg.st && lv >= 20 && (I.lb | 0) > 0 && !stXong() && !dtCon && mode === 'quest' && !I.sat && !I.dg && !I.dead) {
+      if (!A.stIdleSince) A.stIdleSince = now;
+      else if (now - A.stIdleSince > 45000) {
+        dayAdd('stx', 1);
+        A.stIdleSince = 0;
+        note('Sat Thu khong goi them duoc (da het luot hom nay) -> bo qua toi 00:00, chuyen tiep hoat dong');
+      }
+    } else {
+      A.stIdleSince = 0;
+    }
+    var stCon = A.cfg.st && lv >= 20 && (I.lb | 0) > 0 && !stXong();
+
+    var onBoatNow = !!(stFresh && A.st.noi === 'thuyen');
+    var pldSkipped = !!(A.cool.pld_skip && now < A.cool.pld_skip);
+    var pldRawCon = !!(onBoatNow || (I.pldCon > 0));
+    if (mode === 'quest' && !dtCon && !stCon && pldRawCon && !pldSkipped && !onBoatNow && !I.sat && !I.dg && !I.dead) {
+      if (!A.pldIdleSince) A.pldIdleSince = now;
+      else if (now - A.pldIdleSince > 45000) {
+        A.cool.pld_skip = now + 10 * 60000;
+        A.pldIdleSince = 0;
+        note('Phong Lang Do chua mo chuyen thuyen -> tam bo qua 10p de chuyen tiep hoat dong');
+      }
+    } else {
+      A.pldIdleSince = 0;
+    }
+    var pldCon = !pldSkipped && pldRawCon;
+    var pbCon = A.cfg.pb && !pbXong() && !pbOver3h;
     var tbkEnabled = !forceOnlyTower && !!A.cfg.tbk;
     var inTbkRightNow = isInTbkNow();
     inTowerRightNow = isInTowerNow();
@@ -6890,7 +7096,7 @@ class GameAutoPilot(
     var tbkCon = tbkEnabled && !tbkXong();
     var dailyDone = !dtCon && !stCon && !pldCon && !pbCon && !tbkCon;
     var afterTowerActive = !forceOnlyTower && !!(A.cfg.afterDailyEnabled && A.cfg.thap && !A.cfg.afterDailyFarm) && dailyDone;
-    var afterFarmActive = !forceOnlyTower && !!(A.cfg.afterDailyEnabled && A.cfg.afterDailyFarm && !afterTowerActive) && dailyDone;
+    var afterFarmActive = !forceOnlyTower && !!(A.cfg.afterDailyEnabled && !afterTowerActive && (A.cfg.afterDailyFarm || A.cfg.farmMap)) && dailyDone;
     var towerModeLabel = (A.cfg.thapAfterMode === 'ORBIT') ? 'Xa em ra' : 'Binh thuong';
 
     if (forceOnlyTower && justSaved && ready('only_tower_note', 8000)) {
@@ -7010,9 +7216,11 @@ class GameAutoPilot(
           logTowerCombatProfileOnce();
         }
       }
-    } else if (want && mode !== want) {
-      if (I.dead || I.sat || I.dg) return;
-      if (!justSaved && (!ranh() || !ready('mode_' + want, 3500))) return;
+    } else if (want && (mode !== want || (domMode && domMode !== want))) {
+      var inRealDg = !!(I.dg || (stFresh && A.st.noi === 'phoban'));
+      if (I.dead || I.sat || (inRealDg && want !== 'dg')) return;
+      var okTiming = justSaved || ((want === 'farm' ? !isUserControlling(3500) : ranh()) && ready('mode_' + want, 3500));
+      if (!okTiming) return;
       var savedPrev = prev || mode;
       if (await switchMode(want)) {
         if (!prev && !afterFarmActive && !afterTowerActive) prevSet(savedPrev);
@@ -7069,6 +7277,10 @@ class GameAutoPilot(
           (typeof I.dgLeft === 'number' && I.dgLeft <= 0) ||
           (I.pb && typeof I.pb.con === 'number' && I.pb.con <= 0);
         if (pbHetNow) dayAdd('pbx', 1);
+      }
+      if (A.cfg.st && !stXong()) {
+        var stHetSync = !!(I.stDu || I.satDu || (typeof I.stCon === 'number' && I.stCon <= 0) || (typeof I.satCon === 'number' && I.satCon <= 0));
+        if (stHetSync) dayAdd('stx', 1);
       }
     } catch (eSync) {}
   }
@@ -7293,8 +7505,10 @@ class GameAutoPilot(
         syncDailyDoneFlags(Iafter);
         var dtA = Iafter.dt || {};
         var lvA = (Iafter.lvl | 0) > 0 ? (Iafter.lvl | 0) : 100;
-        var dtDoneA = !(A.cfg.dt && lvA >= 20 && !dtA.du && ((dtA.today | 0) < ((dtA.max | 0) > 0 ? (dtA.max | 0) : 200) || ((Iafter.ldt | 0) > 0 && (dtA.con | 0) > 0)));
-        var stDoneA = !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
+        var dtRemZeroA = (typeof dtA.con === 'number' && dtA.con <= 0);
+        var dtSkipA = !!(A.cool.dt_stall_skip && Date.now() < A.cool.dt_stall_skip);
+        var dtDoneA = dtSkipA || dtRemZeroA || !(A.cfg.dt && lvA >= 20 && !dtA.du && !Iafter._fallback && ((dtA.today | 0) < ((dtA.max | 0) > 0 ? (dtA.max | 0) : 200) || ((Iafter.ldt | 0) > 0 && (dtA.con | 0) > 0)));
+        var stDoneA = stXong() || !(A.cfg.st && lvA >= 20 && (Iafter.lb | 0) > 0);
         var pbDoneA = !(A.cfg.pb && !pbXong());
         var tbkDoneA = !(A.cfg.tbk && !tbkXong());
         var curM = readDomModeFallback() || Iafter.mode || 'farm';
