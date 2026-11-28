@@ -461,7 +461,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-90"
+        const val SCRIPT_VER = "vlmauto-91"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -1322,7 +1322,7 @@ class GameAutoPilot(
       A.saveTriggeredAt = nowCfg;
       A.saveGraceUntil = nowCfg + 18000;
       A.cfgSeq = (A.cfgSeq | 0) + 1;
-      note('[Auto] Luu & quet ngay (TBK=' + (A.cfg.thap ? A.cfg.thapAfterMode : 'Tat') + ', bangTV=' + (A.cfg.tbkTinVat ? 1 : 0) + ', LB=' + (A.cfg.bangLbdt ? 1 : 0) + ', PD=' + (A.cfg.bangPd ? 1 : 0) + ', LC=' + ((A.cfg.afterDailyEnabled || A.cfg.afterDailyFarm) ? (A.cfg.farmMap || '1') : '0') + ', QHT=' + (A.cfg.qht ? 1 : 0) + ')');
+      note('[Auto] Luu & quet ngay (ChiLT=' + (A.cfg.thapNeDon ? A.cfg.thapAfterMode : 'Tat') + ', TBK=' + (A.cfg.tbk ? 'Bat' : 'Tat') + ', bangTV=' + (A.cfg.tbkTinVat ? 1 : 0) + ', LB=' + (A.cfg.bangLbdt ? 1 : 0) + ', PD=' + (A.cfg.bangPd ? 1 : 0) + ', SauHD=' + (!A.cfg.afterDailyEnabled ? 'Tat' : ((A.cfg.thap && !A.cfg.afterDailyFarm) ? ('LT:' + A.cfg.thapAfterMode) : ('LC:' + (A.cfg.farmMap || '1')))) + ', QHT=' + (A.cfg.qht ? 1 : 0) + ')');
       A.cool = {};
       A.lastMapSelected = '';
       A.pbOut = 0;
@@ -1344,7 +1344,7 @@ class GameAutoPilot(
       if (!prevTgd && A.cfg.theGiaoDich) {
         delete A.cool.theGd;
       }
-      var checkKeys = ['dt', 'ldtMua', 'pd', 'st', 'pb', 'afterDailyEnabled', 'afterDailyFarm', 'thap', 'thapNeDon', 'qua', 'khan', 'ttl', 'tt2', 'qht', 'theGiaoDich'];
+      var checkKeys = ['dt', 'ldtMua', 'pd', 'st', 'pb', 'tbk', 'afterDailyEnabled', 'afterDailyFarm', 'thap', 'thapNeDon', 'qua', 'khan', 'ttl', 'tt2', 'qht', 'theGiaoDich'];
       for (var ck = 0; ck < checkKeys.length; ck++) {
         var kName = checkKeys[ck];
         if (A.cfg[kName] && A.checkedQueue.indexOf(kName) < 0) {
@@ -5166,6 +5166,7 @@ class GameAutoPilot(
       if (!md || md.classList.contains('hidden')) return false;
       var txt = noAccent(md.textContent || '');
       if (txt.indexOf('pho ban') < 0 && txt.indexOf('to doi') < 0) return false;
+      if (txt.indexOf('tin vat thien bao kho') >= 0 || /\d+\s*\/\s*(60|120)\s*phut/.test(txt)) return false;
       var totalBadges = (txt.match(/het luot/g) || []).length;
       var remainBadges = (txt.match(/con\s+\d+\s*\/\s*\d+/g) || []).length;
       return totalBadges >= 2 && remainBadges === 0;
@@ -5191,22 +5192,23 @@ class GameAutoPilot(
     try {
       var rawAll = String(rootEl.textContent || '');
       var naAll = noAccent(rawAll).replace(/\s+/g, ' ').trim();
-      var hasTbkPanel = (naAll.indexOf('thien bao kho') >= 0) &&
-        (naAll.indexOf('hom nay') >= 0 || naAll.indexOf('vao thien bao kho') >= 0 ||
-         naAll.indexOf('het phut hom nay') >= 0 || naAll.indexOf('huy theo doi') >= 0 ||
-         naAll.indexOf('tin vat thien bao kho') >= 0);
-      if (!hasTbkPanel) return res;
-      res.found = true;
+      if (naAll.indexOf('thien bao kho') < 0) return res;
 
-      // 1. Doc chinh xac "Hom nay: xx/60 phut" hoac "Hom nay: xx/120 phut"
-      var mMin = /hom\s*nay\s*:?\s*(\d+)\s*\/\s*(\d+)\s*phut/i.exec(naAll);
+      // 1. Doc chinh xac dau hieu doc quyen Loai 2 (TBK theo phut: xx/60 phut, xx/120 phut)
+      var mMin = /hom\s*nay\s*:?\s*(\d+)\s*\/\s*(60|120)\s*phut/i.exec(naAll);
       if (!mMin) mMin = /(\d+)\s*\/\s*(60|120)\s*phut/i.exec(naAll);
+      if (!mMin) mMin = /hom\s*nay\s*:?\s*(\d+)\s*\/\s*(\d+)\s*phut/i.exec(naAll);
       if (mMin) {
-        res.usedMin = Number(mMin[1]);
-        res.maxMin = Number(mMin[2]);
+        var uVal = Number(mMin[1]);
+        var mVal = Number(mMin[2]);
+        if (mVal >= 30) {
+          res.usedMin = uVal;
+          res.maxMin = mVal;
+        }
       }
 
       // 2. Doc trang thai Tin vat Thien Bao Kho (so luong & hom nay 0/1 hay 1/1)
+      var hasTinVatText = (naAll.indexOf('tin vat thien bao kho') >= 0);
       var mTv = /tin\s*vat\s*thien\s*bao\s*kho\s*:?\s*(\d+)[^0-9]{0,20}hom\s*nay\s*(\d+)\s*\/\s*(\d+)/i.exec(naAll);
       if (mTv) {
         res.tvCount = Number(mTv[1]);
@@ -5215,30 +5217,7 @@ class GameAutoPilot(
         res.tvUsedToday = true;
       }
 
-      // 3. Kiem tra thanh tien do mau vang dat da day 100% chua
-      var bars = rootEl.querySelectorAll('[style*="width"], progress');
-      for (var bi = 0; bi < Math.min(bars.length, 60); bi++) {
-        var bar = bars[bi];
-        if (!bar) continue;
-        if (bar.tagName === 'PROGRESS') {
-          var pv = Number(bar.value || 0), pm = Number(bar.max || 0);
-          if (pm > 0 && pv >= pm) { res.barFull = true; break; }
-        } else {
-          var sw = String((bar.style && bar.style.width) || '');
-          var mw = /(\d+(?:\.\d+)?)\s*%/.exec(sw);
-          if (mw && Number(mw[1]) >= 99.5) {
-            var r = bar.getBoundingClientRect ? bar.getBoundingClientRect() : null;
-            var __mBar = getUiScaleMetrics(); if (r && r.height >= 2 && r.height <= 28 && r.width >= __mBar.minBarW) {
-              res.barFull = true;
-              break;
-            }
-          }
-        }
-      }
-
-      // 4. Kiem tra nut chu trang bac phia tren "Huy theo doi":
-      //    - Con thoi gian: "Vao Thien Bao Kho"
-      //    - Het thoi gian: "Het phut hom nay - 0h mo lai"
+      // 3. Quet nut doc quyen Loai 2: "Vao Thien Bao Kho" / "Het phut hom nay - 0h mo lai" (KHONG dung "het luot" cua Pho Ban)
       var btns = rootEl.querySelectorAll('button, [role="button"], .btn, a, div, span');
       var cap = Math.min(btns.length, 320);
       for (var i = 0; i < cap; i++) {
@@ -5251,8 +5230,7 @@ class GameAutoPilot(
         var lbl = cleanUiLabel(el.textContent || '');
         if (!lbl || lbl.length > 48) continue;
 
-        if (lbl.indexOf('het phut hom nay') >= 0 || lbl.indexOf('0h mo lai') >= 0 ||
-            lbl.indexOf('het luot hom nay') >= 0) {
+        if (lbl.indexOf('het phut hom nay') >= 0 || lbl.indexOf('0h mo lai') >= 0 || lbl.indexOf('het thoi gian hom nay') >= 0) {
           res.btnExhausted = true;
         }
         if ((lbl === 'vao thien bao kho' || lbl === 'vao bao kho') &&
@@ -5264,7 +5242,35 @@ class GameAutoPilot(
         }
       }
 
-      // 5. Ket luan chinh xac
+      // 4. Bat buoc phai co it nhat 1 bang chung doc quyen cua TBK theo phut (Loai 2)
+      //    Tranh nhan nham trang Da Tau hoac danh sach Pho Ban (co Pho Ban "Thien Bao Kho 2 luot")
+      var hasExclusiveTimedProof = (res.maxMin > 0 && res.usedMin >= 0) || res.btnCanEnter || res.btnExhausted || hasTinVatText;
+      if (!hasExclusiveTimedProof) return res;
+      res.found = true;
+
+      // 5. Kiem tra thanh tien do 100% chi khi da xac nhan dung trang TBK theo phut
+      var bars = rootEl.querySelectorAll('[style*="width"], progress');
+      for (var bi = 0; bi < Math.min(bars.length, 60); bi++) {
+        var bar = bars[bi];
+        if (!bar) continue;
+        if (bar.tagName === 'PROGRESS') {
+          var pv = Number(bar.value || 0), pm = Number(bar.max || 0);
+          if (pm > 0 && pv >= pm) { res.barFull = true; break; }
+        } else {
+          var sw = String((bar.style && bar.style.width) || '');
+          var mw = /(\d+(?:\.\d+)?)\s*%/.exec(sw);
+          if (mw && Number(mw[1]) >= 99.5) {
+            var r = bar.getBoundingClientRect ? bar.getBoundingClientRect() : null;
+            var __mBar = getUiScaleMetrics();
+            if (r && r.height >= 2 && r.height <= 28 && r.width >= __mBar.minBarW) {
+              res.barFull = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // 6. Ket luan chinh xac
       var hasMinByText = (res.maxMin > 0 && res.usedMin >= 0 && res.usedMin < res.maxMin);
       var fullByText = (res.maxMin > 0 && res.usedMin >= res.maxMin);
 
@@ -5287,7 +5293,6 @@ class GameAutoPilot(
     } catch (eParse) {}
     return res;
   }
-
   function isTbkTimeExhaustedInDom(I) {
     try {
       if (I) {
@@ -5566,8 +5571,9 @@ class GameAutoPilot(
 
     var findTbkSidebarItem = function (root) {
       if (!root) return null;
+      var rootRect = root.getBoundingClientRect ? root.getBoundingClientRect() : null;
       var els = root.querySelectorAll('button, [role="tab"], [role="button"], .tab, .qtab, li, a, div, span');
-      var cap = Math.min(els.length, 360);
+      var cap = Math.min(els.length, 380);
       var best = null;
       var bestScore = -1;
       for (var i = 0; i < cap; i++) {
@@ -5577,15 +5583,23 @@ class GameAutoPilot(
         var lbl = cleanUiLabel(el.textContent || '');
         if (!lbl || lbl.length > 52) continue;
         if (lbl.indexOf('vao thien bao kho') >= 0 || lbl.indexOf('tin vat') >= 0 || lbl.indexOf('huy theo doi') >= 0) continue;
+        // Loai tru the Pho Ban "Thien Bao Kho" (2 luot) nam trong danh sach Pho Ban
+        if (lbl.indexOf('luot') >= 0 || lbl.indexOf('tao phong') >= 0 || lbl.indexOf('to doi') >= 0 || /\b[0-2]\s*\/\s*2\b/.test(lbl)) continue;
         if (lbl === 'thien bao kho' || lbl.indexOf('thien bao kho ') === 0) {
           var target = el.closest ? (el.closest('button, [role="tab"], [role="button"], li, a') || el) : el;
           if (!target || !isShown(target) || target.disabled) continue;
           var tLbl = cleanUiLabel(target.textContent || '');
           if (tLbl.length > 64 || tLbl.indexOf('huy theo doi') >= 0 || tLbl.indexOf('hom nay') >= 0) continue;
+          if (tLbl.indexOf('luot') >= 0 || tLbl.indexOf('tao phong') >= 0 || tLbl.indexOf('het luot') >= 0 || /\b[0-2]\s*\/\s*2\b/.test(tLbl)) continue;
+          var card = target.parentElement;
+          var cardTxt = card ? cleanUiLabel(card.textContent || '') : '';
+          if (cardTxt && cardTxt.length < 220 && (cardTxt.indexOf('het luot') >= 0 || /\bcon\s+[0-2]\s*\/\s*2\b/.test(cardTxt) || cardTxt.indexOf('tao phong') >= 0)) continue;
+
           var r = target.getBoundingClientRect ? target.getBoundingClientRect() : null;
-          var score = (lbl === 'thien bao kho' ? 200 : 140);
+          var score = (lbl === 'thien bao kho' ? 220 : 140);
           if (target.tagName === 'BUTTON' || target.getAttribute('role') === 'tab') score += 50;
           if (r && r.width <= 260) score += 40;
+          if (r && rootRect && rootRect.width > 120 && (r.left - rootRect.left) <= rootRect.width * 0.45) score += 120;
           if (score > bestScore) {
             bestScore = score;
             best = target;
@@ -5594,7 +5608,6 @@ class GameAutoPilot(
       }
       return best;
     };
-
     var prevTabBtn = document.querySelector('#tabs .on, #tabs .active, #tabs [aria-selected="true"], #u20bar .on, #u20bar .active');
     var openedMoreBtn = null;
     var nvBtn = null;
@@ -5658,6 +5671,7 @@ class GameAutoPilot(
       }
 
       if (!parsed || !parsed.found) return failOut;
+      if (parsed.maxMin <= 0 && !parsed.btnCanEnter && !parsed.btnExhausted) return failOut;
 
       A.tbkProbedAt = Date.now();
       A.tbkStatus = {
@@ -6705,11 +6719,13 @@ class GameAutoPilot(
     }
     A.dtLastLdt = (I.ldt | 0);
     if (A.cfg.dt && !dtDoneByApi && mode === 'quest' && !I.sat && !I.dg && !I.dead) {
+      var noMoreLdt = ((I.ldt | 0) <= 0) && (!A.cfg.ldtMua || dayGet('ldtMuaDone') > 0 || ((I.ldtMax | 0) > 0 && (I.ldtMua | 0) >= (I.ldtMax | 0)));
+      var dtStallLim = noMoreLdt ? (3 * 60000) : (6 * 60000);
       if (!A.dtQuestSince) A.dtQuestSince = now;
-      else if (now - A.dtQuestSince > 12 * 60000) {
+      else if (now - A.dtQuestSince > dtStallLim) {
         A.cool.dt_stall_skip = now + 20 * 60000;
         A.dtQuestSince = 0;
-        note('Da Tau dung yen qua 12p o Che do Nhiem Vu -> tam bo qua 20p de chuyen tiep hoat dong');
+        note('Da Tau khong tien trien qua ' + Math.round(dtStallLim / 60000) + 'p (LBDT=' + (I.ldt | 0) + ') -> tam bo qua 20p de chuyen tiep hoat dong');
       }
     } else {
       A.dtQuestSince = 0;
@@ -6793,7 +6809,7 @@ class GameAutoPilot(
     }
 
     async function switchMode(targetMode) {
-      if (targetMode !== 'tower') {
+      if (targetMode !== 'tower' && targetMode !== 'tbk') {
         try { if (typeof releaseOrbitKeys === 'function') releaseOrbitKeys(); } catch (eSwRel) {}
         var r = await api('cheDo', { m: targetMode }, 2200);
         if (r && r.ok && r.m === targetMode) {
@@ -6810,6 +6826,7 @@ class GameAutoPilot(
         farm: ['luyen cong'],
         dg: ['pho ban'],
         tower: ['leo thap'],
+        tbk: ['thien bao kho'],
         quest: ['nhiem vu', 'da tau']
       };
       var kws = modeKeywords[targetMode] || [];
@@ -6818,6 +6835,7 @@ class GameAutoPilot(
         var txt = noAccent(rawTxt || '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
         if (!txt || txt.length > 28 || txt.indexOf('che do') === 0) return false;
         if (targetMode === 'tower' && (txt.indexOf('bao kho') >= 0 || txt.indexOf('thien bao') >= 0)) return false;
+        if (targetMode === 'tbk' && (txt.indexOf('leo thap') >= 0 || txt.indexOf('pho ban') >= 0)) return false;
         if (targetMode === 'farm' && (txt.indexOf('pho ban') >= 0 || txt.indexOf('nhiem vu') >= 0 || txt.indexOf('bao kho') >= 0 || txt.indexOf('leo thap') >= 0)) return false;
         for (var k = 0; k < kws.length; k++) {
           if (txt === kws[k] || txt.indexOf(kws[k]) >= 0) return true;
@@ -6841,7 +6859,7 @@ class GameAutoPilot(
       };
 
       var findModeMenuItem = function (requireVis, triggerEl) {
-        if (targetMode !== 'tower') {
+        if (targetMode !== 'tower' && targetMode !== 'tbk') {
           var direct = document.querySelector('#mswMenu [data-msw="' + targetMode + '"], [data-msw="' + targetMode + '"], [data-mode="' + targetMode + '"]');
           if (direct && (!requireVis || isVis(direct))) return direct;
         } else {
@@ -6903,6 +6921,9 @@ class GameAutoPilot(
         if (targetMode === 'tower') {
           return !!(domM === 'tower' || isInTowerNow());
         }
+        if (targetMode === 'tbk') {
+          return !!(domM === 'tbk' || isInTbkNow());
+        }
         if (domM) return domM === targetMode;
         var Icheck = await info();
         return !!(Icheck && Icheck.mode === targetMode);
@@ -6950,7 +6971,7 @@ class GameAutoPilot(
           }
         }
 
-        if (targetMode !== 'tower') {
+        if (targetMode !== 'tower' && targetMode !== 'tbk') {
           var selects = document.querySelectorAll('select');
           for (var si = 0; si < selects.length; si++) {
             var sel = selects[si];
@@ -7128,6 +7149,14 @@ class GameAutoPilot(
           qRes.entered = true;
           return qRes;
         }
+        // Da xac nhan con phut TBK (Loai 2), du phong bam Che Do -> Thien Bao Kho
+        if (await switchMode('tbk')) {
+          await sleep(500);
+          if (isInTbkNow()) {
+            qRes.entered = true;
+            return qRes;
+          }
+        }
         return qRes;
       }
       return { checked: false, entered: isInTbkNow(), exhausted: false, summary: '' };
@@ -7190,6 +7219,7 @@ class GameAutoPilot(
           }
           dayAdd('tbkx2', 1);
           A.tbkFailCount = 0;
+          A.pendingTick = true;
           note('Da het thoi gian Thien Bao Kho hom nay (' + (entRes.summary || 'Het phut hom nay - 0h mo lai') + ') -> bo qua toi 00:00');
         } else if (entRes && entRes.entered) {
           A.tbkFailCount = 0;
@@ -8347,25 +8377,41 @@ class GameAutoPilot(
 
   function isInTbkNow() {
     try {
-      if (A.st && Date.now() - A.stT < 15000) {
-        if (A.st.o && A.st.o !== 'game') return false;
-        if (A.st.dead || (typeof A.st.hp === 'number' && A.st.hp <= 0)) return false;
-        if (A.st.noi) {
-          var noiS = noAccent(String(A.st.noi)).toLowerCase();
+      // 1. Loai tru tuyet doi Loai 1: Pho Ban Thien Bao Kho (2 luot) & cac phong Pho Ban/Leo Thap khac
+      var stNow = (A.st && Date.now() - A.stT < 15000) ? A.st : null;
+      if (stNow) {
+        if (stNow.o && stNow.o !== 'game') return false;
+        if (stNow.dead || (typeof stNow.hp === 'number' && stNow.hp <= 0)) return false;
+        if (stNow.noi) {
+          var noiS = noAccent(String(stNow.noi)).toLowerCase();
+          if (noiS === 'phoban' || noiS === 'bosstuan' || noiS === 'thap' || noiS === 'thuyen') return false;
           if (noiS === 'tbk' || noiS === 'baokho' || noiS === 'thienbaokho' ||
               noiS.indexOf('baokho') >= 0 || noiS.indexOf('thienbao') >= 0) return true;
         }
       }
-      if (A.info && !A.info.dead && A.info.tbk === true) return true;
+      if (A.info) {
+        if (A.info.dead || A.info.dg === true) return false;
+        if (A.info.tbk === true) return true;
+      }
+
       var mBtn = document.getElementById('mswBtn');
       var mTxt = mBtn ? noAccent(mBtn.textContent || '') : '';
+      // Dang o Che Do Pho Ban / Leo Thap -> du stageLbl ghi "Thien Bao Kho" thi do la Pho Ban 2 luot (Loai 1), KHONG phai TBK theo phut!
+      if (mTxt.indexOf('pho ban') >= 0 || mTxt.indexOf('leo thap') >= 0) return false;
+
       var stg = document.getElementById('stageLbl');
       var stTxt = stg ? noAccent(stg.textContent || '') : '';
-      if (mTxt.indexOf('thien bao') >= 0 || mTxt.indexOf('bao kho') >= 0 ||
-          stTxt.indexOf('thien bao') >= 0 || stTxt.indexOf('bao kho') >= 0) {
+      if (mTxt.indexOf('thien bao') >= 0 || mTxt.indexOf('bao kho') >= 0) {
         if (stTxt.indexOf('chua di') < 0) return true;
       }
-      if (mTxt.indexOf('leo thap') < 0 && !(A.info && A.info.dg)) {
+      // Chi tin stageLbl khi khong o Che Do Luyen Cong / Nhiem Vu va khong mang dau hieu luot (/2)
+      var nonTbkMode = (mTxt.indexOf('luyen cong') >= 0 || mTxt.indexOf('nhiem vu') >= 0);
+      if (!nonTbkMode && (stTxt.indexOf('thien bao') >= 0 || stTxt.indexOf('bao kho') >= 0)) {
+        if (stTxt.indexOf('chua di') < 0 && stTxt.indexOf('luot') < 0 && !/\b[0-2]\s*\/\s*2\b/.test(stTxt)) {
+          return true;
+        }
+      }
+      if (!nonTbkMode) {
         var rBtns = document.querySelectorAll('button, [role="button"], .btn');
         var rCap = Math.min(rBtns.length, 140);
         for (var ri = 0; ri < rCap; ri++) {
@@ -8381,7 +8427,6 @@ class GameAutoPilot(
     } catch (eTbkNow) {}
     return false;
   }
-
   function isInTowerNow() {
     try {
       if (isInTbkNow()) return false;
