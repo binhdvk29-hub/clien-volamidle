@@ -249,10 +249,10 @@ class GameTabManager(
         }
     }
 
-    fun markUiInteraction() {
+    fun markUiInteraction(tabIndex: Int? = null) {
         val now = System.currentTimeMillis()
-        for (i in webViews.indices) {
-            webViews[i]?.lastTouchTimeMs = now
+        if (tabIndex != null && tabIndex in webViews.indices) {
+            webViews[tabIndex]?.lastTouchTimeMs = now
         }
     }
 
@@ -1284,13 +1284,16 @@ class GameTabManager(
                             var now = Date.now();
                             var orbitBusy = !!window.__vlmOrbitSpyActive;
                             var userAwake = (now - (st.lastTouch || 0)) < 10000;
-                            var modalOpen = false;
-                            try {
-                                var md = document.getElementById('modal');
-                                if (md && !md.classList.contains('hidden') && !(root && root.classList.contains('__vlm-stealth'))) {
-                                    modalOpen = true;
-                                }
-                            } catch (eMd) {}
+                            var autoScanAwake = !!(root && root.classList.contains('__vlm-stealth')) || !!((window.__vlmModalLockUntil || 0) > now);
+                            var modalOpen = autoScanAwake;
+                            if (!modalOpen) {
+                                try {
+                                    var md = document.getElementById('modal');
+                                    if (md && !md.classList.contains('hidden')) {
+                                        modalOpen = true;
+                                    }
+                                } catch (eMd) {}
+                            }
 
                             if (orbitBusy || userAwake || modalOpen) {
                                 try { if (root && !root.classList.contains('__vlm-ul-awake')) root.classList.add('__vlm-ul-awake'); } catch (eAw1) {}

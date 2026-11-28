@@ -461,7 +461,7 @@ class GameAutoPilot(
         private const val TICK_MS = 25_000L
         private const val FULL_EVERY = 5L
         private const val SWEEP_7M_MS = 7L * 60L * 1000L
-        const val SCRIPT_VER = "vlmauto-92"
+        const val SCRIPT_VER = "vlmauto-93"
         const val KNB_NGAY_MAX = 1000
         const val EV_DHB_MAX = 1
         const val EV_HB_MAX = 3
@@ -840,19 +840,37 @@ class GameAutoPilot(
     }
 
     private fun injectAll(forceFull: Boolean, immediate: Boolean) {
+        var delayIdx = 0
         for (i in 0 until tabCount().coerceAtMost(installedUrl.size)) {
             val tabCfg = cfgs[i]
             if (!tabCfg.on) continue
-            injectTab(
-                i = i,
-                forceFull = forceFull,
-                cfgJson = tabCfg.toJson().toString(),
-                immediate = immediate,
-                pushEvenIfOff = false
-            )
+            val offsetMs = if (immediate) 0L else 120L * delayIdx
+            delayIdx++
+            if (offsetMs == 0L) {
+                injectTab(
+                    i = i,
+                    forceFull = forceFull,
+                    cfgJson = tabCfg.toJson().toString(),
+                    immediate = immediate,
+                    pushEvenIfOff = false
+                )
+            } else {
+                val tabIdx = i
+                mainHandler.postDelayed({
+                    if (!isSystemRunning()) return@postDelayed
+                    val curCfg = cfgs.getOrNull(tabIdx) ?: return@postDelayed
+                    if (!curCfg.on) return@postDelayed
+                    injectTab(
+                        i = tabIdx,
+                        forceFull = forceFull,
+                        cfgJson = curCfg.toJson().toString(),
+                        immediate = false,
+                        pushEvenIfOff = false
+                    )
+                }, offsetMs)
+            }
         }
     }
-
     private fun injectTab(
         i: Int,
         forceFull: Boolean,
@@ -1529,6 +1547,141 @@ class GameAutoPilot(
     return false;
   };
 
+  function isDomUsable(el) {
+    if (!el || !el.isConnected) return false;
+    try {
+      var inSt = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
+      var cur = el;
+      while (cur && cur !== document.body && cur !== document.documentElement) {
+        if (cur.hidden) return false;
+        if (cur.classList && cur.classList.contains('hidden')) return false;
+        if (cur.getAttribute && cur.getAttribute('aria-hidden') === 'true') return false;
+        var cs = window.getComputedStyle ? window.getComputedStyle(cur) : null;
+        if (cs) {
+          if (cs.display === 'none') return false;
+          if (!inSt) {
+            if (cs.visibility === 'hidden') return false;
+            if (cs.opacity === '0') return false;
+          }
+        }
+        cur = cur.parentElement;
+      }
+    } catch (eU) {}
+    return true;
+  }
+
+  function findGameNavButton(kind) {
+    var cfgMap = {
+      quest: {
+        ids: ['questBtn', 'nvBtn', 'btnQuest', 'btnNv', 'u20quest', 'u20nv', 'tabQuest', 'tabNv'],
+        attrSel: '[data-tab*="quest" i], [data-tab*="nv" i], [data-open*="quest" i], [title*="Nhiệm vụ" i], [aria-label*="Nhiệm vụ" i]',
+        exact: ['nhiem vu', 'nv'],
+        starts: ['nhiem vu']
+      },
+      guild: {
+        ids: ['guildBtn', 'bangBtn', 'btnBang', 'u20guild', 'u20bang', 'tabGuild', 'tabBang'],
+        attrSel: '[data-tab*="guild" i], [data-tab*="bang" i], [data-open*="guild" i], [data-open*="bang" i], [title*="Bang hội" i], [aria-label*="Bang hội" i]',
+        exact: ['bang hoi', 'bang'],
+        starts: ['bang hoi']
+      },
+      bag: {
+        ids: ['invBtn', 'bagBtn', 'btnInv', 'btnBag', 'u20inv', 'u20bag', 'tabInv', 'tabBag'],
+        attrSel: '[data-tab*="inv" i], [data-tab*="bag" i], [data-open*="inv" i], [title*="Hành trang" i], [aria-label*="Hành trang" i]',
+        exact: ['hanh trang', 'tui do', 'tui'],
+        starts: ['hanh trang', 'tui do']
+      }
+    };
+    var spec = cfgMap[kind];
+    if (!spec) return null;
+    for (var ii = 0; ii < spec.ids.length; ii++) {
+      var q = document.getElementById(spec.ids[ii]);
+      if (q && isDomUsable(q) && !q.disabled) return q;
+    }
+    try {
+      var attr = document.querySelectorAll(spec.attrSel);
+      for (var ai = 0; ai < attr.length; ai++) {
+        if (isDomUsable(attr[ai]) && !attr[ai].disabled) return attr[ai];
+      }
+    } catch (eAt) {}
+
+    var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, #u20pop button, .u20-pop button, .more-menu button, [data-more-pop] button, button, [role="button"], [role="tab"], a');
+    var cap = Math.min(all.length, 380);
+    var fallback = null;
+    for (var i = 0; i < cap; i++) {
+      var el = all[i];
+      if (!el || !isDomUsable(el) || el.disabled || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
+      if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
+      var inNavBar = !!(el.closest && el.closest('#u20bar, #tabs, #u20pop, .u20-pop, .more-menu, [data-more-pop]'));
+      var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
+      if (!t || t.length > 36) continue;
+      for (var ei = 0; ei < spec.exact.length; ei++) {
+        if (t === spec.exact[ei]) {
+          if (inNavBar || spec.exact[ei].length >= 4) return el;
+          if (!fallback) fallback = el;
+        }
+      }
+      if (!fallback) {
+        for (var si = 0; si < spec.starts.length; si++) {
+          if (t.indexOf(spec.starts[si]) === 0) { fallback = el; break; }
+        }
+      }
+    }
+    return fallback;
+  }
+
+  function findMoreNavButton() {
+    var ids = ['u20more', 'moreBtn', 'btnMore', 'tabMore'];
+    for (var i = 0; i < ids.length; i++) {
+      var b = document.getElementById(ids[i]);
+      if (b && isDomUsable(b) && !b.disabled) return b;
+    }
+    var navs = document.querySelectorAll('#u20bar button, #tabs button, #u20bar > *, #tabs > *');
+    for (var j = 0; j < navs.length; j++) {
+      var el = navs[j];
+      if (!el || !isDomUsable(el) || el.disabled) continue;
+      var raw = String(el.textContent || '').trim();
+      var t = cleanUiLabel(raw);
+      if (t === 'them' || t === 'khac' || raw === '...' || raw === '⋯' || raw === '•••') return el;
+    }
+    return null;
+  }
+
+  async function closeStaleModalIfNeeded() {
+    try {
+      var md = document.getElementById('modal');
+      if (!md || md.classList.contains('hidden')) {
+        A.staleModalSince = 0;
+        return false;
+      }
+      if (isModalLocked() || isAuthOrProtectedModalOpen()) {
+        A.staleModalSince = 0;
+        return false;
+      }
+      if (window.__vlmStealth && (window.__vlmStealth.count | 0) > 0) {
+        A.staleModalSince = 0;
+        return false;
+      }
+      if (isUserControlling(10000)) {
+        A.staleModalSince = 0;
+        return false;
+      }
+      var now = Date.now();
+      if (!A.staleModalSince) {
+        A.staleModalSince = now;
+        return false;
+      }
+      if (now - A.staleModalSince >= 12000) {
+        A.staleModalSince = 0;
+        await closeModalCleanly(md);
+        if (ready('stale_modal_note', 60000)) {
+          note('[Auto] Tu dong hop thoai ton dong tren tab de tiep tuc quet');
+        }
+        return true;
+      }
+    } catch (eSm) {}
+    return false;
+  }
+
   var canRunHiddenConsumable = function () {
     if (!A.cfg.on) return false;
     if (Date.now() - A.userAt <= 2500) return false;
@@ -1549,13 +1702,13 @@ class GameAutoPilot(
       vh: vh,
       compact: compact,
       ultraCompact: ultraCompact,
-      minBtnW: ultraCompact ? 6 : (compact ? 9 : 14),
-      minBtnH: ultraCompact ? 6 : (compact ? 8 : 10),
-      minSlot: ultraCompact ? 12 : (compact ? 16 : 24),
-      maxSlot: compact ? 112 : 124,
-      minBagW: Math.max(68, Math.min(140, Math.floor(vw * 0.40))),
-      minBagH: Math.max(56, Math.min(104, Math.floor(vh * 0.22))),
-      minBarW: Math.max(18, Math.min(54, Math.floor(vw * 0.14)))
+      minBtnW: 1,
+      minBtnH: 1,
+      minSlot: 4,
+      maxSlot: 180,
+      minBagW: 16,
+      minBagH: 16,
+      minBarW: 6
     };
   }
 
@@ -1753,7 +1906,22 @@ class GameAutoPilot(
         while (!md.classList.contains('hidden') && Date.now() < end1) await sleep(60);
       }
       if (md && !md.classList.contains('hidden')) {
+        var mBtns = md.querySelectorAll('.close, [data-close], button, [role="button"]');
+        for (var mb = 0; mb < Math.min(mBtns.length, 40); mb++) {
+          var cb = mBtns[mb];
+          if (!cb || cb.disabled) continue;
+          var ct0 = noAccent(cb.textContent || '').replace(/\s+/g, ' ').trim();
+          if (ct0 === 'x' || ct0 === '×' || ct0 === 'dong' || ct0 === 'dong lai' || (cb.classList && cb.classList.contains('close'))) {
+            try { cb.click(); } catch (eCb) {}
+            break;
+          }
+        }
+        var end1b = Date.now() + 250;
+        while (!md.classList.contains('hidden') && Date.now() < end1b) await sleep(60);
+      }
+      if (md && !md.classList.contains('hidden')) {
         try { md.click(); } catch (e) {}
+        try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true })); } catch (eEsc) {}
         var end2 = Date.now() + 250;
         while (!md.classList.contains('hidden') && Date.now() < end2) await sleep(60);
       }
@@ -1783,27 +1951,7 @@ class GameAutoPilot(
   };
 
   var isVis = function (el) {
-    if (!el || !el.isConnected) return false;
-    try {
-      var inSt = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
-      if (el.getClientRects && el.getClientRects().length === 0) return false;
-      var cur = el;
-      while (cur && cur !== document.body && cur !== document.documentElement) {
-        if (cur.hidden) return false;
-        if (cur.classList && cur.classList.contains('hidden')) return false;
-        var cs = window.getComputedStyle(cur);
-        if (cs) {
-          if (cs.display === 'none') return false;
-          var isStNode = inSt && (cur.getAttribute && cur.getAttribute('data-vlm-stealth-hide') === '1');
-          if (!isStNode) {
-            if (cs.visibility === 'hidden' && !inSt) return false;
-            if (parseFloat(cs.opacity) === 0) return false;
-          }
-        }
-        cur = cur.parentElement;
-      }
-    } catch (e) {}
-    return true;
+    return isDomUsable(el);
   };
 
   var fillInp = function (inp, valStr) {
@@ -2498,7 +2646,7 @@ class GameAutoPilot(
         if (el.closest && el.closest('#tabs, #u20bar, #chatLines, #u20lines, #logBox, #u20log')) continue;
         if (el.querySelector && el.querySelector('canvas, #tabs, #u20bar')) continue;
         var rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mBag = getUiScaleMetrics(); if (!rect || rect.width < __mBag.minBagW || rect.height < __mBag.minBagH) continue;
+        if (rect && rect.width > 0 && rect.height > 0 && (rect.width < 16 || rect.height < 16)) continue;
         var tx = cleanUiLabel(el.textContent || '');
         if (!tx || tx.length < 14) continue;
         var score = 0;
@@ -2506,7 +2654,7 @@ class GameAutoPilot(
         if (tx.indexOf('vat pham') >= 0 || tx.indexOf('tieu hao') >= 0 || tx.indexOf('trang bi') >= 0) score += 1;
         if (tx.indexOf('que hoa') >= 0 || tx.indexOf('tien thao') >= 0 || tx.indexOf('su dung') >= 0 || tx.indexOf('dung') >= 0 || tx.indexOf('hanh trang trong') >= 0) score += 2;
         if (score >= 2) {
-          var area = rect.width * rect.height;
+          var area = (rect && rect.width > 0 && rect.height > 0) ? (rect.width * rect.height) : (tx.length * 10);
           if (area < bestArea) { bestArea = area; best = el; }
         }
       }
@@ -2854,9 +3002,10 @@ class GameAutoPilot(
           if (!n || !isVis(n) || n === rootEl) continue;
           if (n.children && n.children.length > 5) continue;
           var r = n.getBoundingClientRect ? n.getBoundingClientRect() : null;
-          var __sm = getUiScaleMetrics();
-          if (!r || r.width < __sm.minSlot || r.width > __sm.maxSlot || r.height < __sm.minSlot || r.height > __sm.maxSlot) continue;
-          if (Math.abs(r.width - r.height) > Math.max(18, Math.max(r.width, r.height) * 0.65)) continue;
+          if (r && r.width > 0 && r.height > 0) {
+            if (r.width > 180 || r.height > 180) continue;
+            if (Math.abs(r.width - r.height) > Math.max(22, Math.max(r.width, r.height) * 0.75)) continue;
+          }
           var rawT = String(n.textContent || '').trim();
           if (!isPlainStackCount(rawT)) continue;
           var hasVisual = !!(n.querySelector && n.querySelector('img, canvas, svg')) ||
@@ -5385,45 +5534,8 @@ class GameAutoPilot(
     var failOut = { checked: false, exhausted: false, summary: '' };
     if (!canRunHiddenConsumable()) return failOut;
 
-    var inStealthCheck = function () {
-      return !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
-    };
-    var isShown = function (el) {
-      if (!el || !el.isConnected) return false;
-      try {
-        var cur = el;
-        while (cur && cur !== document.body && cur !== document.documentElement) {
-          if (cur.classList && cur.classList.contains('hidden')) return false;
-          cur = cur.parentElement;
-        }
-        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
-        if (st) {
-          if (st.display === 'none') return false;
-          if (!inStealthCheck() && st.visibility === 'hidden') return false;
-        }
-        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mQ = getUiScaleMetrics();
-        return !!(r && r.width >= __mQ.minBtnW && r.height >= __mQ.minBtnH);
-      } catch (eS) { return isVis(el); }
-    };
-
-    var findQuestTabBtn = function () {
-      var ids = ['questBtn', 'nvBtn', 'btnQuest', 'btnNv', 'u20quest', 'u20nv', 'tabQuest', 'tabNv'];
-      for (var ii = 0; ii < ids.length; ii++) {
-        var q = document.getElementById(ids[ii]);
-        if (q && isShown(q) && !q.disabled) return q;
-      }
-      var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, button, [role="button"], [role="tab"], a');
-      var cap = Math.min(all.length, 280);
-      for (var i = 0; i < cap; i++) {
-        var el = all[i];
-        if (!el || !isShown(el) || el.disabled || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
-        if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
-        if (t === 'nhiem vu') return el;
-      }
-      return null;
-    };
+    var isShown = function (el) { return isDomUsable(el); };
+    var findQuestTabBtn = function () { return findGameNavButton('quest'); };
 
     var getQuestRoot = function () {
       var md = document.getElementById('modal');
@@ -5454,14 +5566,24 @@ class GameAutoPilot(
     };
 
     var prevTabBtn = document.querySelector('#tabs .on, #tabs .active, #tabs [aria-selected="true"], #u20bar .on, #u20bar .active');
+    var openedMoreBtnDg = null;
     var qBtn = findQuestTabBtn();
-    if (!qBtn) return failOut;
 
     lockModal(12000);
     stealthObj().enter();
     try {
       var root = getQuestRoot();
       if (!root) {
+        if (!qBtn) {
+          var mbDg = findMoreNavButton();
+          if (mbDg) {
+            openedMoreBtnDg = mbDg;
+            try { mbDg.click(); } catch (eMb0) {}
+            await sleep(240);
+            qBtn = findQuestTabBtn();
+          }
+        }
+        if (!qBtn) return failOut;
         try { qBtn.click(); } catch (eQ0) { try { dispatchRealUiClick(qBtn); } catch (eQ1) {} }
         var wEnd = Date.now() + 1800;
         while (Date.now() < wEnd) {
@@ -5525,6 +5647,10 @@ class GameAutoPilot(
         } else if (prevTabBtn && prevTabBtn.isConnected && prevTabBtn !== qBtn) {
           try { prevTabBtn.click(); } catch (ePr) {}
         }
+        if (openedMoreBtnDg && openedMoreBtnDg.isConnected) {
+          var popDg = document.querySelector('#u20pop, .u20-pop, .u20-more, .more-menu, [data-more-pop]');
+          if (popDg && isDomUsable(popDg)) { try { openedMoreBtnDg.click(); } catch (eMpDg) {} }
+        }
       } catch (eCl) {}
       stealthObj().leave();
       unlockModal();
@@ -5534,48 +5660,8 @@ class GameAutoPilot(
     var failOut = { checked: false, entered: false, exhausted: false, usedMin: -1, maxMin: -1, tvUsedToday: false, tvCount: -1, summary: '' };
     if (!canRunHiddenConsumable()) return failOut;
 
-    var inStealthCheck = function () {
-      return !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
-    };
-    var isShown = function (el) {
-      if (!el || !el.isConnected) return false;
-      try {
-        var cur = el;
-        while (cur && cur !== document.body && cur !== document.documentElement) {
-          if (cur.classList && cur.classList.contains('hidden')) return false;
-          cur = cur.parentElement;
-        }
-        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
-        if (st) {
-          if (st.display === 'none') return false;
-          if (!inStealthCheck() && st.visibility === 'hidden') return false;
-        }
-        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mQ = getUiScaleMetrics(); return !!(r && r.width >= __mQ.minBtnW && r.height >= __mQ.minBtnH);
-      } catch (eS) { return isVis(el); }
-    };
-
-    var findQuestTabBtn = function () {
-      var ids = ['questBtn', 'nvBtn', 'btnQuest', 'btnNv', 'u20quest', 'u20nv', 'tabQuest', 'tabNv'];
-      for (var ii = 0; ii < ids.length; ii++) {
-        var q = document.getElementById(ids[ii]);
-        if (q && isShown(q) && !q.disabled) return q;
-      }
-      var attr = document.querySelectorAll('[data-tab*="quest" i], [data-tab*="nv" i], [data-open*="quest" i], [title*="Nhiệm vụ" i], [aria-label*="Nhiệm vụ" i]');
-      for (var ai = 0; ai < attr.length; ai++) {
-        if (isShown(attr[ai]) && !attr[ai].disabled) return attr[ai];
-      }
-      var all = document.querySelectorAll('#u20bar > *, #u20bar button, #tabs > *, #tabs button, #u20pop button, .u20-pop button, .more-menu button, button, [role="button"], [role="tab"], a');
-      var cap = Math.min(all.length, 320);
-      for (var i = 0; i < cap; i++) {
-        var el = all[i];
-        if (!el || !isShown(el) || el.disabled || el.id === 'vlmAuto' || el.id === 'mswBtn') continue;
-        if (el.closest && el.closest('#modeSw, #mswMenu, #chatLines, #u20lines, #logBox, #u20log')) continue;
-        var t = cleanUiLabel((el.textContent || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || ''));
-        if (t === 'nhiem vu') return el;
-      }
-      return null;
-    };
+    var isShown = function (el) { return isDomUsable(el); };
+    var findQuestTabBtn = function () { return findGameNavButton('quest'); };
 
     var getQuestRoot = function () {
       var md = document.getElementById('modal');
@@ -5656,17 +5742,20 @@ class GameAutoPilot(
         var tLbl = cleanUiLabel(rawTargetTxt);
         if (tLbl !== 'thien bao kho') continue;
 
-        // Kiem tra the cha truc tiep: neu la the Pho Ban ("cap 50-60 · 6 phong · Vao 2/2") -> LOAI NGAY!
-        var p1 = target.parentElement;
-        if (p1 && p1 !== root) {
-          var p1Txt = String(p1.textContent || '');
-          if (p1Txt.length < 280 && isDungeonCardText(p1Txt)) continue;
+        // Kiem tra the cha trong pham vi root: chi loai neu dung la the Pho Ban don le (khong leo ra ngoai root)
+        var inDgCard = false;
+        var curP = target.parentElement;
+        for (var depthP = 0; depthP < 2 && curP && curP !== root && root.contains(curP); depthP++) {
+          var pTxt = String(curP.textContent || '');
+          var pNa = noAccent(pTxt).replace(/\s+/g, ' ').trim();
+          if (pNa.indexOf('pho ban') >= 0 || pNa.indexOf('da tau') >= 0 || pNa.indexOf('di thuyen') >= 0) break;
+          if (pTxt.length < 300 && isDungeonCardText(pTxt)) {
+            inDgCard = true;
+            break;
+          }
+          curP = curP.parentElement;
         }
-        var p2 = (p1 && p1.parentElement && p1.parentElement !== root) ? p1.parentElement : null;
-        if (p2) {
-          var p2Txt = String(p2.textContent || '');
-          if (p2Txt.length < 280 && isDungeonCardText(p2Txt)) continue;
-        }
+        if (inDgCard) continue;
 
         var r = target.getBoundingClientRect ? target.getBoundingClientRect() : null;
         var score = 240;
@@ -5694,8 +5783,8 @@ class GameAutoPilot(
         if (!root) {
           nvBtn = findQuestTabBtn();
           if (!nvBtn) {
-            var moreBtn = document.getElementById('u20more') || document.getElementById('moreBtn') || document.getElementById('btnMore');
-            if (moreBtn && isShown(moreBtn) && !moreBtn.disabled) {
+            var moreBtn = findMoreNavButton();
+            if (moreBtn) {
               openedMoreBtn = moreBtn;
               try { moreBtn.click(); } catch (eM0) {}
               await sleep(240);
@@ -5811,25 +5900,7 @@ class GameAutoPilot(
     return await probeThienBaoKhoInQuestTab(true);
   }
   function findGuildConfirmButton(excludeBtn) {
-    var inStealth = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
-    var isRectVisible = function (el) {
-      if (!el || !el.isConnected) return false;
-      try {
-        var cur = el;
-        while (cur && cur !== document.body && cur !== document.documentElement) {
-          if (cur.classList && cur.classList.contains('hidden')) return false;
-          cur = cur.parentElement;
-        }
-        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
-        if (st) {
-          if (st.display === 'none') return false;
-          if (!inStealth && st.visibility === 'hidden') return false;
-        }
-        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mB = getUiScaleMetrics(); if (!r || r.width < __mB.minBtnW || r.height < __mB.minBtnH) return false;
-        return true;
-      } catch (eR) { return isVis(el); }
-    };
+    var isRectVisible = function (el) { return isDomUsable(el); };
 
     var all = document.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"], a, div, span');
     var best = null;
@@ -5894,8 +5965,7 @@ class GameAutoPilot(
           if (st.display === 'none') return false;
           if (!inStealth && st.visibility === 'hidden') return false;
         }
-        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mI = getUiScaleMetrics(); return !!(r && r.width >= Math.max(14, __mI.minBtnW + 4) && r.height >= __mI.minBtnH);
+        return isDomUsable(el);
       } catch (eIv) { return isVis(el); }
     };
 
@@ -5937,24 +6007,7 @@ class GameAutoPilot(
 
   function findGuildQtyConfirmBtn(qtyInp, excludeBtn) {
     if (!qtyInp) return findGuildConfirmButton(excludeBtn);
-    var inStealth = !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
-    var isBtnVis = function (el) {
-      if (!el || !el.isConnected || el.disabled) return false;
-      try {
-        var cur = el;
-        while (cur && cur !== document.body && cur !== document.documentElement) {
-          if (cur.classList && cur.classList.contains('hidden')) return false;
-          cur = cur.parentElement;
-        }
-        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
-        if (st) {
-          if (st.display === 'none') return false;
-          if (!inStealth && st.visibility === 'hidden') return false;
-        }
-        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mC = getUiScaleMetrics(); return !!(r && r.width >= __mC.minBtnW && r.height >= __mC.minBtnH);
-      } catch (eBv) { return isVis(el); }
-    };
+    var isBtnVis = function (el) { return !!(el && !el.disabled && isDomUsable(el)); };
 
     var cur = qtyInp.parentElement;
     for (var d = 0; d < 5 && cur && cur !== document.body && cur !== document.documentElement; d++) {
@@ -6370,27 +6423,7 @@ class GameAutoPilot(
     if (!forceAfterBuy && !ready('tbk_use_tinvat', 30000)) return false;
     if (forceAfterBuy) A.cool.tbk_use_tinvat = Date.now() + 15000;
 
-    var inStealthCheck = function () {
-      return !!(document.documentElement && document.documentElement.classList.contains('__vlm-stealth'));
-    };
-
-    var isElemShown = function (el) {
-      if (!el || !el.isConnected) return false;
-      try {
-        var cur = el;
-        while (cur && cur !== document.body && cur !== document.documentElement) {
-          if (cur.classList && cur.classList.contains('hidden')) return false;
-          cur = cur.parentElement;
-        }
-        var st = window.getComputedStyle ? window.getComputedStyle(el) : null;
-        if (st) {
-          if (st.display === 'none') return false;
-          if (!inStealthCheck() && st.visibility === 'hidden') return false;
-        }
-        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-        var __mQ = getUiScaleMetrics(); return !!(r && r.width >= __mQ.minBtnW && r.height >= __mQ.minBtnH);
-      } catch (eSh) { return isVis(el); }
-    };
+    var isElemShown = function (el) { return isDomUsable(el); };
 
     var getQuestRoot = function () {
       var md = document.getElementById('modal');
@@ -7518,6 +7551,9 @@ class GameAutoPilot(
     } catch (eHud) {}
 
     var ingame = hasRecentSt || hasHudDom;
+    if (ingame) {
+      await closeStaleModalIfNeeded();
+    }
 
     if (hasRecentSt && (A.st.v | 0) > 0 && (A.st.v | 0) < 990) {
       if (!A.gate) {
